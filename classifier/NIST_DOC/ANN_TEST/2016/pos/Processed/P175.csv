@@ -1,0 +1,558 @@
+,sentence,label,data
+0,Interleaved Evaluation for Retrospective Summarization and Prospective Notification on Document Streams,null,null
+1,"Xin Qian, Jimmy Lin, and Adam Roegiest",null,null
+2,"David R. Cheriton School of Computer Science University of Waterloo, Ontario, Canada",null,null
+3,ABSTRACT,null,null
+4,"We propose and validate a novel interleaved evaluation methodology for two complementary information seeking tasks on document streams: retrospective summarization and prospective notification. In the first, the user desires relevant and non-redundant documents that capture important aspects of an information need. In the second, the user wishes to receive timely, relevant, and non-redundant update notifications for a standing information need. Despite superficial similarities, interleaved evaluation methods for web ranking cannot be directly applied to these tasks; for example, existing techniques do not account for temporality or redundancy. Our proposed evaluation methodology consists of two components: a temporal interleaving strategy and a heuristic for credit assignment to handle redundancy. By simulating user interactions with interleaved results on submitted runs to the TREC 2014 tweet timeline generation (TTG) task and the TREC 2015 real-time filtering task, we demonstrate that our methodology yields system comparisons that accurately match the result of batch evaluations. Analysis further reveals weaknesses in current batch evaluation methodologies to suggest future directions for research.",null,null
+5,1. INTRODUCTION,null,null
+6,"As primarily an empirical discipline, evaluation methodologies are vital to ensuring progress in information retrieval. The ability to compare system variants and detect differences in effectiveness allows researchers and practitioners to continually advance the state of the art. One such approach, broadly applicable to any online service, is the traditional A/B test [12]. In its basic setup, users are divided into disjoint ""buckets"" and exposed to different treatments (e.g., algorithm variants); user behavior (e.g., clicks) in each of the conditions is measured and compared to assess the relative effectiveness of the treatments. As an alternative, information retrieval researchers have developed an evaluation methodology for web search based on interleaving results from two different comparison systems into a single ranked",null,null
+7,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.",null,null
+8,"SIGIR '16, July 17 - 21, 2016, Pisa, Italy",null,null
+9,c 2016 Copyright held by the owner/author(s). Publication rights licensed to ACM. ISBN 978-1-4503-4069-4/16/07. . . $15.00,null,null
+10,DOI: http://dx.doi.org/10.1145/2911451.2911494,null,null
+11,"list [8, 17, 6, 15, 7, 3, 16, 19], as well as recent extensions to more than two system [20]. Instead of dividing the user population into disjoint segments, all test subjects are exposed to these interleaved results. Based on user clicks, it is possible to assess the relative effectiveness of the two input systems with greater sensitivity than traditional A/B testing [17, 3], primarily due to the within-subjects design.",null,null
+12,"This paper explores interleaved evaluation for information seeking on document streams. Although we focus on a stream of social media updates (tweets), nothing in our formulation is specific to tweets. In this context, we tackle two complementary user tasks: In the retrospective summarization scenario, which is operationalized in the tweet timeline generation (TTG) task at TREC 2014 [13], the user desires relevant and non-redundant posts that capture key aspects of an information need. In the prospective notification scenario, operationalized in the real-time filtering task (""scenario A"") at TREC 2015 [14], the user wishes to receive timely, relevant, and non-redundant updates (e.g., via a push notification on a mobile phone).",null,null
+13,"The contribution of this paper is the development and validation of an interleaved evaluation methodology for retrospective summarization and prospective notification on document streams, consisting of two components: a temporal interleaving strategy and a heuristic for credit assignment to handle redundancy. Although we can draw inspiration from the literature on interleaved evaluations for web search, previous techniques are not directly applicable to our tasks. We face a number of challenges: the important role that time plays in organizing and structuring system output, differing volumes in the number of results generated by systems, and notions of redundancy that complicate credit assignment. Our evaluation methodology addresses these complexities and is validated using data from the TREC 2014 and 2015 Microblog evaluations. Specifically, we simulate user interactions with interleaved results to produce a decision on whether system A is better than system B, and correlate these decisions with the results of batch evaluations. We find that our methodology yields accurate system comparisons under a variety of settings. Analysis also reveals weaknesses in current batch evaluation methodologies, which is a secondary contribution of this work.",null,null
+14,2. BACKGROUND AND RELATED WORK,null,null
+15,"We begin by describing our task models, which are illustrated in Figure 1. We assume the existence of a stream of timestamped documents: examples include news articles coming off an RSS feed or social media posts such as tweets.",null,null
+16,175,null,null
+17,Retrospective ,null,null
+18, Summary,null,null
+19,Prospective Notifications,null,null
+20,now,null,null
+21,"Figure 1: Illustration of our task models. At some point in time (""now""), the user develops an information need: she requests a retrospective summary of what has happened thus far and desires prospective notifications of future updates.",null,null
+22,"In this context, we consider a pair of complementary tasks: suppose at some point in time the user develops an information need, let's say, about an ongoing political scandal. She would like a retrospective summary of what has occurred up until now, which might consist of a list of chronologicallyordered documents that highlight important developments. Once she has ""come up to speed"", the user might wish to receive prospective notifications (on her mobile phone) regarding future updates, for example, statements by the involved parties or the emergence of another victim. Retrospective summarization and prospective notification form two complementary components of information seeking on document streams. In both cases, users desire relevant and novel (nonredundant) content--they, for example, would not want to see multiple tweets that say essentially the same thing. In the prospective notification case, the user additionally desires timely updates--as close as possible to the actual occurrence of the ""new development"". This, however, isn't particularly important for the retrospective case, since the events have already taken place.",null,null
+23,"In this work, we present and evaluate an interleaved evaluation methodology for the retrospective summarization and prospective notification tasks described above. Although there has been substantial work on interleaved evaluation in the context of web search [8, 17, 6, 15, 7, 3, 16, 19], we face three main challenges:",null,null
+24,"1. Temporality plays an important role in our tasks. In web search, ranked lists from different systems can be arbitrarily interleaved (and in some cases the relative ordering of documents swapped) without significantly affecting users' interpretation of the results. In our task, however, the temporal ordering of documents is critical for the proper interpretation of system output.",null,null
+25,"2. We need to interleave results of different lengths. In web search, most interleaving strategies assume ranked lists of equal length, while this is not true in our case--some systems are more verbose than others.",null,null
+26,"3. We need to account for redundancy. In our tasks the notion of novelty is very important and ""credit"" is only awarded for returning non-redundant tweets. This creates a coupling effect between two systems where one's result might ""mask"" the novelty in the other. That is, a system's output becomes redundant only because the interleaving algorithm injected a relevant document before the document in question.",null,null
+27,"Nevertheless, there is a rich body of literature from which we can draw inspiration. In particular, we employ a simulationbased approach that is well-established for validating interleaved evaluations [6, 7, 16].",null,null
+28,Our retrospective summarization and prospective notification tasks are grounded in the Microblog track evalua-,null,null
+29,"tions at TREC: specifically, the tweet timeline generation (TTG) task at TREC 2014 [13] and the push notification scenario (""scenario A"") in the real-time filtering task at TREC 2015 [14]. Although there has been a substantial amount of work on developing systems that try to accomplish the tasks we study (see the TREC overview papers for pointers into the literature), our focus is not on the development of algorithms, but rather in evaluating system output. We adopt the framework provided by these tracks: relevance judgments and submitted runs are used in simulation studies to validate our interleaved evaluation methodology.",null,null
+30,3. TASK AND METRICS,null,null
+31,We begin by describing evaluations from TREC 2014 and 2015 that operationalize our retrospective summarization and prospective notification tasks.,null,null
+32,3.1 Retrospective Summarization,null,null
+33,"Tweet timeline generation (TTG) was introduced at the TREC 2014 Microblog track. The putative user model is as follows: ""At time T , I have an information need expressed by query Q, and I would like a summary that captures relevant information."" The system's task is to produce a summary timeline, operationalized as a list of non-redundant, chronologically ordered tweets. It is imagined that the user would consume the entire summary (unlike a ranked list, where the user might stop reading at any time).",null,null
+34,"Redundancy was operationalized as follows: for every pair of tweets, if the chronologically later tweet contains substantive information that is not present in the earlier tweet, the later tweet is considered novel; otherwise, the later tweet is redundant with respect to the earlier one. Thus, redundancy and novelty are antonyms; we use them interchangeably in opposite contexts. Due to the temporal constraint, redundancy is not symmetric. If tweet A precedes tweet B and tweet B contains substantively similar information found in tweet A, then B is redundant with respect to A, but not the other way around. The task also assumes transitivity. Suppose A precedes B and B precedes C: if B is redundant with respect to A and C is redundant with respect to B, then by definition C is redundant with respect to A.",null,null
+35,"The TTG assessment task can be viewed as semantic clustering--that is, we wish to group relevant tweets into clusters in which all tweets share substantively similar information. Within each cluster, the earliest tweet is novel; all other tweets in the cluster are redundant with respect to all earlier tweets. The track organizers devised a two-phase assessment workflow that implements this idea. In the first phase, all tweets are pooled and judged for relevance. In the second phase, relevant tweets for each topic are then clustered. We refer the reader to previous papers for more details [13, 22], but the final product of the human annotation process is a list of tweet clusters, each containing tweets that represent a semantic equivalence class.",null,null
+36,"In TREC 2014, TTG systems were evaluated in terms of set-based metrics (precision, recall, and F-score) at the cluster level. Systems only received credit for returning one tweet from each cluster--that is, once a tweet is retrieved, all other tweets in the cluster are automatically considered not relevant. In this study, we performed our correlation analysis against recall, for reasons that will become apparent later. The track evaluated recall in two different ways: unweighted and weighted. In the relevance assessment pro-",null,null
+37,176,null,null
+38,"cess, tweets were judged as not relevant, relevant, or highly relevant. For unweighted recall (also called S-recall [23] and I-recall [18]), relevant and highly-relevant tweets were collapsed to yield binary judgments and all clusters received equal weight. For weighted recall, each cluster is assigned a weight proportional to the sum of relevance grades from every tweet in the cluster (relevant tweets receive a weight of one and highly-relevant tweets receive a weight of two).",null,null
+39,3.2 Prospective Notification,null,null
+40,"In the real-time filtering task at TREC 2015 [14], the goal is for a system to identify interesting and novel content for a user in a timely fashion, with respect to information needs (called ""interest profiles"" but in actuality quite similar to traditional ad hoc topics). In the push notification variant of the task (""scenario A""), updates are putatively delivered in real time as notifications to users' mobile phones. A system was allowed to return a maximum of ten tweets per day per interest profile. The official evaluation took place over a span of ten days during July 2015, where all participating systems ""listened"" to Twitter's live tweet sample stream to complete the evaluation task; the interest profiles were made available prior to the evaluation period.",null,null
+41,"The assessment workflow was the same as the TTG task in TREC 2014 (see Section 3.1): relevance assessment using traditional pooling followed by semantic clustering. The task likewise used three-way judgments: not relevant, relevant, and highly relevant. We refer the reader to the TREC overview paper for more details [14].",null,null
+42,The two metrics used to evaluate system runs were expected latency-discounted gain (ELG) and normalized cumulative gain (nCG). These two metrics are computed for each interest profile for each day in the evaluation period (explained in detail below). The final score of a run is the average of daily scores across all interest profiles.,null,null
+43,The expected latency-discounted gain (ELG) metric was adapted from the TREC temporal summarization track [2]:,null,null
+44,1 G(t),null,null
+45,(1),null,null
+46,N,null,null
+47,"where N is the number of tweets returned and G(t) is the gain of each tweet: not relevant tweets receive a gain of 0, relevant tweets receive a gain of 0.5, and highly-relevant tweets receive a gain of 1.0.",null,null
+48,"As with the TTG task, redundancy is penalized: a system only receives credit for returning one tweet from each cluster. Furthermore, per the track guidelines, a latency penalty is applied to all tweets, computed as MAX(0, (100 - d)/100), where the delay d is the time elapsed (in minutes, rounded down) between the tweet creation time and the putative time the tweet was delivered. That is, if the system delivers a relevant tweet within a minute of the tweet being posted, the system receives full credit. Otherwise, credit decays linearly such that after 100 minutes, the system receives no credit even if the tweet was relevant.",null,null
+49,The second metric is normalized cumulative gain (nCG):,null,null
+50,1 G(t),null,null
+51,(2),null,null
+52,Z,null,null
+53,where Z is the maximum possible gain (given the ten tweet per day limit). The gain of each individual tweet is computed as above (with the latency penalty). Note that gain is not discounted (as in nDCG) because the notion of document ranks is not meaningful in this context.,null,null
+54,"Due to the setup of the task and the nature of interest profiles, it is possible (and indeed observed empirically) that for some days, no relevant tweets appear in the judgment pool. In terms of evaluation metrics, a system should be rewarded for correctly identifying these cases and not generating any output. We can break down the scoring contingency table as follows: If there are relevant tweets for a particular day, scores are computed per above. If there are no relevant tweets for that day, and the system returns zero tweets, it receives a score of one (i.e., perfect score) for that day; otherwise, the system receives a score of zero for that day. This means that an empty run (a system that never returns anything) may have a non-zero score.",null,null
+55,4. INTERLEAVING METHODOLOGY,null,null
+56,The development of an interleaved evaluation methodology requires answering the following questions:,null,null
+57,"1. How exactly do we interleave the output of two systems into one single output, in light of the challenges discussed in Section 2?",null,null
+58,2. How do we assign credit to each of the underlying systems in response to user interactions with the interleaved results?,null,null
+59,4.1 Interleaving Strategy,null,null
+60,"We begin by explaining why existing interleaving strategies for web search cannot be applied to either retrospective summarization or prospective notification. Existing strategies attempt to draw results from the test systems in a ""fair"" way: In balanced interleaving [8], for example, the algorithm maintains two pointers, one to each input list, and draws from the lagging pointer. Team drafting [17], on the other hand, follows the analogy of selecting teams for a friendly team-sports match and proceeds in rounds. Both explicitly assume (1) that the ranked lists from each system are ordered in decreasing probability of relevance (i.e., following the probability ranking principle) and (2) that the ranked lists are of equal length. Both assumptions are problematic because output in retrospective summarization and prospective notification must be chronologically ordered: a na¨ive application of an existing web interleaving strategy in the retrospective case would yield a chronologically jumbled list of tweets that is not interpretable. In the prospective case, we cannot ""time travel"" and push notifications ""in the future"" and then ""return to the past"". Furthermore, in both our tasks system outputs can vary greatly in verbosity, and hence the length of their results. This is an important aspect of the evaluation design as systems should learn when to ""keep quiet"" (see Section 3.2). Most existing interleaving strategies don't tell us what to do when we run out of results from one system. For these reasons it is necessary to develop a new interleaving strategy.",null,null
+61,"After preliminary exploration, we developed an interleaving strategy, called temporal interleaving, where we simply interleave the two runs by time. The strategy is easy to implement yet effective, as we demonstrate experimentally. Temporal interleaving works in the prospective case because time is always ""moving forward"". An example is shown in Figure 2, where we have system A on the left and system B on the right. The subscript of each tweet indicates its timestamp and the interleaved result is shown in the middle (note that tweet t28 is returned by both systems). One potential",null,null
+62,177,null,null
+63,System A,null,null
+64, t23,null,null
+65, t28,null,null
+66, t35,null,null
+67, t46,null,null
+68,Interleaved,null,null
+69, t23,null,null
+70, t24,null,null
+71, t28,null,null
+72, t35,null,null
+73, t46,null,null
+74, t47,null,null
+75,System B,null,null
+76, t24,null,null
+77, t28,null,null
+78, t47,null,null
+79,Figure 2: Illustration of temporal interleaving. Note that tweet t28 is returned by both systems.,null,null
+80,"downside of this strategy is that all retrieved documents from both systems are included in the interleaved results, which increases its length--we return to address this issue in Section 5.3.",null,null
+81,"Our simple temporal interleaving strategy works as is for TTG runs, since system outputs are ordered lists of tweets. For push notifications, there is one additional wrinkle: which timestamp do we use? Recall that in prospective notification there is the tweet creation time and the push time (when the system identified the tweet as being relevant). We base interleaving on the push time because it yields a very simple implementation: we watch the output of two prospective notification systems and take the output as soon as a result is emitted by either system. However, we make sure to apply de-duplication: if a tweet is pushed by two systems but at different times, it will only be included once in the interleaved results.",null,null
+82,4.2 User Interactions and Credit Assignment,null,null
+83,"In our interleaved evaluation methodology, output from the two different test systems are combined using the temporal interleaving strategy described above and presented to the user. We assume a very simple interaction model in which the user goes through the output (in chronological order) from earliest to latest and makes one of three judgments for each tweet: not relevant, relevant, and relevant but redundant (i.e., the tweet is relevant but repeats information that is already present in a previously-seen tweet). This extends straightforwardly to cases where we have graded relevance judgments: for the relevant and redundant judgments, the user also indicates the relevance grade. In retrospective summarization, the user is interacting with static system output, but in the prospective notification case, output is presented to the user over a period of time. This is called the ""simple task"", for reasons that will become clear shortly. We assume that users provide explicit judgments, in contrast to implicit feedback (i.e., click data) in the case of interleaved evaluations for web search; we return to discuss this issue in Section 5.4.",null,null
+84,"Based on user interactions with the interleaved results, we must now assign credit to each of the test systems, which is used to determine their relative effectiveness. Credit assignment for the relevant label is straightforward: credit accrues to the system that contributed the tweet to the interleaved results (or to both if both systems returned the tweet). However, credit assignment for a tweet marked redundant is more complex--we do not know, for example, if the redundancy",null,null
+85,System A credit,null,null
+86,Not Relevant,null,null
+87,System B credit,null,null
+88,Relevant,null,null
+89,+1,null,null
+90,+1,null,null
+91,Redundant,null,null
+92,Not Relevant,null,null
+93,Relevant,null,null
+94,+1,null,null
+95,+0.66,null,null
+96,Redundant,null,null
+97,Figure 3: Example of interleaving credit assignment and redundancy handling.,null,null
+98,"was actually introduced by the interleaving. That is, the interleaving process inserted a tweet (from the other run) before this particular tweet that made it redundant.",null,null
+99,"We can illustrate this with the diagram in Figure 3. A dotted border represents a tweet contributed by system A (on the left) and a solid border represents a tweet contributed by system B (on the right). Suppose the assessor judged the tweets as they are labeled in the figure. The second and fifth tweets are marked relevant, and so system B gets full credit twice. Now let's take a look at the third tweet, contributed by system A, which is marked redundant--we can confidently conclude in this case that the redundancy was introduced by the interleaving, since there are no relevant tweets above that are contributed by system A. Therefore, we can give system A full credit for the third tweet. Now let's take a look at the sixth tweet: generalizing this line of reasoning, the more that relevant tweets above are from system B, the more likely that we're encountering a ""masking effect"" (all things being equal), where the redundancy is an artifact of the interleaving itself. To capture this, we introduce the following heuristic: the amount of credit given to a system for a tweet marked redundant is multiplied by a discount factor equal to the fraction of relevant and redundant tweets above that come from the other system. In this case, there are two relevant tweets above, both from system B, and one redundant tweet from system A, so system A receives a credit of 0.66.",null,null
+100,"More formally, consider an interleaved result S consisting of tweets s1 . . . sn drawn from system A and system B. We denote SA and SB as those tweets in S that come from system A and B, respectively. For a tweet si judged redundant, if si  SA, then we multiple its gain by a discount factor DA as follows:",null,null
+101,DA(si),null,null
+102,",",null,null
+103,|{sj |j,null,null
+104,<,null,null
+105,i  I(sj )  sj T (si),null,null
+106,SB }|,null,null
+107,(3),null,null
+108,"T (si) , |{sj|j < i  I(sj)  sj  SA}|+",null,null
+109,(4),null,null
+110,|{sj |j < i  I(sj )  sj  SB}|,null,null
+111,"where I(s) is an indicator function that returns one if the user (previously) judged the tweet to be either relevant or redundant, or zero otherwise. On the other hand, if si  SB, we apply a discount factor DB that mirrors DA above (i.e., flipping subscripts A and B). If si is both in SA and SB, we apply both equations and give each system a different amount of credit (summing up to one).",null,null
+112,"We emphasize, of course, that this way of assigning credit for redundant judgments is a heuristic (but effective, from",null,null
+113,178,null,null
+114,"our evaluations). For further validation, we introduce an alternative interaction model that we call the ""complex task"": in this model, the user still marks each tweet not relevant, relevant, and redundant, but for each redundant tweet, the user marks the source of the redundancy, i.e., which previous tweet contains the same information. With this additional source of information, we can pinpoint the exact source of redundancy and assign credit definitively (zero if the source of redundancy was from the same run, and one if from the other run). Of course, such a task would be significantly more onerous (and slower) than just providing three-way judgments, but this ""complex task"" provides an upper bound that allows us to assess the effectiveness of our credit assignment heuristic.",null,null
+115,"One final detail: In the prospective task, we still apply a latency penalty to the assigned credit, as in ELG. Thus, in the case of a tweet that was pushed by both systems, but at different times, they will receive different amounts of credit. In the interleaved results, of course, the tweet will appear only once--from that single judgment we can compute the credit assigned to each system.",null,null
+116,"To recap: we have presented a temporal interleaving strategy to combine system output, introduced a model for how users interact with the results, and devised a credit assignment algorithm (including redundancy handling) that scores the systems based on user interactions. From this, we arrive at a determination of which system is more effective. Do these decisions agree with the results of batch evaluations? We answer this question with simulation studies based on runs submitted to TREC 2014 (for retrospective summarization) and TREC 2015 (for prospective notification).",null,null
+117,5. SIMULATION RESULTS,null,null
+118,5.1 Retrospective Summarization,null,null
+119,"To validate our interleaved evaluation methodology for retrospective summarization, we conducted user simulations using runs from the TREC 2014 TTG task. In total, 13 groups submitted 50 runs to the official evaluation. For each pair of runs, we applied the temporal interleaving strategy described above and simulated user interactions with the ""ground truth"" cluster annotations. Each simulation experiment comprised 67,375 pairwise comparisons, which we further break down into 63,415 comparisons of runs from different groups (inter-group) and 3,960 comparisons between runs from the same group (intra-group). Wang et al. [22] were able to elicit two completely independent sets of cluster annotations, which they refer to as the ""official"" and ""alternate"" judgments. Thus, we were able to simulate user interactions with both sets of clusters.",null,null
+120,"First, we ran simulations using binary relevance judgments. Results are shown in Table 1. When comparing simulation results (which system is better, based on assigned credit) with the batch evaluation results (unweighted recall), there are four possible cases:",null,null
+121,"· The compared runs have different batch evaluation results and the simulation was able to detect those differences; denoted (Agree, ).",null,null
+122,"· The compared runs have the same batch result and the simulation assigned equal credit to both runs; denoted (Agree, ¬).",null,null
+123,"· The compared runs have different batch evaluation results but the simulation was not able to detect those differences; denoted (Disagree, ).",null,null
+124,"· The compared runs have the same batch result and the simulation falsely ascribed differences in effectiveness between those runs; denoted (Disagree, ¬).",null,null
+125,"In the first two cases, the batch evaluation and interleaved evaluation results are consistent and the interleaving can be said to have given ""correct"" results; this is tallied up as (Agree, Total) in the results table. In the last two cases, the batch evaluation and interleaved evaluation results are inconsistent and the interleaving can be said to have given ""incorrect"" results; this is tallied up as (Disagree, Total) in the results table.1",null,null
+126,"With ""official"" and ""alternate"" clusters, there are four ways we can run the simulations: simulate with official judgments, correlate with batch evaluation results using official judgments (official, official); simulate with alternate judgments, correlate with batch evaluation results using alternative judgments (alternate, alternate); as well as the symmetrical cases where the simulation and batch evaluations are different, i.e., (official, alternate) and (alternate, official). Table 1 shows all four cases, denoted by the first two columns. Finally, the two vertical blocks of the table denote the results of the ""simple task"" (simulated user provides three-way judgments) and the ""complex task"" (simulated user additionally marks the source of a redundant tweet).",null,null
+127,"There is a lot of information to unpack from Table 1. Focusing only on ""all pairs"" with the ""simple task"", we see that our simulation results agree with batch evaluation results 92%-93% of the time, which indicates that our interleaved evaluation methodology is effective. The inaccuracies can be attributed to the credit assignment heuristic for redundant labels--this can be seen from the ""complex task"" block, where accuracy becomes 100% if we ask the (simulated) user to mark the source of the redundancy. Of course, this makes the task unrealistically onerous, so we argue that our credit assignment heuristic strikes the right balance between accuracy and complexity.",null,null
+128,"With the (official, official) and the (alternate, alternate) conditions, we are simulating user interactions and computing batch results with the same cluster assignments. With the other two conditions, we simulate with one set of clusters and perform batch evaluations with the other--the difference between these two sets quantifies inter-assessor differences. Results suggest that the effect of using different assessors is relatively small--this finding is consistent with that of Wang et al. [22], who confirmed the stability of the TTG evaluation with respect to assessor differences.",null,null
+129,"The inter-group and intra-group comparisons suggest how well our interleaved evaluation methodology would fare under slightly different conditions. Runs by the same group (intra-group) often share similar algorithms (perhaps varying in parameters), which often yield runs that are similar in effectiveness (or the same). This makes differences more difficult to detect, and indeed, Table 1 shows this to be the",null,null
+130,"1Methodologically, our approach differs from many previous studies that take advantage of click data. For example, Chapelle et al. [3] studied only a handful of systems (far fewer than here) but across far more queries, and hence are able to answer certain types of questions that we cannot. Also, most previous studies do not consider system ties, with He et al. [6] being an exception, but they do not explicitly break out the possible contingencies as we do here.",null,null
+131,179,null,null
+132,Simulation Judgment,null,null
+133,All Pairs,null,null
+134,official alternate official alternate,null,null
+135,official alternate alternate official,null,null
+136,89.6% 88.8% 88.4% 88.7%,null,null
+137,Inter-Group Pairs Only,null,null
+138,official alternate official alternate,null,null
+139,official alternate alternate official,null,null
+140,91.1% 90.3% 89.9% 90.2%,null,null
+141,Intra-Group Pairs Only,null,null
+142,official alternate official alternate,null,null
+143,official alternate alternate official,null,null
+144,65.8% 65.1% 64.3% 64.7%,null,null
+145,Agree ¬,null,null
+146,3.7% 3.6% 3.6% 3.5%,null,null
+147,2.8% 2.7% 2.7% 2.6%,null,null
+148,18.1% 17.8% 17.9% 17.6%,null,null
+149,Simple Task Disagree,null,null
+150,Total  ¬ Total,null,null
+151,93.3% 92.4% 92.0% 92.2%,null,null
+152,3.0% 3.5% 3.8% 3.9%,null,null
+153,3.7% 4.1% 4.2% 3.9%,null,null
+154,6.7% 7.6% 8.0% 7.8%,null,null
+155,93.9% 93.0% 92.6% 92.8%,null,null
+156,2.8% 3.3% 3.6% 3.7%,null,null
+157,3.3% 3.7% 3.8% 3.5%,null,null
+158,6.1% 7.0% 7.4% 7.2%,null,null
+159,83.9% 82.9% 82.2% 82.3%,null,null
+160,5.8% 6.5% 7.3% 7.0%,null,null
+161,10.3% 10.6% 10.5% 10.7%,null,null
+162,16.1% 17.1% 17.8% 17.7%,null,null
+163,92.6% 92.3% 89.2% 89.2%,null,null
+164,93.9% 93.6% 90.7% 90.7%,null,null
+165,71.6% 71.6% 65.3% 65.3%,null,null
+166,Complex Task,null,null
+167,Agree,null,null
+168,Disagree,null,null
+169,¬ Total  ¬ Total,null,null
+170,7.4% 7.7% 5.6% 5.6%,null,null
+171,100.0% 100.0%,null,null
+172,94.8% 94.8%,null,null
+173,0 0 3.1% 3.4%,null,null
+174,0 0 2.1% 1.8%,null,null
+175,0 0 5.2% 5.2%,null,null
+176,6.1% 6.4% 4.4% 4.4%,null,null
+177,100.0% 100.0%,null,null
+178,95.1% 95.1%,null,null
+179,0 0 2.9% 3.2%,null,null
+180,0 0 2.0% 1.7%,null,null
+181,0 0 4.9% 4.9%,null,null
+182,28.4% 28.4% 24.0% 24.0%,null,null
+183,100.0% 100.0%,null,null
+184,89.3% 89.3%,null,null
+185,0 0 6.3% 6.3%,null,null
+186,0 0 4.4% 4.4%,null,null
+187,0 0 10.7% 10.7%,null,null
+188,"Table 1: TTG simulation results for both the ""simple task"" and the ""complex task"". The ""Agree"" columns give the percentages of cases where the simulation results agree with the batch evaluation results, when the runs actually differ (), and when the runs don't differ (¬). The ""Disagree"" columns give the percentages of cases where the simulation results disagree with the batch evaluation results, when the runs actually differ (), and when the runs don't differ (¬).",null,null
+189,60,null,null
+190,MB178 (All Pairs),null,null
+191,40,null,null
+192,¢ Assigned Credit,null,null
+193,20,null,null
+194,0,null,null
+195,-20,null,null
+196,-40,null,null
+197,-60,null,null
+198,-0.6 -0.4 -0.2,null,null
+199,0.0,null,null
+200,0.2,null,null
+201,0.4,null,null
+202,0.6,null,null
+203,¢ Unweighted Recall,null,null
+204,Figure 4: Scatterplot showing batch vs. simulation results for topic MB178.,null,null
+205,"case (lower agreement). In contrast, differences in effectiveness in runs between groups (inter-group) are slightly easier to detect, as shown by the slightly higher agreement.",null,null
+206,"To help further visualize our findings, a scatterplot of simulation results is presented in Figure 4 for a representative topic, MB 178, under the all-pairs, (official, official) condition. Each point represents a trial of the simulation comparing a pair of runs: the x coordinate denotes the difference based on the batch evaluation, and the y coordinate denotes the difference in assigned credit based on the simulation. We see that there is a strong correlation between simulation and batch results. Plots from other topics look very similar, except differing in the slope of the trendline (since credit is not normalized, but recall is).",null,null
+207,The previous results did not incorporate graded relevance judgments. Our next set of experiments examined this refinement: relevant tweets receive a credit of one and highlyrelevant tweets receive a credit of two. The simulated user now indicates the relevance grade for the relevant and redun-,null,null
+208,"dant cases. There is, however, the question of which batch metric to use: the official TREC evaluation used weighted recall, where the weight of each cluster was proportional to the sum of the relevance grades of tweets in the cluster. This encodes the simple heuristic that ""more discussed facets are more important"", which seems reasonable, but Wang et al. [22] found that this metric correlated poorly with human preferences, suggesting that cluster size is perhaps not a good measure of importance. We ran simulations correlating against official weighted recall: the results were slightly worse than those in Table 1, but still quite good. For example, we achieved 90% accuracy in the (official, official) condition on the simple task, as opposed to 93%.",null,null
+209,"However, given the findings of Wang et al., these simulations might not be particularly meaningful. As an alternative, we propose a slightly different approach to computing the cluster weights: instead of the sum of relevance grades of tweets in the cluster, we use the highest relevance grade of tweets in the cluster. That is, if a cluster contains a highly-relevant tweet, it receives a weight of two; otherwise, it receives a weight of one. This weighting scheme has the effect that scores are not dominated by huge clusters. The results of these simulations are shown in Table 2.",null,null
+210,"From these experiments, we see that accuracy remains quite good, suggesting that our interleaved evaluation methodology is able to take advantage of graded relevance judgments. One important lesson here is that capturing ""cluster importance"" in TTG is a difficult task, and that it is unclear if present batch evaluations present a reasonable solution. Without a well-justified batch evaluation metric, we lack values against which to correlate our simulation outputs. Thus, these results reveal a weakness in current batch evaluations (indicating avenues of future inquiry), as opposed to a flaw in our interleaved evaluation methodology.",null,null
+211,5.2 Prospective Notification,null,null
+212,"For prospective notification, we validated our interleaved evaluation methodology using runs submitted to the TREC 2015 real-time filtering task (""scenario A""). In total, there",null,null
+213,180,null,null
+214,Simulation Judgment,null,null
+215,All Pairs official alternate official alternate,null,null
+216,official alternate alternate official,null,null
+217,89.9% 89.0% 88.6% 88.7%,null,null
+218,Inter-Group Pairs Only,null,null
+219,official alternate official alternate,null,null
+220,official alternate alternate official,null,null
+221,91.3% 90.4% 90.0% 90.2%,null,null
+222,Intra-Group Pairs Only,null,null
+223,official,null,null
+224,official,null,null
+225,66.5%,null,null
+226,alternate alternate 65.8%,null,null
+227,official,null,null
+228,alternate 64.7%,null,null
+229,alternate official,null,null
+230,65.3%,null,null
+231,Agree ¬,null,null
+232,3.1% 3.0% 3.0% 3.0%,null,null
+233,2.2% 2.2% 2.1% 2.1%,null,null
+234,17.2% 16.8% 17.0% 16.9%,null,null
+235,Simple Task Disagree,null,null
+236,Total  ¬ Total,null,null
+237,93.0% 92.0% 91.6% 91.7%,null,null
+238,4.1% 4.7% 5.1% 1.3%,null,null
+239,2.9% 3.3% 3.3% 3.0%,null,null
+240,7.0% 8.0% 8.4% 8.3%,null,null
+241,93.5% 92.6% 92.1% 92.3%,null,null
+242,3.9% 4.5% 4.9% 5.0%,null,null
+243,2.6% 2.9% 3.0% 2.7%,null,null
+244,6.5% 7.4% 7.9% 7.7%,null,null
+245,83.7% 82.6% 81.7% 82.2%,null,null
+246,7.4% 8.2% 9.3% 8.6%,null,null
+247,8.9% 9.2% 9.0% 9.2%,null,null
+248,16.3% 17.4% 18.3% 17.8%,null,null
+249,Complex Task,null,null
+250,Agree,null,null
+251,Disagree,null,null
+252, ¬ Total  ¬ Total,null,null
+253,93.3% 92.9% 89.9% 90.0%,null,null
+254,5.5% 5.7% 4.4% 4.4%,null,null
+255,98.8% 98.6% 94.3% 94.4%,null,null
+256,0.7% 0.8% 3.8% 4.0%,null,null
+257,0.5% 0.6% 1.9% 1.6%,null,null
+258,1.2% 1.4% 5.7% 5.6%,null,null
+259,94.6% 94.2% 91.4% 91.5%,null,null
+260,4.2% 4.5% 3.3% 3.3%,null,null
+261,98.9% 98.7% 94.7% 94.7%,null,null
+262,0.6% 0.7% 3.5% 3.8%,null,null
+263,0.5% 0.6% 1.8% 1.5%,null,null
+264,1.1% 1.3% 5.3% 5.3%,null,null
+265,72.5% 72.6% 66.3% 66.3%,null,null
+266,25.0% 25.0% 21.9% 22.0%,null,null
+267,97.5% 97.6% 88.2% 88.3%,null,null
+268,1.4% 1.4% 7.7% 7.6%,null,null
+269,1.1% 1.0% 4.1% 4.1%,null,null
+270,2.5% 2.4% 11.8% 11.7%,null,null
+271,"Table 2: TTG simulation results with graded relevance judgments, organized in the same manner as Table 1.",null,null
+272,"were 37 runs from 14 groups submitted to the official evaluation. This yields a total of 33,966 pairwise comparisons; 32,283 inter-group pairs and 1,683 intra-group pairs.",null,null
+273,"Simulation results (with graded relevance judgments) are shown in Table 3 for correlations against ELG and in Table 4 for correlations against nCG. The table is organized in the same manner as Tables 1 and 2, with the exception that we only have one set of cluster annotations available, so no ""official"" vs. ""alternate"" distinction.",null,null
+274,"Results of the simulation, shown under the rows marked retaining ""quiet days"", are quite poor. Analysis reveals that this is due to the handling of days for which there are no relevant tweets. Note that for days without any relevant tweets, there are only two possible scores: one if the system does not return any results, and zero otherwise. Thus, for interest profiles with few relevant tweets, the score is highly dominated by these ""quiet days"". As a result, a system that does not return anything scores quite highly; in fact, better than most submitted runs [14]. To make matters worse, since 2015 was the first year of this TREC evaluation, systems achieved high scores by simply returning few results, in many cases for totally idiosyncratic reasons--for example, the misconfiguration of a score threshold.",null,null
+275,"This property of the official evaluation is problematic for interleaved evaluations since it is impossible to tell without future knowledge whether there are relevant tweets for a particular day. Consider the case when system A returns a tweet for a particular day and system B does not return anything, and let's assume we know (based on an oracle) that there are no relevant tweets for that day: according to our interleaved evaluation methodology, neither system would receive any credit. However, based on the batch evaluation, system B would receive a score of one for that day. There is, of course, no way to know this at evaluation time when comparing only two systems, and thus the interleaved evaluation results would disagree with the batch evaluation results. The extent of this disagreement depends on the number of days across the topics for which there were no relevant tweets. Since the interest profiles for the TREC 2015 evaluation had several quiet days each, our interleaved evaluation methodology is not particularly accurate.",null,null
+276,"We argue, however, that this is more an artifact of the current batch evaluation setup than a flaw in our interleaved evaluation methodology per se; see Tan et al. [21] for further discussion. As the track organizers themselves concede in the TREC overview paper [14], it is not entirely clear if the current handling of days with no relevant tweets is appropriate. While it is no doubt desirable that systems should learn when to ""remain quiet"", the current batch evaluation methodology yields results that are idiosyncratic in many cases.",null,null
+277,"To untangle the effect of these ""quiet days"" in our interleaved evaluation methodology, we conducted experiments where we simply discarded days in which there were no relevant tweets. That is, if an interest profile only contained three days (out of ten) that contained relevant tweets, the score of that topic is simply an average of the scores over those three days. We modified the batch evaluation scripts to also take this into account, and then reran our simulation experiments. The results are shown in Table 3 and Table 4 under the rows marked discarding ""quiet days"". In this variant, we see that our simulation results are quite accurate, which confirms that the poor accuracy of our initial results is attributable to days where there are no relevant tweets. Once again, this is an issue with the overall TREC evaluation methodology, rather than a flaw in our interleaving approach. These findings highlight the need for additional research on metrics that better model sparse topics. In order to remove this confound, for the remaining prospective notification experiments, we discarded the ""quiet days"".",null,null
+278,"Our credit assignment algorithm is recall oriented in that it tries to quantify the total amount of relevant information a user receives, and so it is perhaps not a surprise that credit correlates with nCG. However, experiments show that we also achieve good accuracy correlating with ELG (which is precision oriented). It is observed in the TREC 2015 evaluation [14] that there is reasonable correlation between systems' nCG and ELG scores. There is no principled explanation for this, as prospective notification systems could very well make different precision/recall tradeoffs. However, there is the additional constraint that systems are not allowed to push more than ten tweets per day, so that a high-",null,null
+279,181,null,null
+280,Condition,null,null
+281,Agree  ¬,null,null
+282,"Retaining ""quiet days""",null,null
+283,All Pairs,null,null
+284,45.6%,null,null
+285,Inter-Group Pairs 46.4%,null,null
+286,Intra-Group Pairs 29.0%,null,null
+287,16.6% 15.3% 41.4%,null,null
+288,"Discarding ""quiet days""",null,null
+289,All Pairs,null,null
+290,56.7% 34.8%,null,null
+291,Inter-Group Pairs 58.0% 33.9%,null,null
+292,Intra-Group Pairs 32.0% 52.7%,null,null
+293,Simple Task,null,null
+294,Disagree,null,null
+295,Total,null,null
+296, ¬ Total,null,null
+297,62.2% 37.7% 0.1% 37.8% 61.7% 38.2% 0.1% 38.3% 70.4% 29.1% 0.5% 29.6%,null,null
+298,91.5% 8.4% 0.1% 8.5% 91.9% 8.0% 0.1% 8.1% 84.7% 14.8% 0.5% 15.3%,null,null
+299,Complex Task,null,null
+300,Agree,null,null
+301,Disagree,null,null
+302, ¬ Total,null,null
+303, ¬ Total,null,null
+304,45.6% 16.6% 62.2% 37.6% 0.2% 37.8% 46.5% 15.3% 61.8% 38.1% 0.1% 38.2% 29.5% 41.7% 71.2% 28.6% 0.2% 28.8%,null,null
+305,56.8% 34.8% 91.6% 8.3% 0.1% 8.4% 58.1% 33.9% 92.0% 7.9% 0.1% 8.0% 32.5% 53.0% 85.5% 14.3% 0.2% 14.5%,null,null
+306,"Table 3: Results of push notification simulations, correlating against ELG.",null,null
+307,Condition,null,null
+308,Agree  ¬,null,null
+309,"Retaining ""quiet days""",null,null
+310,All Pairs,null,null
+311,52.8%,null,null
+312,Inter-Group Pairs 53.5%,null,null
+313,Intra-Group Pairs 38.3%,null,null
+314,16.7% 15.3% 43.8%,null,null
+315,"Discarding ""quiet days""",null,null
+316,All Pairs,null,null
+317,62.5% 35.2%,null,null
+318,Inter-Group Pairs 63.7% 34.1%,null,null
+319,Intra-Group Pairs 41.2% 55.4%,null,null
+320,Simple Task,null,null
+321,Disagree,null,null
+322,Total,null,null
+323, ¬ Total,null,null
+324,69.5% 30.0% 0.5% 30.5% 68.8% 30.7% 0.5% 31.2% 82.1% 17.3% 0.6% 17.9%,null,null
+325,97.7% 97.8% 96.6%,null,null
+326,2.1% 0.2% 2.1% 0.1% 2.9% 0.5%,null,null
+327,2.3% 2.2% 3.4%,null,null
+328,Complex Task,null,null
+329,Agree,null,null
+330,Disagree,null,null
+331, ¬ Total,null,null
+332, ¬ Total,null,null
+333,52.8% 16.8% 69.6% 30.0% 0.4% 30.4% 53.6% 15.4% 69.0% 30.6% 0.4% 31.0% 37.8% 44.1% 81.9% 17.8% 0.3% 18.1%,null,null
+334,62.7% 35.3% 98.0% 63.8% 34.3% 98.1% 40.9% 55.8% 96.7%,null,null
+335,2.0% 1.9% 3.3%,null,null
+336,0 2.0% 0 1.9% 0 3.3%,null,null
+337,"Table 4: Results of push notification simulations, correlating against nCG.",null,null
+338,All Pairs Inter-Group Pairs Intra-Group Pairs,null,null
+339,Summarization,null,null
+340,92.8% 94.0% 73.7%,null,null
+341,Notification,null,null
+342,96.9% 97.9% 76.5%,null,null
+343,Table 5: Lengths of interleaved results as a percentage of the sum of the lengths of the individual runs.,null,null
+344,"volume low-precision system would quickly use up its ""daily quota"". Additionally, we suspect that since TREC 2015 represented the first large-scale evaluation of this task, teams have not fully explored the design space.",null,null
+345,5.3 Assessor Effort: Output Length,null,null
+346,We next turn our attention to two issues related to assessor effort: the length of the interleaved system output (this subsection) and the effort involved in providing explicit judgments in our interaction model (next subsection).,null,null
+347,"One downside of our temporal interleaving strategy is that the interleaved results are longer than the individual system outputs. Exactly how much longer is shown in Table 5, where the lengths of the interleaved results are shown as a percentage of the sum of the lengths of the individual runs. The lengths are not 100% because the individual system outputs may contain overlap, and comparisons between runs from the same group contain more overlap. Nevertheless, we can see that temporal interleaving produces output that is substantially longer than each of the individual system outputs. This is problematic for two reasons: first, it means a substantial increase in evaluation effort, and second, the interleaving produces a different user experience in terms of the verbosity of the system.",null,null
+348,"There is, however, a simple solution to this issue: after temporal interleaving, for each result we flip a biased coin",null,null
+349,"and retain it with probability p. That is, we simply decide to discard some fraction of the results. Figure 5 shows the results of these experiments. On the x axis we sweep across p, the retention probability, and on the y axis we plot the simulation accuracy (i.e., agreement between simulation credit and batch results). The left plot shows the results for retrospective summarization using unweighted recall and the (official, official) condition; the rest of the graphs look similar and so we omit them for brevity. In the middle plot, we show accuracy against ELG for prospective notification and against nCG on the right (both discarding quiet days). Since there is randomness associated with these simulations, the plots represent averages over three trials.",null,null
+350,"We see that simulation results remain quite accurate even if we discard a relatively large fraction of system output. For the prospective task, accuracy is higher for lower p values because there are many intra-group ties. At p ,"" 0, accuracy is simply the fraction of """"no difference"""" comparisons. Based on these results, an experiment designer can select a desired tradeoff between accuracy and verbosity. With p around 0.5 to 0.6, we obtain an interleaved result that is roughly the same length as the source systems--and in that region we still achieve good prediction accuracy. It is even possible to generate interleaved results that are shorter than the input runs. Overall, we believe that this simple approach adequately addresses the length issue.""",null,null
+351,5.4 Assessor Effort: Explicit Judgments,null,null
+352,"Another potential objection to our interleaved evaluation methodology is that our interaction model depends on explicit judgments for credit assignment, as opposed to implicit judgments (i.e., clicks) in the case of interleaved evaluations for web ranking. This issue warrants some discussion, because the ability to gather implicit judgments based on be-",null,null
+353,182,null,null
+354,Retrospective Summarization: Unweighted Recall,null,null
+355,100,null,null
+356,100,null,null
+357,Prospective Notification: ELG,null,null
+358,Prospective Notification: nCG 100,null,null
+359,80,null,null
+360,80,null,null
+361,80,null,null
+362,Simulation accuracy,null,null
+363,Simulation accuracy,null,null
+364,Simulation accuracy,null,null
+365,60,null,null
+366,60,null,null
+367,60,null,null
+368,40,null,null
+369,40,null,null
+370,40,null,null
+371,20,null,null
+372,all_pairs,null,null
+373,inter_systems,null,null
+374,intra_systems,null,null
+375,0,null,null
+376,0,null,null
+377,20,null,null
+378,40,null,null
+379,60,null,null
+380,80,null,null
+381,100,null,null
+382,Retention probability p,null,null
+383,20,null,null
+384,all_pairs,null,null
+385,inter_systems,null,null
+386,intra_systems,null,null
+387,0,null,null
+388,0,null,null
+389,20,null,null
+390,40,null,null
+391,60,null,null
+392,80,null,null
+393,100,null,null
+394,Retention probability p,null,null
+395,20,null,null
+396,all_pairs,null,null
+397,inter_systems,null,null
+398,intra_systems,null,null
+399,0,null,null
+400,0,null,null
+401,20,null,null
+402,40,null,null
+403,60,null,null
+404,80,null,null
+405,100,null,null
+406,Retention probability p,null,null
+407,Figure 5: Simulation accuracy as a function of retention probability p for unweighted recall on retrospective summarization (left); ELG (middle) and nCG (right) for prospective summarization.,null,null
+408,Retrospective Summarization: Unweighted Recall,null,null
+409,100,null,null
+410,100,null,null
+411,Prospective Notification: ELG,null,null
+412,Prospective Notification: nCG 100,null,null
+413,80,null,null
+414,80,null,null
+415,80,null,null
+416,Simulation accuracy,null,null
+417,Simulation accuracy,null,null
+418,Simulation accuracy,null,null
+419,60,null,null
+420,60,null,null
+421,60,null,null
+422,40,null,null
+423,40,null,null
+424,40,null,null
+425,20,null,null
+426,all_pairs,null,null
+427,inter_systems,null,null
+428,intra_systems,null,null
+429,00,null,null
+430,20,null,null
+431,40,null,null
+432,60,null,null
+433,80,null,null
+434,100,null,null
+435,User judgement probability r,null,null
+436,20,null,null
+437,all_pairs,null,null
+438,inter_systems,null,null
+439,intra_systems,null,null
+440,00,null,null
+441,20,null,null
+442,40,null,null
+443,60,null,null
+444,80,null,null
+445,100,null,null
+446,User judgement probability r,null,null
+447,20,null,null
+448,all_pairs,null,null
+449,inter_systems,null,null
+450,intra_systems,null,null
+451,00,null,null
+452,20,null,null
+453,40,null,null
+454,60,null,null
+455,80,null,null
+456,100,null,null
+457,User judgement probability r,null,null
+458,Figure 6: Simulation accuracy as a function of user judgment probability r for unweighted recall on retrospective summarization (left); ELG (middle) and nCG (right) for prospective summarization.,null,null
+459,"havioral data greatly expands the volume of feedback we can easily obtain (e.g., from log data).",null,null
+460,"We have two responses: First, it is premature to explore implicit interactions for our tasks. For web search, there is a large body of work spanning over two decades that has validated the interpretation of click data for web ranking preferences--including the development of click models [1, 4], eye-tracking studies [5, 9], extensive user studies [10], and much more [11]. In short, we have a pretty good idea of how users interact with web search results, which justifies the interpretation of click data. None of this exists for retrospective summarization and prospective notification. Furthermore, interactions with tweets in our case are more complex: some tweets have embedded videos, images, or links. There are many different types of clicks: the user can ""expand"" a tweet, thereby showing details of the embedded object and from there take additional actions, e.g., play the embedded video directly, click on the link to navigate away from the result, etc. Not taking any overt action on a tweet doesn't necessary mean that the tweet is not relevant--the succinct nature of tweets means that relevant information can be quickly absorbed, perhaps without leaving any behavioral trails. Thus, any model of implicit interactions we could develop at this point would lack empirical grounding. More research is necessary to better understand how users interact with retrospective summarization and prospective notification systems. With a better understanding, we can then compare models of implicit feedback with the explicit feedback results presented here.",null,null
+461,"Our second response argues that in the case of prospective notifications, an explicit feedback model might not actually be unrealistic. Recall that such updates are putatively delivered via mobile phone notifications, and as such, they are",null,null
+462,"presented one at a time to the user--depending on the user's settings, each notification may be accompanied by an auditory or physical cue (a chime or a vibration) to attract the user's attention. In most implementations today the notification can be dismissed by the user or the user can take additional action (e.g., click on the notification to open the mobile app). These are already quite explicit actions with relatively clear user intent--it is not far-fetched to imagine that these interactions can be further refined to provide explicit judgments without degrading the user experience.",null,null
+463,"Nevertheless, the issue of assessor effort in providing explicit judgments is still a valid concern. However, we can potentially address this issue in the same way as the length issue discussed above. Let us assume that the user provides interaction data with probability r. That is, as we run the simulation, we flip a biased coin and observe each judgment with only probability r. In the prospective notification case, we argue that this is not unrealistic--the user ""pays attention"" to the notification message with probability r; the rest of the time, the user ignores the update.",null,null
+464,"Figure 6 shows the results of these experiments (averaged over three trials). On the x axis we sweep across r, the interaction probability and on the y axis we plot the simulation accuracy. The left plot shows the results for retrospective summarization using unweighted recall and the (official, official) condition. In the middle plot, we show accuracy against ELG for prospective notification and against nCG on the right (once again, discarding quiet days in both cases). Experiments show that we are able to accurately decide the relative effectiveness of the comparison systems even with limited user interactions.",null,null
+465,"The next obvious question, of course, is what if we combined both the length analysis and interaction probabil-",null,null
+466,183,null,null
+467,Retrospective Summarization: Unweighted Recall,null,null
+468,100,null,null
+469,100,null,null
+470,Prospective Notification: ELG,null,null
+471,Prospective Notification: nCG 100,null,null
+472,80,null,null
+473,80,null,null
+474,80,null,null
+475,Simulation accuracy Simulation accuracy Simulation accuracy,null,null
+476,60,null,null
+477,60,null,null
+478,60,null,null
+479,40,null,null
+480,"p , 0.2",null,null
+481,"p , 0.4",null,null
+482,20,null,null
+483,"p , 0.6",null,null
+484,"p , 0.8",null,null
+485,"p , 1.0",null,null
+486,0,null,null
+487,0,null,null
+488,20,null,null
+489,40,null,null
+490,60,null,null
+491,80,null,null
+492,100,null,null
+493,Interaction probability r,null,null
+494,40,null,null
+495,"p , 0.2",null,null
+496,"p , 0.4",null,null
+497,20,null,null
+498,"p , 0.6",null,null
+499,"p , 0.8",null,null
+500,"p , 1.0",null,null
+501,0,null,null
+502,0,null,null
+503,20,null,null
+504,40,null,null
+505,60,null,null
+506,80,null,null
+507,100,null,null
+508,Interaction probability r,null,null
+509,40,null,null
+510,"p , 0.2",null,null
+511,"p , 0.4",null,null
+512,20,null,null
+513,"p , 0.6",null,null
+514,"p , 0.8",null,null
+515,"p , 1.0",null,null
+516,0,null,null
+517,0,null,null
+518,20,null,null
+519,40,null,null
+520,60,null,null
+521,80,null,null
+522,100,null,null
+523,Interaction probability r,null,null
+524,Figure 7: Simulation accuracy combining both retention probability p and interaction probability r.,null,null
+525,"ity analysis? These results are shown in Figure 7, organized in the same manner as the other graphs (also averaged over three trials). For clarity, we only show results for all pairs. The interaction probability r is plotted on the x axis, with lines representing retention probability p ,"" {0.2, 0.4, 0.6, 0.8, 1.0}. As expected, we are able to achieve good accuracy, even while randomly discarding system output, and with limited interactions. Given these tradeoff curves, an experiment designer can strike the desired balance between accuracy and verbosity.""",null,null
+526,6. CONCLUSIONS,null,null
+527,"In this paper, we describe and validate a novel interleaved evaluation methodology for two complementary information seeking tasks on document streams: retrospective summarization and prospective notification. We present a temporal interleaving strategy and a heuristic credit assignment method based on a user interaction model with explicit judgments. Simulations on TREC data demonstrate that our evaluation methodology yields high fidelity comparisons of the relative effectiveness of different systems, compared to the results of batch evaluations.",null,null
+528,"Although interleaved evaluations for web search are routinely deployed in production environments, we believe that our work is novel in that it tackles two completely different information seeking scenarios. Retrospective summarization and prospective notification are becoming increasingly important as users continue the shift from desktops to mobile devices for information seeking. There remains much more work, starting with a better understanding of user interactions so that we can develop models of implicit judgment and thereby greatly expand the scope of our evaluations, but this paper takes an important first step.",null,null
+529,7. ACKNOWLEDGMENTS,null,null
+530,This work was supported in part by the U.S. National Science Foundation (NSF) under awards IIS-1218043 and CNS-1405688 and the Natural Sciences and Engineering Research Council of Canada (NSERC). All views expressed here are solely those of the authors. We'd like to thank Charlie Clarke and Luchen Tan for helpful discussions.,null,null
+531,8. REFERENCES,null,null
+532,"[1] E. Agichtein, E. Brill, S. Dumais, and R. Ragno. Learning user interaction models for predicting web search result preferences. SIGIR, 2006.",null,null
+533,"[2] J. Aslam, M. Ekstrand-Abueg, V. Pavlu, F. Diaz, R. McCreadie, and T. Sakai. TREC 2014 Temporal Summarization Track overview. TREC, 2014.",null,null
+534,"[3] O. Chapelle, T. Joachims, F. Radlinski, and Y. Yue. Large-scale validation and analysis of interleaved search evaluation. ACM TOIS, 30(1):Article 6, 2012.",null,null
+535,"[4] O. Chapelle and Y. Zhang. A Dynamic Bayesian Network click model for web search ranking. WWW, 2009.",null,null
+536,"[5] L. Granka, T. Joachims, and G. Gay. Eye-tracking analysis of user behavior in WWW search. SIGIR, 2004.",null,null
+537,"[6] J. He, C. Zhai, and X. Li. Evaluation of methods for relative comparison of retrieval systems based on clickthroughs. CIKM, 2009.",null,null
+538,"[7] K. Hofmann, S. Whiteson, and M. de Rijke. A probabilistic method for inferring preferences from clicks. CIKM, 2011.",null,null
+539,"[8] T. Joachims. Optimizing search engines using clickthrough data. KDD, 2002.",null,null
+540,"[9] T. Joachims, L. Granka, B. Pan, H. Hembrooke, F. Radlinski, and G. Gay. Evaluating the accuracy of implicit feedback from clicks and query reformulations in web search. ACM TOIS, 25(2):1­27, 2007.",null,null
+541,"[10] D. Kelly. Understanding implicit feedback and document preference: A naturalistic user study. SIGIR Forum, 38(1):77­77, 2004.",null,null
+542,"[11] D. Kelly and J. Teevan. Implicit feedback for inferring user preference: A bibliography. SIGIR Forum, 37(2):18­28, 2003.",null,null
+543,"[12] R. Kohavi, R. M. Henne, and D. Sommerfield. Practical guide to controlled experiments on the web: Listen to your customers not to the HiPPO. KDD, 2007.",null,null
+544,"[13] J. Lin, M. Efron, Y. Wang, and G. Sherman. Overview of the TREC-2014 Microblog Track. TREC, 2014.",null,null
+545,"[14] J. Lin, M. Efron, Y. Wang, G. Sherman, and E. Voorhees. Overview of the TREC-2015 Microblog Track. TREC, 2015.",null,null
+546,"[15] F. Radlinski and N. Craswell. Comparing the sensitivity of information retrieval metrics. SIGIR, 2010.",null,null
+547,"[16] F. Radlinski and N. Craswell. Optimized interleaving for online retrieval evaluation. WSDM, 2013.",null,null
+548,"[17] F. Radlinski, M. Kurup, and T. Joachims. How does clickthrough data reflect retrieval quality? CIKM, 2008.",null,null
+549,"[18] T. Sakai, N. Craswell, R. Song, S. Robertson, Z. Dou, and C. Lin. Simple evaluation metrics for diversified search results. EVIA, 2010.",null,null
+550,"[19] A. Schuth, K. Hofmann, and F. Radlinski. Predicting search satisfaction metrics with interleaved comparisons. SIGIR, 2015.",null,null
+551,"[20] A. Schuth, F. Sietsma, S. Whiteson, D. Lefortier, and M. de Rijke. Multileaved comparisons for fast online evaluation. CIKM, 2014.",null,null
+552,"[21] L. Tan, A. Roegiest, J. Lin, and C. L. A. Clarke. An exploration of evaluation metrics for mobile push notifications. SIGIR, 2016.",null,null
+553,"[22] Y. Wang, G. Sherman, J. Lin, and M. Efron. Assessor differences and user preferences in tweet timeline generation. SIGIR, 2015.",null,null
+554,"[23] C. X. Zhai, W. W. Cohen, and J. Lafferty. Beyond independent relevance: Methods and evaluation metrics for subtopic retrieval. SIGIR, 2003.",null,null
+555,184,null,null
+556,,null,null

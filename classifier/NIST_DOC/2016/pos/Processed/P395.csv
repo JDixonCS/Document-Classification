@@ -1,0 +1,623 @@
+,sentence,label,data
+0,Modeling Document Novelty with Neural Tensor Network for Search Result Diversification,null,null
+1,Long Xia Jun Xu Yanyan Lan Jiafeng Guo Xueqi Cheng,null,null
+2,"CAS Key Lab of Network Data Science and Technology, Institute of Computing Technology, Chinese Academy of Sciences",null,null
+3,"xialong@software.ict.ac.cn, {junxu, lanyanyan, guojiafeng, cxq}@ict.ac.cn",null,null
+4,ABSTRACT,null,null
+5,"Search result diversification has attracted considerable attention as a means to tackle the ambiguous or multi-faceted information needs of users. One of the key problems in search result diversification is novelty, that is, how to measure the novelty of a candidate document with respect to other documents. In the heuristic approaches, the predefined document similarity functions are directly utilized for defining the novelty. In the learning approaches, the novelty is characterized based on a set of handcrafted features. Both the similarity functions and the features are difficult to manually design in real world due to the complexity of modeling the document novelty. In this paper, we propose to model the novelty of a document with a neural tensor network. Instead of manually defining the similarity functions or features, the new method automatically learns a nonlinear novelty function based on the preliminary representation of the candidate document and other documents. New diverse learning to rank models can be derived under the relational learning to rank framework. To determine the model parameters, loss functions are constructed and optimized with stochastic gradient descent. Extensive experiments on three public TREC datasets show that the new derived algorithms can significantly outperform the baselines, including the state-of-the-art relational learning to rank models.",null,null
+6,Keywords,null,null
+7,search result diversification; neural tensor network; relational learning to rank,null,null
+8,1. INTRODUCTION,null,null
+9,"In web search, it has been widely observed that a large fraction of queries are ambiguous or multi-faceted. Search result diversification has been proposed as a way to tackle this problem and diverse ranking is one of the central problems. The goal of diverse ranking is to develop a ranking",null,null
+10,Corresponding author: Jun Xu.,null,null
+11,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '16, July 17­21, 2016, Pisa, Italy. c 2016 ACM. ISBN 978-1-4503-4069-4/16/07. . . $15.00 DOI: http://dx.doi.org/10.1145/2911451.2911498",null,null
+12,"model that can sort documents based on their relevance to the given query as well as the novelty of the information in the documents. Thus, how to measure the novelty of a candidate document with respect to other documents becomes a key problem in the designing of the diverse ranking models.",null,null
+13,"Methods for search result diversification can be categorized into heuristic approaches and learning approaches. The heuristic approaches construct diverse rankings with heuristic rules [3, 8, 14, 24, 25, 26]. As a representative model, the maximal marginal relevance (MMR) [3] formulates the construction of a diverse ranking as a process of sequential document selection. At each iteration the document with the highest marginal relevance is selected. The marginal relevance consists of the relevance score and novelty score. The novelty score is calculated based on a predefined document similarity function. Thus, the selection of the document similarity function becomes a critical issue for MMR. Different choices of the similarity functions result in different ranking lists. Usually it is difficult to define an appropriate similarity function in a real application.",null,null
+14,"Recently, machine learning models have been proposed and applied to the task of search result diversification [17, 20, 23, 28, 32]. The basic idea is to automatically learn a diverse ranking model from the labeled training data. Relational learning to rank is one of the representative framework in this field. In relational learning to rank, the novelty of a document with respect to the previously selected documents is encoded as a set of handcrafted novelty features. Several algorithms have been developed under the framework and state-of-the-art performances have been achieved [28, 32]. However, it is still an unsolved problem to define a set of novelty features which can effectively capture the complex document relationship. Unlike the designing of relevance features in conventional learning to rank, it is much more difficult to extract novelty features for search result diversification. Currently, a very limited number of novelty features can be utilized when constructing a diverse ranking model. For example, in R-LTR [32] and PAMM [28], the novelty of a document is characterized with only seven novelty features. Most of the features are based on the cosine similarities of two documents represented with tf-idf vectors or topic vectors. Thus, it is very difficult, if not impossible, for users to handcraft an optimal set of novelty features for search result diversification.",null,null
+15,"To address above problems and inspired by the neural models for relation classification [27], we propose to model the document novelty for search result diversification using a neural tensor network (NTN). Unlike existing methods",null,null
+16,395,null,null
+17,"which manually define the document similarity functions or novelty features, the method automatically learns a nonlinear document novelty function from the training data. It first generates the novelty signals with a nonlinear tensor layer, through interacting the candidate document with other documents. Then, a max-pooling operation is applied to select the most effective novelty signals. Finally, the selected signals are combined linearly to form the final document novelty score.",null,null
+18,"New diverse ranking models, then, can be proposed under the relational learning to rank framework. The marginal relevance in relational learning to rank, which is used for selecting the best document at each step, is calculated as a sum of the query-document relevance score and document novelty score. Modeling the document novelty score with the proposed neural tensor network, we can achieve new diverse ranking models. On the basis of existing relational learning to rank algorithms of R-LTR and PAMM, two new loss functions are constructed and optimized, achieving two novel diverse ranking algorithms of R-LTR-NTN and PAMM-NTN.",null,null
+19,"To evaluate the effectiveness of the proposed algorithms, we conducted extensive experiments on three public TREC benchmark datasets. The experimental results showed that our proposed algorithms, including R-LTR-NTN and PAMMNTN, can significantly outperform the state-of-the-art baselines including heuristic approaches of MMR, and learning approaches of SVM-DIV [29], R-LTR, and PAMM. Analysis showed that the proposed approaches achieved better results through learning better document dissimilarities in terms of distinguishing the documents with different subtopics. Thus, the proposed algorithms have the ability to improve the queries with high ambiguity.",null,null
+20,"Contributions of the paper include: 1) We proposed to model the document novelty with a neural tensor network, which enables us to get rid of the manually defined similarity functions or handcrafted novelty features in search result diversification; 2) Based on the new document novelty model, two diverse ranking algorithms were derived under the framework of relational learning to rank; 3) The effectiveness of the proposed algorithms were verified based on public benchmark datasets.",null,null
+21,"The rest of the paper is organized as follows. After a summary of related work in Section 2, we present the neural tensor network model for measuring document novelty in Section 3. Section 4 presents the two derived diverse ranking algorithms under the relational learning to rank framework. Experimental results and discussions are given in Section 5. Section 6 concludes the paper and gives future directions.",null,null
+22,2. RELATED WORK,null,null
+23,"This paper concerns about the ranking models for search result diversification. Existing methods can be categorized into heuristic approaches and learning approaches. One of the central problems in both of these two approaches is novelty, that is, how to model the novelty information of a document with respect to other documents.",null,null
+24,2.1 Heuristic approaches,null,null
+25,"It is a common practice to use heuristic rules to construct a diverse ranking list in search. Usually, the rules are created based on the observation that in diverse ranking a document's novelty depends on not only the document itself but also the documents ranked in previous positions. Carbonell",null,null
+26,"and Goldstein [3] proposed the maximal marginal relevance criterion to guide the design of diverse ranking models. The criterion is implemented with a process of iteratively selecting the documents from the candidate document set. At each iteration, the document with the highest marginal relevance score is selected, where the score is a linear combination of the query-document relevance and the maximum distance of the document to the documents in current result set, in another word, novelty. The marginal relevance score is then updated in the next iteration as the number of documents in the result set increases by one. A number of methods have been developed under the criterion. PM-2 [8] treats the problem of finding a diverse search result as finding a proportional representation for the document ranking. xQuAD [26] directly models different aspects underlying the original query in the form of sub-queries, and estimates the relevance of the retrieved documents to each identified subquery. Hu et al. [14] proposed a diversification framework that explicitly leverages the hierarchical intents of queries and selects the documents that maximize diversity in the hierarchical structure. See also [2, 4, 10, 11, 12, 22]",null,null
+27,"All of these heuristic approaches rely on a predefined document similarity (or distance) function to measure the novelty of a document. Thus, the selection of the similarity function is critical for the ranking performances. Usually it is hard to design an optimal similarity function for a specific task. In this paper, we focus on the learning approaches to estimate the novelty scores of documents.",null,null
+28,2.2 Learning approaches,null,null
+29,"Machine learning techniques have been applied to construct ranking models for search result diversification. In these approaches, the relevance features and novelty features are extracted for characterizing the relevance and novelty information of a document, respectively. The ranking score is usually a linear combination of these features and the parameters can be automatically estimated from the training data. Some promising results have been obtained. For example, Zhu et al. [32] proposed the relational learning to rank framework in which the diverse ranking is constructed with a process of sequential document selection. The training of a relational learning to rank model thus amounts to optimizing the object function based on the ground-truth rankings. With different definitions of the object functions and optimization techniques, different diverse ranking algorithms have been derived [28, 32]. Radlinski et al. [23] proposed online learning algorithms that directly learn a diverse ranking of documents based on users' clicking behaviors. More works please refer to [17, 20, 30].",null,null
+30,"Most learning approaches depend on a set of handcrafted novelty features to represent the novelty of a document. Construction of such features is usually difficult and time consuming in real applications. In real world, we have a very limited number of novelty features, which greatly limits the usability of these diverse ranking models. In this paper, we propose to automatically learn the novelty with a neural tensor network and enhance the usability of the diverse ranking algorithms.",null,null
+31,3. MODELING DOCUMENT NOVELTY WITH NEURAL TENSOR NETWORK,null,null
+32,"Inspired by the neural models for relation classification, in",null,null
+33,396,null,null
+34,Tensor Layer,null,null
+35,Linear Layer,null,null
+36,µTR 2 Rz,null,null
+37,tanh,null,null
+38,+,null,null
+39,+,null,null
+40,tanh,null,null
+41,eT1 WR[1:z] e2 + VR,null,null
+42,e1 e2,null,null
+43,+ bR,null,null
+44,t 2 Rz,null,null
+45,"Figure 1: Visualization of the neural tensor network for relation classification. Each dashed box represents one slice of the tensor, in this case there are z , 2 slices.",null,null
+46,this paper we propose to use neural tensor network to model the novelty of a document w.r.t. a set of other documents.,null,null
+47,3.1 Neural tensor network,null,null
+48,"In deep learning literature, neural tensor networks (NTN) is originally proposed to reason the relationship between two entities in knowledge graph [27]. Given two entities (e1, e2) represented with le dimensional features, the goal of NTN is to predict whether they have a certain relationship R. Specifically, NTN computes a score of how likely it is that these two entities are in certain relationship R by the following function:",null,null
+49,"g(e1, R, e2) , µTR tanh eT1 WR[1:z]e2 + VR",null,null
+50,e1 e2,null,null
+51,"+ bR ,",null,null
+52,"where e1, e2  Rle are the vector representations of two entities, WR[1:z]  Rle×le×z is a tensor and the bilinear tensor product eT1 WR[1:z]e2 results in a vector h  Rz, where each entry of h is computed by one slice i (i ,"" 1, · · · , z) of the""",null,null
+53,"tensor: hi ,"" eT1 WR[i]e2. The other parameters for relation R are the standard form of a neural network: VR  Rz×2le , µR  Rz, and bR  Rz. Figure 1 illustrates the neural tensor network with two slices for entity relationship reasoning.""",null,null
+54,3.2 Modeling document novelty with neural tensor network,null,null
+55,"Intuitively, the neural tensor networks model the relationships between two entities with a bilinear tensor product. The idea can be naturally extended to model the novelty relation of a document with respect to other documents for search result diversification. That is, we can represent the novelty information of a candidate document as a bilinear tensor product of the document and other documents, as shown in Figure 2.",null,null
+56,"More specifically, suppose that we are given a set of M documents X , {dj}M j,""1, where each document dj can be characterized with its preliminary representation vj  Rlv , e.g., the topic distribution [9, 13] of dj or the document vector generated with a doc2vec [15] model. Given a candidate document d  X with its preliminary presentation v, and a set of documents S  X \ {d} with their preliminary representations {v1, · · · , v|S|}, the novelty score of d with respect to the documents in S can be defined as a neural tensor network with z hidden slices:""",null,null
+57,"gn(v, S) ,"" µT max tanh vT W[1:z] v1, . . . , v|S| ,""",null,null
+58,"where each column in matrix v1, . . . , v|S|  Rlv×|S| stands",null,null
+59,Tensor Layer,null,null
+60,Max-pooling Linear,null,null
+61,Layer,null,null
+62,Layer,null,null
+63,µT 2 Rz,null,null
+64,tanh,null,null
+65,tanh,null,null
+66,vT,null,null
+67,"W[1:z] v1, . . . , v|S|",null,null
+68,H 2 Rz|S|,null,null
+69,t 2 Rz,null,null
+70,"Figure 2: Visualization of the neural tensor network for modeling document novelty (z , 2).",null,null
+71,"for the preliminary representation vector of the corresponding document in S, W[1:z]  Rlv×lv×z is a tensor, and µ  Rz the weights correspond to the slices of the tensor. As shown in Figure 2, the neural tensor network consists of",null,null
+72,"a tensor layer, a max-pooling layer, and a linear layer.",null,null
+73,Tensor Layer: The tensor layer takes the preliminary,null,null
+74,representations of the documents as inputs. The interactions,null,null
+75,between the document d and documents in S are represented,null,null
+76,as a bilinear product followed by a nonlinear operation:,null,null
+77," hT1   tanh vT W[1] v1, . . . , v|S| ",null,null
+78,"H, ",null,null
+79,...,null,null
+80,",",null,null
+81,...,null,null
+82,",",null,null
+83,(1),null,null
+84,hTz,null,null
+85,"tanh vT W[z] v1, . . . , v|S|",null,null
+86,where hi  R|S| is computed by one slice of the tensor.,null,null
+87,Compared with the original neural tensor network in Sec-,null,null
+88,"tion 3.1, the tensor in Equation (1) models the relationship",null,null
+89,between one document and multiple documents simultane-,null,null
+90,"ously. Thus, the output of Equation (1) is a z × |S| matrix",null,null
+91,"rather than a z-dimensional vector. Also, since the number",null,null
+92,of documents in S varies in different document selection it-,null,null
+93,"erations, the term VR",null,null
+94,e1 e2,null,null
+95,in the original tensor neural,null,null
+96,"network is ignored. Moreover, in ranking we cares about",null,null
+97,the order of the documents rather than the ranking scores.,null,null
+98,"Thus, the bias term bR is also ignored.",null,null
+99,"Max-pooling Layer: In the max-pooling layer, the ma-",null,null
+100,trix outputted by the tensor layer is mapped to a z-dimensional,null,null
+101,vector with the max operation:,null,null
+102,"t ,"" max(hT1 ), · · · , max(hTz ) T .""",null,null
+103,(2),null,null
+104,"Intuitively, the pooling layer aggregates individual novelty signal learned at each tensor layer hTi . Max-pooling extracts the most significant signals among them. Thus, vector t can",null,null
+105,be considered as a the z-dimensional novelty features and,null,null
+106,each dimension is defined by one slice of the tensor.,null,null
+107,"Linear Layer: Finally, the novelty score of the document",null,null
+108,"is calculated as a linear combination of the novelty signals outputted by the max-pooling layer: µT t, where µ is an",null,null
+109,z-dimensional parameter vector.,null,null
+110,4. DIVERSE RANKING ALGORITHMS BASED ON NEURAL TENSOR NETWORK,null,null
+111,"New diverse ranking algorithms can be derived based on the proposed neural tensor network for modeling document novelty. In this paper, we propose two algorithms under the framework of relational learning to rank.",null,null
+112,397,null,null
+113,Algorithm 1 Ranking via maximizing marginal relevance,null,null
+114,"Input: documents X and novelty features R Output: ranking of documents Y 1: S0  empty set 2: for r ,"" 1, · · · , M do 3: Y (r)  arg maxj:xj X\Sr-1 f (xj , Rj , Sr-1) 4: Sr  Sr-1  {xY (r)} 5: end for 6: return Y""",null,null
+115,4.1 Relational learning to rank,null,null
+116,"The relational learning to rank framework [32] formalizes the ranking of documents as a process of sequential document selection and defines the marginal relevance as linear combination of the relevance score and the novelty score. Formally, let X ,"" {d1, · · · , dM } denotes the set of documents retrieved by a query q. For each query-document pair (q, di), relevance feature vector xi  Rlx is extracted. Let R  RM×M×K denotes a 3-way tensor representing relationships between the documents, where Rijk stands for the k-th feature of relationship between documents di and dj. Assuming that a set of documents S have been selected in the previous iterations, the marginal relevance of the i-th candidate document with respect to S, denoted as f (xi, Ri, S), is then defined as the combination of the relevance score and the novelty score:""",null,null
+117,"f (xi, Ri, S) ,"" rT xi + nT hS(Ri), xi  X\S, (3)""",null,null
+118,"where rT xi stands for the relevance score and r is the relevance weight vector, nT hS(Ri) stands for the novelty score of the document with respect to S and n is the diversity weight vector, Ri stands for the matrix of relationships between document xi and other documents, and hS(Ri) stands for the aggregation function on Ri which aggregates the matrix Ri into a novelty feature vector. Usually, hS can be one of the operations of max, min, or average.",null,null
+119,"According to the maximal marginal relevance criterion, sequential document selection process can be used to create a diverse ranking, as shown in Algorithm 1. The algorithm initializes S0 as an empty set, and then iteratively selects the documents from the candidate set. At iteration r (r ,"" 1, 2, · · · , M ), the document with the maximal marginal relevance score f (xj, Rj, Sr-1) is selected and ranked at position r. At the same time, the selected document is inserted into Sr-1.""",null,null
+120,"Given a set of training instances which consist of queries, documents, and their relevance labels, the model parameters can be learned from the training data. The process amounts to optimizing an objective function based on the training data. Different definitions of the objective functions and optimization techniques lead to different relational learning to rank algorithms. For example, in algorithm RLTR [32], the likelihood of the training queries is maximized using stochastic gradient descent. In algorithm PAMM [28], the loss function upper bounding the diversity evaluation measure is constructed and optimized with structured Perceptron.",null,null
+121,"Relational learning to rank models depend on a set of handcrafted features for characterizing the novelty of a document. However, how to design the features that can effectively capture the complex document relationship is still an unsolved problem. Unlike the conventional learning to",null,null
+122,Table 1: Novelty features used in R-LTR.,null,null
+123,Name,null,null
+124,Explanation,null,null
+125,Subtopic diversity Text diversity,null,null
+126,Title diversity Anchor text diversity ODP-Based diversity,null,null
+127,Link-based diversity URL-based diversity,null,null
+128,document distance based on PLSA [13] one minus cosine similarity of the tf-idf vectors on body text text novelty feature based on title text novelty feature based on anchor categorical distance based on ODP1 taxomony link similarity based on inlink/outlink whether the two URLs belong to the same domain/site,null,null
+129,"rank in which a large number effective relevance features have been developed [21], it is much harder to find novelty features for search result diversification. As a result, the relational learning to rank algorithms of R-LTR and PAMM utilized only seven features in their experiments, as have listed in Table 1. We can see that most of these features are calculated based on the predefined similarities of two documents (represented as tf-idf vectors or topic distributions), and respectively applied to the document fields of title, body, and anchor.",null,null
+130,"In real world applications, the performances of the ranking algorithms heavily depend on the effectiveness of these handcrafted features and different ranking tasks need different features. It is necessary to develop a method that can learn the document novelty automatically and release people from the handcrafted novelty features.",null,null
+131,4.2 Relational learning to rank algorithms based on neural tensor network,null,null
+132,"In this subsection, based on the technique of modeling the document novelty with neural tensor network, we develop two new relational learning to rank algorithms that can learn the document novelty function automatically.",null,null
+133,4.2.1 The ranking model,null,null
+134,"Following the notations used in Section 3.2 and Section 4.1,",null,null
+135,"let X ,"" {d1, · · · , dM } denotes the set of documents retrieved by a query q. Each query-document pair (q, d) is represented with the relevance feature vector x  Rlx . Each document d  X is characterized with its preliminary representation vector v  Rlv . Assuming that at one iteration of the sequential document selection, a set of documents S have been""",null,null
+136,selected. We define the marginal relevance score of a candi-,null,null
+137,date document d as:,null,null
+138,"f (d, S) ,""gr(x) + gn(v, S)""",null,null
+139,(4),null,null
+140,",""T x + µT max tanh vT W[1:z] v1, . . . , v|S| ,""",null,null
+141,"where gr(x) is the relevance of d w.r.t. query q, which is further defined as a linear combination of the relevance features; gn(v, S) is the novelty of d w.r.t. the documents in S, which is further defined as a neural tensor network, as have been shown in Section 3.2. The model parameters , µ, and W[1:z] can be learned with the training data.",null,null
+142,"In the online ranking, a diverse ranking can created with the sequential document selection process, similar to the procedure shown in Algorithm 1.",null,null
+143,1http://www.dmoz.org,null,null
+144,398,null,null
+145,"The main advantage of using neural tensor network to model document novelty is that the tensor can relate the candidate document and the selected documents multiplicatively, instead of only through a predefined similarity function (as that of in heuristic approaches) or through a linear combination of novelty features (as that of in learning approaches and shown in Equation (3)). Intuitively, the model can be explained that each slice of the tensor is responsible for one aspect or subtopic of a query. Each tensor slice settles the diversity relationship between the candidate document and the selected documents set differently. Thus, with multiple tensor slices, the model calculates the novelty scores based on multiple diversity aspects.",null,null
+146,4.2.2 General loss function,null,null
+147,The parameters of the ranking model can be determined,null,null
+148,"with supervised learning methods, which amounts to opti-",null,null
+149,mizing the objective function built upon the labeled training,null,null
+150,data.,null,null
+151,"In training procedure, given the labeled data with N queries as: (X(1), J (1)), (X(2), J (2)), · · · , (X(N), J (N)), where X(n) ,",null,null
+152,{dj(n),null,null
+153,}M (n),null,null
+154,"j,1",null,null
+155,",",null,null
+156,where,null,null
+157,M (n),null,null
+158,denotes,null,null
+159,the,null,null
+160,number,null,null
+161,of,null,null
+162,documents,null,null
+163,related with the n-th query. Let x(jn)  Rlx denote the rele-,null,null
+164,"vance feature vector for the n-th query and document d(jn),",null,null
+165,"vj(n)  Rlv the preliminary representation of document d(jn),",null,null
+166,and J(n) the human labels on documents which is in the,null,null
+167,"form of a binary matrix. Jj(sn) , 1 if document d(jn) con-",null,null
+168,tains the s-th subtopic of the query and 0 otherwise2. The,null,null
+169,learning process amounts to minimizing the total loss with,null,null
+170,respect to the given training data:,null,null
+171,N,null,null
+172,min,null,null
+173,"f F n,1",null,null
+174," X(n), f , J (n) ,",null,null
+175,"where  X(n), f denotes the ranking generated by the",null,null
+176,"ranking model f in Equation (4), for the documents in X(n). The generated ranking  is then compared with the human labels J(n) by the loss function . Intuitively, the learning process can be interpreted as finding an optimal ranking model f from some functional space F so that for each training query the difference between the generated permutation  and the human labels J is minimal.",null,null
+177,"Different objective functions and optimization techniques lead to different algorithms. In this section, based on the relational learning to rank algorithms of R-LTR [32] and PAMM [28], we construct two novel algorithms in which the document novelty is modeled with a neural tensor network, referred to as R-LTR-NTN and PAMM-NTN, respectively.",null,null
+178,4.2.3 R-LTR-NTN,null,null
+179,"Based on the loss function defined for R-LTR [32], we derive the loss function of R-LTR-NTN, which is a negative logarithm likelihood of the training queries:",null,null
+180,N,null,null
+181,"LR-LTR-NTN(f ) ,"" - log Pr Y (n)|X(n) ,""",null,null
+182,"n,1",null,null
+183,"where Y (n) is the ground-truth ranking generated from the human label J(n). For any query, the probability Pr(Y |X)",null,null
+184,2In this paper we assume that all labels are binary.,null,null
+185,Algorithm 2 The R-LTR-NTN Algorithm,null,null
+186,"Input: training data {(X(n), J(n))}Nn,""1 and learning rate  Output: model parameter (, µ, W[1:z])""",null,null
+187,"1: initialize {, µ, W[1:z]}  random values in [0, 1]",null,null
+188,2: repeat,null,null
+189,3: Shuffle the training data,null,null
+190,"4: for n ,"" 1, · · · , N do""",null,null
+191,5:,null,null
+192,"calculate (n), µ(n) and W[1:z](n)",null,null
+193,"{Equation (6), Equation (7), and Equation (8)}",null,null
+194,6:,null,null
+195,   -  × (n),null,null
+196,7:,null,null
+197,µ  µ -  × µ(n),null,null
+198,8:,null,null
+199,W[1:z]  W[1:z] -  × W[1:z](n),null,null
+200,9: end for,null,null
+201,10: until convergence,null,null
+202,"11: return (, µ, W[1:z])",null,null
+203,can be further defined as,null,null
+204,"Pr(Y |X) ,Pr(dY (1)dY (2) · · · dY (M)|X)",null,null
+205,M -1,null,null
+206,",",null,null
+207,"Pr(dY (r)|X, Sr-1)",null,null
+208,"r,1",null,null
+209,M -1,null,null
+210,",",null,null
+211,"r,1",null,null
+212,"exp{f (dY (r), Sr-1)}",null,null
+213,"M k,r",null,null
+214,exp{f,null,null
+215,(dY,null,null
+216,"(k) ,",null,null
+217,Sr-1,null,null
+218,)},null,null
+219,",",null,null
+220,(5),null,null
+221,"where Y (r) denotes the index of the document ranked at the r-th position in Y , Sr-1 , {dY (k)}rk-,""11 is the documents ranked at the top r - 1 positions in Y , f (dY (r), Sr-1) is the marginal relevance score of document dY (r) w.r.t. the selected documents in Sr-1, as defined in Equation (4), and""",null,null
+222,S0 is an empty set.,null,null
+223,Stochastic gradient descent is adopted to conduct the op-,null,null
+224,"timization. Given a query q, the retrieved documents X , {dj}M j,""1, and the ranking Y generated by the ground-truth labels, the gradient of the model parameters can be written""",null,null
+225,as,null,null
+226,M -1,null,null
+227," ,",null,null
+228,"r,1",null,null
+229,"M k,r",null,null
+230,exp,null,null
+231,f,null,null
+232,"dY (k), Sr-1",null,null
+233,xY (k),null,null
+234,"M k,r",null,null
+235,exp{f,null,null
+236,(dY,null,null
+237,"(k) ,",null,null
+238,Sr-1 )},null,null
+239,"- xY (r) , (6)",null,null
+240,M -1,null,null
+241,"µ ,",null,null
+242,"r,1",null,null
+243,"M k,r",null,null
+244,exp,null,null
+245,f,null,null
+246,"dY (k), Sr-1",null,null
+247,tY (k),null,null
+248,"M k,r",null,null
+249,exp{f,null,null
+250,(dY,null,null
+251,"(k) ,",null,null
+252,Sr-1)},null,null
+253,- tY (r),null,null
+254,", (7)",null,null
+255,M -1,null,null
+256,"W[i] ,",null,null
+257,"r,1",null,null
+258,"M k,r",null,null
+259,exp,null,null
+260,f,null,null
+261,"dY (k), Sr-1",null,null
+262,µiY (k),null,null
+263,"M k,r",null,null
+264,exp{f,null,null
+265,(dY,null,null
+266,"(k) ,",null,null
+267,Sr-1 )},null,null
+268,(8),null,null
+269,"-µiY (r) ,",null,null
+270,"where t is defined in Equation (2), and",null,null
+271,"Y (r) ,"" 1 - tanh2 vYT (r)W[i]vi vY (r)vTi , (9)""",null,null
+272,where   Rlv×lv and i(1  i  |S|) stands for the output of the max-pooling position for the i-th (1  i  z) tensor slice.,null,null
+273,Algorithm 2 shows the pseudo code of the R-LTR-NTN.,null,null
+274,4.2.4 PAMM-NTN,null,null
+275,"Based on the loss function defined for PAMM [28], we derive the loss function of PAMM-NTN, which is directly",null,null
+276,399,null,null
+277,defined over a diversity evaluation measure:,null,null
+278,Algorithm 3 The PAMM-NTN algorithm,null,null
+279,N,null,null
+280,"1 - E  X(n), f , J (n) ,",null,null
+281,(10),null,null
+282,"n,1",null,null
+283,"where E(·, ·)  [0, 1] is a diversity evaluation measure such as -NDCG or ERR-IA etc. It can be proved that the Equation (10) is upper bounded by",null,null
+284,N,null,null
+285,"LPAMM-NTN(f ) ,",null,null
+286,Pr(Y +|X(n)) - Pr(Y -|X(n)),null,null
+287,"n,1 Y +Y(n)+; Y - Y(n)-",null,null
+288," E(Y +,J (n))-E(Y -,J (n)) .",null,null
+289,where Y(n)+ and Y(n)- are the sets of positive and neg-,null,null
+290,"ative rankings generated from human labels J(n), respec-",null,null
+291,tively. · is one if the condition is satisfied otherwise zero.,null,null
+292,"Pr(·|·) stands for the probability of the ranking, as defined",null,null
+293,in Equation (5).,null,null
+294,"Also, stochastic gradient descent is adopted to conduct the",null,null
+295,"optimization. At each iteration, we are given a query q, the",null,null
+296,"retrieved documents X , {dj}M j,""1, a positive ranking Y +, and a negative ranking Y -. For convenience of calculation,""",null,null
+297,we,null,null
+298,resort,null,null
+299,to,null,null
+300,the,null,null
+301,optimization,null,null
+302,problem,null,null
+303,of,null,null
+304,max log,null,null
+305,Pr(Y Pr(Y,null,null
+306,+ |X ) - |X ),null,null
+307,.,null,null
+308,"Thus, the gradients of the parameters can be written as",null,null
+309,M -1,null,null
+310," ,",null,null
+311,"r,1",null,null
+312,-,null,null
+313,"M k,r",null,null
+314,exp,null,null
+315,"f (dY +(k), Sr-1)",null,null
+316,xY +(k),null,null
+317,"M k,r",null,null
+318,exp,null,null
+319,"f (dY +(k), Sr-1)",null,null
+320,"M k,r",null,null
+321,exp,null,null
+322,"f (dY -(k), Sr-1)",null,null
+323,xY -(k),null,null
+324,"M k,r",null,null
+325,exp,null,null
+326,"f (dY -(k), Sr-1)",null,null
+327,(11),null,null
+328,"-xY +(r) + xY -(r) ,",null,null
+329,M -1,null,null
+330,"µ ,",null,null
+331,"r,1",null,null
+332,-,null,null
+333,"M k,r",null,null
+334,exp,null,null
+335,"f (dY +(k), Sr-1)",null,null
+336,tY +(k),null,null
+337,"M k,r",null,null
+338,exp,null,null
+339,"f (dY +(k), Sr-1)",null,null
+340,"M k,r",null,null
+341,exp,null,null
+342,"f (dY -(k), Sr-1)",null,null
+343,tY -(k),null,null
+344,"M k,r",null,null
+345,exp,null,null
+346,"f (dY -(k), Sr-1)",null,null
+347,(12),null,null
+348,"Input: training data {(X(n), J (n))}Nn,""1, parameter: learning rate , diversity evaluation measure E,""",null,null
+349,number of positive/negative rankings per query  +/ -.,null,null
+350,"Output: model parameter (, µ, W[1:z])",null,null
+351,"1: for n , 1 to N do",null,null
+352,2: P R(n)  Sample positive rankings {[28]},null,null
+353,3: N R(n)  Sample negative rankings {[28]},null,null
+354,4: end for,null,null
+355,"5: initialize (, µ, W[1:z])  random values in [0, 1]",null,null
+356,6: repeat,null,null
+357,"7: for n , 1 to N do",null,null
+358,8:,null,null
+359,"for all {Y +, Y -}  P R(n) × N R(n) do",null,null
+360,9:,null,null
+361,P  Pr(Y +|X(n)) - Pr(Y -|X(n)),null,null
+362,{Pr(Y |X) is defined in Equation (5)},null,null
+363,10:,null,null
+364,"if P  E(Y +,J (n))-E(Y -,J (n)) then",null,null
+365,11:,null,null
+366,"calculate , µ and W[1:z]",null,null
+367,"{Equation (11), Equation (12), and Equation (13)}",null,null
+368,12:,null,null
+369,   +  × ,null,null
+370,13:,null,null
+371,µ  µ +  × µ,null,null
+372,14:,null,null
+373,W[1:z]  W[1:z] +  × W[1:z],null,null
+374,15:,null,null
+375,end if,null,null
+376,16:,null,null
+377,end for,null,null
+378,17: end for,null,null
+379,18: until convergence,null,null
+380,"19: return (, µ, W[1:z])",null,null
+381,"of order O(T ·N ·M 2 ·(lx +lv ·Z)), where T denotes the number of iterations, N the number of queries in training data, M the maximum number of documents per training query, lx the number of relevance features, lv the dimensions of the preliminary document representation, and Z the number of tensor slices. The learning process of PAMM-NTN (Algorithm 3) is of order O(T · N ·  + ·  - · M 2 · (lx + lv · Z)), where  + denotes the number of positive rankings per query and  - the number of negative rankings per query.The time complexity of online ranking prediction (Algorithm 1) is of order O(M · K · (lx + lv · Z)), where M is the number of candidate documents for the query and K denotes the number documents need to be ranked.",null,null
+382,5. EXPERIMENTS,null,null
+383,5.1 Experimental settings,null,null
+384,"-tY +(r) + tY -(r) ,",null,null
+385,M -1,null,null
+386,"W[i] ,",null,null
+387,"r,1",null,null
+388,-,null,null
+389,"M k,r",null,null
+390,exp,null,null
+391,"f (dY +(k), Sr-1)",null,null
+392,µiY +(k),null,null
+393,"M k,r",null,null
+394,exp,null,null
+395,"f (dY +(k), Sr-1)",null,null
+396,"M k,r",null,null
+397,exp,null,null
+398,"f (dY -(k), Sr-1)",null,null
+399,µiY -(k),null,null
+400,"M k,r",null,null
+401,exp,null,null
+402,"f (dY -(k), Sr-1)",null,null
+403,"-µiY +(r) + µiY -(r) ,",null,null
+404,"(13) where t is defined in Equation (2), and  is defined in Equation (9). Algorithm 3 shows the pseudo code of the PAMMNTN algorithm.",null,null
+405,4.2.5 Time complexities,null,null
+406,"We conducted experiments to test the performances of R-LTR-NTN and PAMM-NTN using three TREC benchmark datasets for diversity task: TREC 2009 Web Track (WT2009), TREC 2010 Web Track (WT2010), and TREC 2011 Web Track (WT2011). Each dataset consists of queries, corresponding retrieved documents, and human judged labels. Each query includes several subtopics identified by the TREC assessors. The document relevance labels were made at the subtopic level and the labels are binary3. Statistics on the datasets are given in Table 2.",null,null
+407,"All the experiments were carried out on the ClueWeb09 Category B data collection4, which comprises of 50 million English web documents. Porter stemming, tokenization, and stop-words removal (using the INQUERY list) were applied to the documents as preprocessing. We conducted 5-fold cross-validation experiments on the three datasets. For each dataset, we randomly split the queries into five even subsets.",null,null
+408,We analyzed time complexities of R-LTR-NTN and PAMMNTN. The learning process of R-LTR-NTN (Algorithm 2) is,null,null
+409,3The graded judgements in WT2011 was treated as binary. 4http://boston.lti.cs.cmu.edu/data/clueweb09,null,null
+410,400,null,null
+411,"Table 2: Statistics on WT2009, WT2010 and WT2011. Dataset #queries #labeled docs #subtopics per query",null,null
+412,WT2009,null,null
+413,50,null,null
+414,WT2010,null,null
+415,48,null,null
+416,WT2011,null,null
+417,50,null,null
+418,5149 6554 5000,null,null
+419,38 37 26,null,null
+420,"At each fold three subsets were used for training, one was used for validation, and one was used for testing. The results reported were the average over the five trials.",null,null
+421,"The TREC official evaluation metrics for the diversity task were used in the experiments, including the ERR-IA [5], NDCG [6], and NRBP [7]. They measure the diversity of a result list by explicitly rewarding novelty and penalizing redundancy observed at every rank. Following the default settings in official TREC evaluation program, the parameters  and  in these evaluation measures are set to 0.5. We also used traditional diversity measures of Precision-IA (denoted as ""Pre-IA"") [1], and Subtopic Recall (denoted as ""Srecall"") [31]. All of the measures are computed over the top-k search results (k , 20).",null,null
+422,We compared R-LTR-NTN and PAMM-NTN with several types of baselines. The baselines include three heuristic approaches to search result diversification.,null,null
+423,MMR [3] : a heuristic approach in which the document ranking is constructed via iteratively selecting the document with the maximal marginal relevance.,null,null
+424,xQuAD [26] : a representative heuristic approach to search result diversification which explicitly accounts for the various aspects associated to an under-specified query.,null,null
+425,PM-2 [8] : a method of optimizing proportionality for search result diversification.,null,null
+426,"Note that these baselines require a prior relevance function to implement their diversification steps. In our experiments, ListMLE [16, 18] was chosen as the relevance function.",null,null
+427,The baselines also include state-of-the-art learning approaches to search result diversification.,null,null
+428,SVM-DIV [29] : a learning approach in which structural SVMs was used to optimize the subtopic coverage.,null,null
+429,R-LTR [32] : a state-of-the-art learning approach developed in the relational learning to rank framework.,null,null
+430,PAMM [28] : another state-of-the-art learning algorithm that directly optimizes diversity evaluation measure.,null,null
+431,"Following the practice in [32], for the baseline of R-LTR, we used the results of R-LTRmin in which the relation function hS(R) was defined as the minimal distance of the candidate document to the selected documents.",null,null
+432,"For the baseline PAMM (and our approach PAMM-NTN), we configure them to directly optimize -NDCG@20 because it is one of the most widely used performance measures. Thus, the baseline of PAMM is denoted as PAMM(NDCG). Following the practice in [28], we set the number of sampled positive rankings per query  + , 5 and the number of sampled negative rankings per query  - , 20.",null,null
+433,5.2 Relevance features and preliminary document representations,null,null
+434,"As for the relevance features, we adopted the features used in R-LTR experiments [21], including the typical weighting",null,null
+435,Table 3: Relevance features used in the experiments.,null,null
+436,Each of the first 4 features is applied to the fields of,null,null
+437,"body, anchor, title, URL, and the whole documents. [32]",null,null
+438,Name Description,null,null
+439,# Features,null,null
+440,TF-IDF The tf-idf model,null,null
+441,5,null,null
+442,BM25 BM25 with default parameters,null,null
+443,5,null,null
+444,LMIR LMIR with Dirichlet smoothing,null,null
+445,5,null,null
+446,MRF [19] MRF with ordered/unordered phrase,null,null
+447,10,null,null
+448,PageRank PageRank score,null,null
+449,1,null,null
+450,#inlinks number of inlinks,null,null
+451,1,null,null
+452,#outlinks number of outlinks,null,null
+453,1,null,null
+454,"models (e.g., TF-IDF, BM25, LM) and term dependency model [19]. Table 3 summarized the relevance features. For all the query-document matching features, they were applied in five fields: body, anchor, title, URL, and the whole document, resulting in 5 features in total. Note that the MRF feature has two variations: ordered phrase and unordered phrase [19]. Thus the total number of MRF features becomes 10.",null,null
+455,"The neural tensor network need preliminary representations of the documents as its inputs. In the experiments, we used the document vector generated by the topic model of probabilistic latent semantic analysis (PLSA) [13] or the deep learning model of doc2vec [15], both are trained on all of the documents in ClueWeb09 Category B data collection and the number of latent dimensions are set to 100. For training the doc2vec model, we used the distributed bag of words (DBOW) model5. In all of the experiments, the learning rate is set to 0.025 and the window size is set to 8.",null,null
+456,"Our approaches (R-LTR-NTN and PAMM-NTN) with the settings of using the PLSA or doc2vec as document representations are denoted with the corresponding subscripts. For example, the R-LTR-NTN that using PLSA as document representations is denoted as R-LTR-NTNplsa. Thus, in all of the experiments, our approaches include R-LTRNTNplsa, R-LTR-NTNdoc2vec, PAMM-NTN(-NDCG)plsa, and PAMM-NTN(-NDCG)doc2vec. Please note in all of the experiments, PAMM-NTN was configured to direct optimize the evaluation measure of -NDCG@20.",null,null
+457,5.3 Experimental results,null,null
+458,"Table 4, Table 5, and Table 6 report the performances of the proposed methods and baselines in terms of 5 diversity metrics (ERR-IA@20, -NDCG@20, NRBP@20, PreIA@20, and S-recall@20) on the datasets of WT20096, WT2010, and WT2011, respectively. Boldface indicates the highest score among all runs. For all of our approaches, the number of tensor slices z is set to 7.",null,null
+459,"From the results we can see that, on all of the three datasets and in terms of the five diversity evaluation metrics, our approaches (R-LTR-NTNplsa, R-LTR-NTNdoc2vec, PAMM-NTN(-NDCG)plsa, and PAMM-NTN(-NDCG)doc2vec) can outperform all of the baselines. We conducted significant testing (t-test) on the improvements of our approaches over the baselines. The results indicate that the improvements of R-LTR-NTNplsa and R-LTR-NTNdoc2vec over RLTR are significant (p-value < 0.05), in terms of all of the",null,null
+460,5http://radimrehurek.com/gensim/models/doc2vec.html 6The performances of XQuAD reported in Table 4 are different to that of reported in [26]. It may caused by the different splitting of the dataset in cross validation.,null,null
+461,401,null,null
+462,Method,null,null
+463,Table 4: Performance comparison of all methods for WT2009.,null,null
+464,ERR-IA@20,null,null
+465,-NDCG@20 NRBP@20,null,null
+466,Pre-IA@20,null,null
+467,MMR xQuAD PM-2 SVM-DIV,null,null
+468,R-LTR,null,null
+469,R-LTR-NTNplsa R-LTR-NTNdoc2vec PAMM(-NDCG) PAMM-NTN(-NDCG)plsa PAMM-NTN(-NDCG)doc2vec,null,null
+470,0.2022 0.2316 0.2294 0.2408,null,null
+471,0.2714 0.3015 0.3117,null,null
+472,0.2842 0.3081 0.3135,null,null
+473,0.3083 0.3437 0.3369 0.3526,null,null
+474,0.3964 0.4444 0.4503,null,null
+475,0.4271 0.4377 0.4555,null,null
+476,0.1715 0.1956 0.1788 0.2073 0.2339 0.2563 0.2578 0.2411 0.2642 0.2626,null,null
+477,0.0918 0.0984 0.0949 0.1075,null,null
+478,0.1233 0.1588 0.1670,null,null
+479,0.1265 0.1661 0.1745,null,null
+480,S-recall@20,null,null
+481,0.4698 0.4931 0.4876 0.5101 0.5511 0.5743 0.5910,null,null
+482,0.5612 0.5755 0.5772,null,null
+483,Method,null,null
+484,Table 5: Performance comparison of all methods for WT2010.,null,null
+485,ERR-IA@20,null,null
+486,-NDCG@20 NRBP@20,null,null
+487,Pre-IA@20,null,null
+488,MMR xQuAD PM-2 SVM-DIV,null,null
+489,R-LTR,null,null
+490,R-LTR-NTNplsa R-LTR-NTNdoc2vec PAMM(-NDCG) PAMM-NTN(-NDCG)plsa PAMM-NTN(-NDCG)doc2vec,null,null
+491,0.2735 0.3278 0.3296 0.3331 0.3647 0.3876 0.3932,null,null
+492,0.3802 0.3898 0.3901,null,null
+493,0.4036 0.4445 0.4478 0.4593,null,null
+494,0.4924 0.5311 0.5376,null,null
+495,0.5249 0.5379 0.5407,null,null
+496,0.2252 0.2872 0.2901 0.2934 0.3293 0.3333 0.3623,null,null
+497,0.3431 0.3479 0.3553,null,null
+498,0.1722 0.1883 0.1885 0.1925 0.2042 0.2341 0.2418,null,null
+499,0.2111 0.2264 0.2386,null,null
+500,S-recall@20,null,null
+501,0.6444 0.6732 0.6749 0.6774 0.6893 0.6912 0.6994 0.6832 0.7006 0.7032,null,null
+502,Method,null,null
+503,Table 6: Performance comparison of all methods for WT2011.,null,null
+504,ERR-IA@20,null,null
+505,-NDCG@20 NRBP@20,null,null
+506,Pre-IA@20,null,null
+507,MMR xQuAD PM-2 SVM-DIV,null,null
+508,R-LTR,null,null
+509,R-LTR-NTNplsa R-LTR-NTNdoc2vec PAMM(-NDCG) PAMM-NTN(-NDCG)plsa PAMM-NTN(-NDCG)doc2vec,null,null
+510,0.4284 0.4753 0.4873 0.4898,null,null
+511,0.5389 0.5483 0.5538,null,null
+512,0.5417 0.5496 0.5554,null,null
+513,0.5302 0.5645 0.5786 0.5910,null,null
+514,0.6297 0.6537 0.6555,null,null
+515,0.6433 0.6469 0.6566,null,null
+516,0.3913 0.4274 0.4318 0.4475 0.4982 0.5050 0.5223,null,null
+517,0.5012 0.5111 0.5212,null,null
+518,0.3176 0.3299 0.3405 0.3468,null,null
+519,0.3921 0.4011 0.4125,null,null
+520,0.3955 0.4169 0.4177,null,null
+521,S-recall@20,null,null
+522,0.7567 0.7683 0.7743 0.7750 0.8512 0.8543 0.8590,null,null
+523,0.8518 0.8524 0.8533,null,null
+524,"performance measures. The results also indicate that the improvements of PAMM-NTN(-NDCG)plsa and PAMMNTN(-NDCG)doc2vec over all of the baselines are significant, in terms of all of the performance measures. The results indicate that the neural tensor network is effective for modeling the document novelty information, and thus can improve the performances.",null,null
+525,5.4 Discussions,null,null
+526,"We conducted experiments to show the reasons that our approaches outperformed the baselines and impacts of different parameter settings, using the results of R-LTR-NTNplsa and R-LTR-NTNdoc2vec on WT2009 dataset as examples.",null,null
+527,5.4.1 Ability to learn better document dissimilarities,null,null
+528,"We found that the learned neural tensor network can help to distinguish the relevant documents in terms of different subtopics, by learning a better dissimilarity (novelty) function for documents. That is one of the reasons why our approaches can outperform the baselines.",null,null
+529,"Specifically, the dissimilarities between two documents can be calculated based on the preliminary document representations, either using the Euclidean distance or using the learned neural tensor network (the novelty score of a document w.r.t. another document). That is, given two documents represented with the preliminary presentations vi and vj, the dissimilarity score can calculated either based",null,null
+530,on the Euclidean distance:,null,null
+531,"de(vi, vj ) ,"" vi - vj 2,""",null,null
+532,or based on the learned neural tensor network:,null,null
+533,"dn(vi, vj ) ,"" gn(vi, {vj }) "", µT tanh viT W[1:z]vj",null,null
+534,where µ and W[1:z] are learned with the R-LTR-NTN algorithms. Here we can ignore the max operation because there is only one document vj at the righthand of W[1:z].,null,null
+535,"Suppose we are given a set of queries and the associated relevant documents. For each query, the relevant documents can be grouped into several clusters, each corresponds a subtopic of the query. Thus, all of the associated documents from all queries are grouped into different clusters, each corresponds to a subtopic. We calculated the ratio of average inter-cluster documents dissimilarities to average intra-cluster document dissimilarities. It is obvious that in search result diversification, a good document dissimilarity function would get large inter-cluster document dissimilarities and small intra-cluster document dissimilarities (large ratio value). This is because such a dissimilarity function could discriminate the subtopics well.",null,null
+536,"Table 7 shows the ratios calculated based on different dissimilarity definitions and different preliminary document representations. From the results, we can see that the ratio of ""dn with PLSA"" (documents represented with PLSA topics and dissimilarities are calculated with neural tensor",null,null
+537,402,null,null
+538,Table 7: Ratio of average inter-cluster documents dis-,null,null
+539,similarities to average intra-cluster document dissimilar-,null,null
+540,ities. The documents are grouped according to their as-,null,null
+541,sociated subtopics. Method,null,null
+542,average dissimilarity ratio,null,null
+543,de with PLSA dn with PLSA de with doc2vec dn with doc2vec,null,null
+544,1.65 2.73 2.10 4.32,null,null
+545,"network) is larger than the ratio of ""de with PLSA"" (documents represented with PLSA topics and dissimilarities are calculated as Euclidean distance), and the ratio of ""dn with doc2vec"" is larger than the ratio of ""de with doc2vec"". The results indicates that the dissimilarity functions learned by the tensor neural network are better than the Euclidean distances, in terms of discriminating the query subtopics.",null,null
+546,"The conclusion is quite intuitive and nature because the parameters of neural tensor network are determined based on the labeled data and thus can be adapted to the specific dataset and task, while the Euclidean distance is a predefined function for all datasets and tasks. Therefore, we can conclude that R-LTR-NTN (and also PAMM-NTN) can improve the performances through learning a better document dissimilarity function which distinguishes the documents with different subtopics effectively.",null,null
+547,5.4.2 Ability to improve queries with high ambiguity,null,null
+548,"We also conducted experiments to show on which kinds of queries our approaches can perform well. Specifically, in each fold of the experiments on WT2009, we trained an R-LTR-NTNdoc2vec model, an R-LTR, and a PAMM(NDCG) model on the training data and tested them on the test data. We then grouped the queries in the test datasets according to the number of subtopics they associated. We compared the performances of these three models in terms of -NDCG@20 on each of the query groups and the results are shown in Figure 3. Boldface indicates the number of associated subtopics by the candidate documents, and the numbers in the parentheses indicate the proportion of queries in that group to the number of all queries. Please note that in Figure 3 some queries associated with only one or two subtopics while in Table 2 all queries have at least 3 subtopics associated. This is because we used the Indri7 toolkit to retrieve the top 1000 documents as the candidates. Some labeled documents may not be ranked at top 1000 and thus be eliminated from the candidate set.",null,null
+549,"From the results reported in Figure 3, we can see that for those queries that associated with only one or two subtopics, R-LTR-NTN performed worse than the baselines of R-LTR and PAMM(-NDCG). However, for those queries that associated with three or more subtopics (queries with high ambiguity), R-LTR-NTN outperformed the baselines. We also observed the trends that larger improvements R-LTRNTN can achieve on the queries with more subtopics. The results is also intuitive because the document relations are more complex for ambiguous queries and neural tensor network can model the complex document relationship better. Thus, we can conclude that R-LTR-NTN can improve the baselines through improving the high ambiguity queries.",null,null
+550,7http://lemurproject.org/indri,null,null
+551,0.44,null,null
+552,-NDCG@20,null,null
+553,0.42,null,null
+554,0.4,null,null
+555,R-LTR,null,null
+556,PAMM(-NDCG),null,null
+557,0.38,null,null
+558,R-LTR-NTNdoc2vec,null,null
+559,0.36,null,null
+560,0.34,null,null
+561,1(4%) 2(6%) 3(22%)4(34%)5(24%) 6(1%) query grouped by the number of subtopics,null,null
+562,Figure 3: Performances with respect to query groups with different number of subtopics. The numbers in the parentheses indicate the proportion of queries in that group to the number of all queries.,null,null
+563,0.46,null,null
+564,time (hours),null,null
+565,-NDCG@20,null,null
+566,20 0.45,null,null
+567,15,null,null
+568,0.44 10,null,null
+569,0.43 5,null,null
+570,R-LTR-NTNdoc2vec,null,null
+571,training time,null,null
+572,0.42,null,null
+573,0,null,null
+574,1 3 5 7 9 11 13 15 17 19,null,null
+575,the number of tensor slices z,null,null
+576,Figure 4: Ranking accuracies and training time with respect to the number of tensor slices z.,null,null
+577,5.4.3 Effects of the number of tensor slices,null,null
+578,"Finally, we conducted experiments to test if the proposed algorithms are sensitive to the model parameters. One of the most important parameters in the proposed method is the number of tensor slices z. Thus, in the experiments we tested if R-LTR-NTNdoc2vec is sensitive to different settings of z values. Specifically, we tuned z by varying the values of parameter z from 1 to 19, with step 2 and fixing other model parameters to the default or optimal values. Figure 4 shows the performances of R-LTR-NTNdoc2vec with respect to number of slices z, in terms of -NDCG@20. The training time (in hours) with respect to z are also shown in the figure.",null,null
+579,"From the results, we can see that the performances did not change much with different z values, which indicates R-LTR-NTNdoc2vec (and other proposed algorithms) are robust and not sensitive to the parameter settings. In all of the experiments the number of tensor slices was set to the optimal value 7.",null,null
+580,"One of the negative effects of increasing z values is that the training time increased dramatically with the creased z values, as shown in Figure 4. This is because much more operations are needed for training the model if z is increased. Please refer to Section 4.2.5 for the time complexities of the proposed algorithms.",null,null
+581,403,null,null
+582,6. CONCLUSIONS,null,null
+583,"How to model the novelty of a candidate document with respect to other documents is one of the key problems in search result diversification. Existing approaches have been hurt from the necessaries of predefining a document similarity function or a set of novelty features, which are usually hard in real applications. In this paper we proposed to model the novelty of a document with a neural tensor network, which enables us to automatically learns a nonlinear novelty function based on the preliminary representations of the candidate document and other documents. Under the framework of relational learning to rank, new diverse learning to rank models have been derived, by replacing the novelty term in the original objective function with the neural tensor network. Experimental results based on three benchmark datasets showed that the proposed models significantly outperformed the baseline methods, including the state-of-the-art relational learning to rank models. Experimental results also showed that the proposed algorithms can improve the baselines via learning a document dissimilarity function that matches well with the query subtopics. The results also showed that more improvements can be achieved on the queries with high ambiguity.",null,null
+584,"As future work, we would like to verify the effectiveness of the proposed algorithms on applications other than search result diversification such as multi-document summarization etc. We also want to study the approaches to learning the relevance features and novelty features simultaneously.",null,null
+585,7. ACKNOWLEDGMENTS,null,null
+586,"The work was funded by the 973 Program of China under Grants No. 2014CB340401 and 2012CB316303, the 863 Program of China under Grants No. 2014AA015204, the National Natural Science Foundation of China (NSFC) under Grants No. 61232010, 61472401, 61433014, 61425016, and 61203298, the Key Research Program of the Chinese Academy of Sciences under Grant No. KGZD-EW-T03-2, and the Youth Innovation Promotion Association CAS under Grants No. 20144310 and 2016102.",null,null
+587,8. REFERENCES,null,null
+588,"[1] R. Agrawal, S. Gollapudi, A. Halverson, and S. Ieong. Diversifying search results. In Proceedings of ACM WSDM '09, pages 5­14, 2009.",null,null
+589,"[2] S. Bhatia. Multidimensional search result diversification: Diverse search results for diverse users. In Proceedings of ACM SIGIR '11, pages 1331­1332, 2011.",null,null
+590,"[3] J. Carbonell and J. Goldstein. The use of mmr, diversity-based reranking for reordering documents and producing summaries. In Proceedings of ACM SIGIR '98, pages 335­336, 1998.",null,null
+591,"[4] B. Carterette and P. Chandar. Probabilistic models of ranking novel documents for faceted topic retrieval. In Proceedings of ACM CIKM '09 pages 1287­1296, 2009.",null,null
+592,"[5] O. Chapelle, D. Metlzer, Y. Zhang, and P. Grinspan. Expected reciprocal rank for graded relevance. In Proceedings of ACM CIKM '09, pages 621­630, 2009.",null,null
+593,"[6] C. L. Clarke, M. Kolla, G. V. Cormack, O. Vechtomova, A. Ashkan, S. Bu¨ttcher, and I. MacKinnon. Novelty and diversity in information retrieval evaluation. In Proceedings of ACM SIGIR '08, pages 659­666, 2008.",null,null
+594,"[7] C. L. Clarke, M. Kolla, and O. Vechtomova. An effectiveness measure for ambiguous and underspecified queries. In Proceedings of ICTIR '09, pages 188­199, 2009.",null,null
+595,"[8] V. Dang and W. B. Croft. Diversity by proportionality: An election-based approach to search result diversification. In Proceedings of ACM SIGIR '12, pages 65­74, 2012.",null,null
+596,"[9] S. Deerwester, S. T. Dumais, G. W. Furnas, T. K. Landauer, and R. Harshman. Indexing by latent semantic analysis. JASIS, 41(6):391­407, 1990.",null,null
+597,"[10] S. Gollapudi and A. Sharma. An axiomatic approach for result diversification. In Proceedings ofWWW '09, pages 381­390, 2009.",null,null
+598,"[11] S. Guo and S. Sanner. Probabilistic latent maximal marginal relevance. In Proceedings ofACM SIGIR '10, pages 833­834, 2010.",null,null
+599,"[12] J. He, V. Hollink, and A. de Vries. Combining implicit and explicit topic representations for result diversification. In Proceedings of ACM SIGIR '12, pages 851­860, 2012.",null,null
+600,"[13] T. Hofmann. Probabilistic latent semantic indexing. In Proceedings of ACM SIGIR '99, pages 50­57, 1999.",null,null
+601,"[14] S. Hu, Z. Dou, X. Wang, T. Sakai, and J.-R. Wen. Search result diversification based on hierarchical intents. In Proceedings of ACM CIKM '15, pages 63­72, 2015.",null,null
+602,"[15] Q. V. Le and T. Mikolov. Distributed Representations of Sentences and Documents. ArXiv e-prints, May 2014.",null,null
+603,"[16] H. Li. Learning to rank for information retrieval and natural language processing; 2nd ed. Synthesis Lectures on Human Language Technologies. Morgan & Claypool Publ., San Rafael, CA, 2014.",null,null
+604,"[17] L. Li, K. Zhou, G.-R. Xue, H. Zha, and Y. Yu. Enhancing diversity, coverage and balance for summarization through structure learning. In Proceedings of WWW '09, pages 71­80, 2009.",null,null
+605,"[18] T.-Y. Liu. Learning to rank for information retrieval. Found. Trends Inf. Retr., 3(3):225­331, Mar. 2009.",null,null
+606,"[19] D. Metzler and W. B. Croft. A markov random field model for term dependencies. In Proceedings of ACM SIGIR '05, pages 472­479, 2005.",null,null
+607,"[20] L. Mihalkova and R. Mooney. Learning to disambiguate search queries from short sessions. In W. Buntine, M. Grobelnik, D. MladeniA¨ G , and J. Shawe-Taylor, editors, Machine Learning and Knowledge Discovery in Databases, volume 5782 of Lecture Notes in Computer Science, pages 111­127. Springer Berlin Heidelberg, 2009.",null,null
+608,"[21] T. Qin, T.-Y. Liu, J. Xu, and H. Li. Letor: A benchmark collection for research on learning to rank for information retrieval. Inf. Retr., 13(4):346­374, Aug. 2010.",null,null
+609,"[22] F. Radlinski and S. Dumais. Improving personalized web search using result diversification. In Proceedings of ACM SIGIR '06, pages 691­692, 2006.",null,null
+610,"[23] F. Radlinski, R. Kleinberg, and T. Joachims. Learning diverse rankings with multi-armed bandits. In Proceedings of ACM ICML '08, pages 784­791, 2008.",null,null
+611,"[24] D. Rafiei, K. Bharat, and A. Shukla. Diversifying web search results. In Proceedings of WWW '10, pages 781­790, 2010.",null,null
+612,"[25] K. Raman, P. Shivaswamy, and T. Joachims. Online learning to diversify from implicit feedback. In Proceedings of ACM SIGKDD '12, pages 705­713, 2012.",null,null
+613,"[26] R. L. Santos, C. Macdonald, and I. Ounis. Exploiting query reformulations for web search result diversification. In Proceedings of WWW '10, pages 881­890, 2010.",null,null
+614,"[27] R. Socher, D. Chen, C. D. Manning, and A. Ng. Reasoning with neural tensor networks for knowledge base completion. In C. Burges, L. Bottou, M. Welling, Z. Ghahramani, and K. Weinberger, editors, Advances in Neural Information Processing Systems 26, pages 926­934. Curran Associates, Inc., 2013.",null,null
+615,"[28] L. Xia, J. Xu, Y. Lan, J. Guo, and X. Cheng. Learning maximal marginal relevance model via directly optimizing diversity evaluation measures. In Proceedings of ACM SIGIR '15, pages 113­122, 2015.",null,null
+616,"[29] Y. Yue and T. Joachims. Predicting diverse subsets using structural svms. In Proceedings of ACM ICML '08, pages 1224­1231, 2008.",null,null
+617,"[30] Y. Yue and T. Joachims. Interactively optimizing information retrieval systems as a dueling bandits problem. In Proceedings of ACM ICML '09, pages 1201­1208, 2009.",null,null
+618,"[31] C. X. Zhai, W. W. Cohen, and J. Lafferty. Beyond independent relevance: Methods and evaluation metrics for subtopic retrieval. In Proceedings of ACM SIGIR '03, pages 10­17, 2003.",null,null
+619,"[32] Y. Zhu, Y. Lan, J. Guo, X. Cheng, and S. Niu. Learning for search result diversification. In Proceedings of ACM SIGIR '14, pages 293­302, 2014.",null,null
+620,404,null,null
+621,,null,null

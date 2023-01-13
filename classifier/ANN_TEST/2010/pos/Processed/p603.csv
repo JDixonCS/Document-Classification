@@ -1,0 +1,711 @@
+,sentence,label,data,regex
+0,Extending Average Precision to Graded Relevance Judgments,1,ad,True
+1,Stephen E. Robertson Evangelos Kanoulas,0,,False
+2,Emine Yilmaz,0,,False
+3,ser@microsoft.com,0,,False
+4,e.kanoulas@sheff.ac.uk eminey@microsoft.com,0,,False
+5,"Microsoft Research 7 JJ Thomson Avenue Cambridge CB3 0FB, UK",0,,False
+6,"Department of Information Studies University of Sheffield Sheffield S1 4DP, UK",0,,False
+7,ABSTRACT,0,,False
+8,"Evaluation metrics play a critical role both in the context of comparative evaluation of the performance of retrieval systems and in the context of learning-to-rank (LTR) as objective functions to be optimized. Many different evaluation metrics have been proposed in the IR literature, with average precision (AP) being the dominant one due a number of desirable properties it possesses. However, most of these measures, including average precision, do not incorporate graded relevance.",1,AP,True
+9,"In this work, we propose a new measure of retrieval effectiveness, the Graded Average Precision (GAP). GAP generalizes average precision to the case of multi-graded relevance and inherits all the desirable characteristics of AP: it has a nice probabilistic interpretation, it approximates the area under a graded precision-recall curve and it can be justified in terms of a simple but moderately plausible user model. We then evaluate GAP in terms of its informativeness and discriminative power. Finally, we show that GAP can reliably be used as an objective metric in learning to rank by illustrating that optimizing for GAP using SoftRank and LambdaRank leads to better performing ranking functions than the ones constructed by algorithms tuned to optimize for AP or NDCG even when using AP or NDCG as the test metrics.",1,ad,True
+10,Categories and Subject Descriptors: H.3.3 [Information Search and Retrieval],0,,False
+11,"General Terms: Experimentation, Measurement, Performance",0,,False
+12,"Keywords: information retrieval, effectiveness metrics, average precision, graded relevance, learning to rank",1,ad,True
+13,We gratefully acknowledge the support provided by the European Commission grants FP7-ICT-248347 and FP7PEOPLE-2009-IIF-254562.,0,,False
+14,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'10, July 19­23, 2010, Geneva, Switzerland. Copyright 2010 ACM 978-1-60558-896-4/10/07 ...$10.00.",1,ad,True
+15,1. INTRODUCTION,1,DUC,True
+16,"Evaluation metrics play a critical role both in the context of comparative evaluation of the performance of retrieval systems and in the context of learning-to-rank (LTR) as objective functions to be optimized. Many different evaluation metrics have been proposed and studied in the literature. Even though different metrics evaluate different aspects of retrieval effectiveness, only a few of them are widely used, with average precision (AP) being perhaps the most commonly used such metric. AP has been the dominant systemoriented evaluation metric in IR for a number of reasons:",1,AP,True
+17,· It has a natural top-heavy bias. · It has a nice probabilistic interpretation [25]. · It has an underlying theoretical basis as it corresponds,0,,False
+18,to the area under the precision recall curve. · It can be justified in terms of a simple but moderately,0,,False
+19,plausible user model [16]. · It appears to be highly informative; it predicts other,0,,False
+20,metrics well [2]. · It results in good performance ranking functions when,0,,False
+21,"used as objective in learning-to-rank [27, 24].",0,,False
+22,"The main criticism to average precision is that it is based on the assumption that retrieved documents can be considered as either relevant or non-relevant to a user's information need. Thus, documents of different relevance grades are treated as equally important with relevance conflated into two categories. This assumption is clearly not true: by nature, some documents tend to be more relevant than others and intuitively the more relevant a document is the more important it is for a user. Further, when AP is used as an objective metric to be optimized in learning to rank, the training algorithm is also missing this valuable information.",1,ad,True
+23,"For these reasons, a number of evaluation metrics that utilize multi-graded relevance judgments has appeared in the literature (e.g. [15, 8, 9, 19, 17]), with nDCG [8, 9] being the most popular among them, especially in the context of learning-to-rank as most learning to rank algorithms are designed to optimize for nDCG [6, 5, 22, 24].",1,ad,True
+24,"In the framework used to define nDCG, a relevance score is mapped to each relevance grade, e.g. 3 for highly relevant documents, 2 for fairly relevant documents and so on. The relevance score of each document is viewed as the gain returned to a user when examining the document (utility of the document). To account for the late arrival of relevant documents gains are then discounted by a function of the rank. The discount function is viewed as a measure of the",1,ad,True
+25,603,0,,False
+26,"patience of a user to step down the ranked list of documents. The discounted gain values are then summed progressively from rank 1 to k. This discounted cumulative gain at rank k is finally normalized in a 0 to 1 range to enable averaging the values of the metric over a number of queries, resulting in the normalized Discounted Cumulative Gain, nDCG.",0,,False
+27,"The nDCG metric is thus a functional of a gain and a discount function and thus it can accommodate different user search behavior patterns on different retrieval task scenarios. As it has been illustrated by a number of correlation studies different gain and discount functions lead to radically different rankings of retrieval systems [23, 12, 11].",1,ad,True
+28,"Despite the great flexibility nDCG offers, defining gain and discount functions in a meaningful way is a difficult task. Given the infinite number of possible discount and gain functions, the vast differences in users search behavior, the many different possible retrieval tasks and the difficulty in measuring user satisfaction, a complete and rigorous analysis of the relationship between different gain and discount functions and user satisfaction under different retrieval scenarios is prohibitively expensive, if at all possible.",0,,False
+29,"For this reason, in the past, the selection of the gain and discount functions has been done rather arbitrarily, based on speculations of the search behavior of an average user and speculations of the correlation of the metric to user satisfaction. For instance, Burges et al. [5], introduced an exponential gain function (2rel(r) - 1, where rel(r) is the relevance score of the document at rank r) to express the fact that a highly relevant document is very much more valuable than one of a slightly lower grade. Further, the logarithmic discount function (1/log(r + 1)) dominated the literature compared to the linear one (1/r) based on the speculation that the gain a user obtains by moving down the ranked list of documents does not drop as sharply as indicated by the linear discount.",1,ad,True
+30,"Despite the reasonable assumptions behind the choice of the gain and discount function that dominates nowadays the literature, recent work [1] demonstrated that cumulative gain without discounting (CG) is more correlated to user satisfaction than discounted cumulative gain (DCG) and nDCG (at least when computed at rank 100). This result not only strongly questions the validity of the aforementioned assumptions but mostly underlines the difficulty in specifying gain and discount functions in a meaningful manner.",1,ad,True
+31,"Due to the above difficulties associated with the current multigraded evaluation metrics, even when multigraded relevance judgments are available, average precision is still reported (together with the multigraded metrics) by converting the relevance judgments to binary [4, 3]. Thus, despite the invalid assumption of binary relevance, average precision remains one of the most popular metrics used by IR researchers (e.g. in TREC [3]).Furthermore, even though AP is wasting valuable information in the context of learningto-rank, since it ignores the swaps between documents of different positive relevance grades, it has been successfully used as an objective metric [27]. Therefore, we believe that a direct extension of the metric to the multigraded case in a systematic manner is needed and it will become a valuable tool for the community both in the context of evaluation and in the context of LTR.",1,ad,True
+32,"In this paper, we generalize average precision to the multigraded relevance case in a systematic manner, proposing a",1,ad,True
+33,"new metric, the graded average precision (GAP). The GAP metric is a direct extension of AP and thus it inherits all the desirable properties that average precision has:",1,ad,True
+34,· It has the same natural top-heavy bias average precision has.,0,,False
+35,· It has a nice probabilistic interpretation. · It has an underlying theoretical basis as it corresponds,0,,False
+36,"to the area under the ""graded"" precision-recall curve. · It can be justified in terms of a simple but moderately",1,ad,True
+37,plausible user model similarly to AP · It appears to be highly informative. · When used as an objective function in learning-to-rank,1,AP,True
+38,it results in good performance retrieval systems (it outperforms both AP and nDCG).,1,AP,True
+39,The incorporation of multi-graded relevance in average precision becomes possible via a simple probabilistic user model which naturally dictates to what extend documents of different relevance grades account for the effectiveness score. This user model corresponds to one of the approaches briefly discussed in Sakai and Robertson [20]. This model offers an alternative way of thinking about graded relevance compared to the notion of utility employed by nDCG and other multi-graded metrics.,1,corpora,True
+40,"Sakai [19] for instance has previously introduced a multigraded measure (the Q-measure) which has been shown to behave similarly to AP for ranks above R (where R is the number of relevant documents in the collection). Nevertheless, the incorporation of graded relevance by the Q-measure follows the same model with nDCG. GAP on the other hand is based on the well-trusted notions of precision and recall as is AP.",1,ad,True
+41,"In what follows, we first describe the user model on which GAP is based and define the new metric. We then describe some desirable properties GAP possesses. In particular, we describe a probabilistic interpretation of GAP, generalize precision-recall curves for the multigraded relevance case and show that GAP is an approximation to the area under the graded precision-recall curves. Further, we evaluate GAP in terms of informativeness [2] and discriminative power [18]. Finally, we extend two popular LTR algorithms, SoftRank [22] and LambdaRank [6], to optimize for GAP and test the performance of the resulting ranking functions over different collections.",1,GAP,True
+42,2. GRADED AVERAGE PRECISION (GAP),1,GAP,True
+43,2.1 User Model,0,,False
+44,"We start from a rudimentary user model, as follows: as-",0,,False
+45,"sume that the user actually has a binary view of relevance,",0,,False
+46,determined by thresholding the relevance scale {0..c}. We,0,,False
+47,describe this model probabilistically ­ we have a probabil-,0,,False
+48,"ity gi that the user sets the threshold at grade i, in other",1,ad,True
+49,"words regards grades i, ..., c as relevant and the others as",1,ad,True
+50,non-relevant. We consider this probability to be defined over,0,,False
+51,the space of users. These should be exclusive and exhaustive,0,,False
+52,probabilities:,0,,False
+53,Pc,0,,False
+54,"j,1",0,,False
+55,gj,0,,False
+56,", 1.",0,,False
+57,2.2 Definition of GAP,1,GAP,True
+58,"Now, we want some form of expected average precision, the expectation being over this afore-defined probabilistic event space. Simple interpretation of this (just calculate",0,,False
+59,604,0,,False
+60,average precision separately for each grade and take a proba-,1,ad,True
+61,"bilistically weighted combination) has problems; for instance,",0,,False
+62,"in the case of an ideal ranked list, when there are no docu-",0,,False
+63,"ments in some grades, the effectiveness score returned is less",1,ad,True
+64,"than the optimal value of 1. So, instead, we extend the non-",1,ad,True
+65,"interpolated form of AP; that is, we step down the ranked",1,AP,True
+66,"list, looking at each relevant document in turn (the ""pivot""",0,,False
+67,document) and compute the expected precision at this rank.,0,,False
+68,"With an appropriate normalization at the end, this defines",0,,False
+69,the graded average precision (GAP).,1,ad,True
+70,"In particular, suppose we have a ranked list of documents,",0,,False
+71,and document dn at rank n has relevance in  {0..c}. If,0,,False
+72,"in > 0, dn, as pivot document, will contribute a precision",0,,False
+73,"value to the average precision calculations for each grade j,",1,ad,True
+74,"0 < j  in, since for any threshold set at grades less than or",1,ad,True
+75,"equal to in, dn is considered relevant. The binary precision",0,,False
+76,value,0,,False
+77,for,0,,False
+78,each,0,,False
+79,grade,1,ad,True
+80,j,0,,False
+81,"is,",0,,False
+82,1 n,0,,False
+83,(|dm,0,,False
+84,:,0,,False
+85,m,0,,False
+86,"n, im",0,,False
+87,"j|),",0,,False
+88,while,0,,False
+89,the expected precision at rank n over the aforementioned,0,,False
+90,"probabilistic user space can be computed as,",0,,False
+91,in,0,,False
+92,X,0,,False
+93,",,",0,,False
+94,1,0,,False
+95,«,0,,False
+96,"E[P Cn] ,",0,,False
+97,"n |dm : m  n, im  j| · gj",0,,False
+98,"j,1",0,,False
+99,"Let I(i, j) be an indicator variable equal to 1 if grade i is",1,ad,True
+100,"larger than or equal to grade j and 0 otherwise. Then, the",1,ad,True
+101,"expected precision at rank n can also be written as,",0,,False
+102,in,0,,False
+103,X,0,,False
+104,",,",0,,False
+105,1,0,,False
+106,«,0,,False
+107,"E[P Cn] ,",0,,False
+108,"n |dm : m  n, im  j| · gj",0,,False
+109,"j,1",0,,False
+110,1,0,,False
+111,in,0,,False
+112,X,0,,False
+113,n,0,,False
+114,X,0,,False
+115,", n",0,,False
+116,gj,0,,False
+117,"I(im, j)",0,,False
+118,"j,1 m,1",0,,False
+119,1,0,,False
+120,"n min(in,im)",0,,False
+121,XX,0,,False
+122,", n",0,,False
+123,gj if im > 0,0,,False
+124,"m,1 j,1",0,,False
+125,"By observing the new form of calculation of E[P Cn], we can compute the contribution of each document ranked at m  n to this weighted sum for those grades j  im. Thus we define a contribution function:",1,ad,True
+126," m,n ,",0,,False
+127,"Pmin(im ,in )",0,,False
+128,"j,1",0,,False
+129,gj,0,,False
+130,0,0,,False
+131,if im > 0 otherwise,0,,False
+132,Now the contribution from the pivot document can be,0,,False
+133,defined,0,,False
+134,"as,",0,,False
+135,E[P Cn],0,,False
+136,",",0,,False
+137,1 n,0,,False
+138,Pn,0,,False
+139,"m,1",0,,False
+140,"m,n.",0,,False
+141,The maximum possible E[P Cn] depends on the relevance,0,,False
+142,"grade in, it is the probability that this document is regarded",1,ad,True
+143,as,0,,False
+144,relevant,0,,False
+145,by,0,,False
+146,the,0,,False
+147,"user,",0,,False
+148,Pin,0,,False
+149,"j,1",0,,False
+150,gj,0,,False
+151,.,0,,False
+152,We must take account,0,,False
+153,of this when normalizing the sum of E[P Cn]'s. Suppose,0,,False
+154,we have Ri total documents in grade i (for this query);,1,ad,True
+155,"then the maximum possible value of cumulated E[P Cn]'s is,",0,,False
+156,Pc,0,,False
+157,"i,1",0,,False
+158,Ri,0,,False
+159,Pi,0,,False
+160,j,0,,False
+161,",1",0,,False
+162,gj,0,,False
+163,",",0,,False
+164,which,0,,False
+165,corresponds,0,,False
+166,to,0,,False
+167,the,0,,False
+168,expected,0,,False
+169,num-,0,,False
+170,"ber of documents considered relevant in the collection, with",0,,False
+171,"the expectation taken over the space of users, as above.",0,,False
+172,The graded average precision (GAP) is then defined as:,1,ad,True
+173,GAP,1,GAP,True
+174,",",0,,False
+175,P,0,,False
+176,"n,1",0,,False
+177,1 n,0,,False
+178,Pn,0,,False
+179,"m,1",0,,False
+180,"m,n",0,,False
+181,Pc,0,,False
+182,"i,1",0,,False
+183,Ri,0,,False
+184,Pi,0,,False
+185,"j,1",0,,False
+186,gj,0,,False
+187,Remark on thresholding probabilities: The user model that GAP is based on dictates the contribution of different relevance grades to the GAP calculation by considering the probability of a user thresholding the relevance scale at a certain relevance grade (the g values). This allows a better understanding and an easier mechanism to determine the,1,GAP,True
+188,"relative value of different relevance grades to an average user than the underlying model for the current multi-graded evaluation metrics. For instance, given the relevance grades of documents, click through data can be utilized to conclude relative preferences of users among documents of different relevance grades [10, 14]. Assuming that the user only clicks on the documents he finds relevant, the g values correspond to the probability that a user clicks on a document of a particular relevance grade, given all the documents clicked by the user. In this paper, given that our goal is to develop a good system-oriented metric, we propose an alternative way of setting the g values by considering which g , {gi} makes the metric most informative (see Section 4.1).",1,ad,True
+189,3. PROPERTIES OF GAP,1,GAP,True
+190,In this section we describe some of the properties of GAP that make the metric understandable and desirable to use.,1,GAP,True
+191,"First, it is easy to see that GAP generalizes average precision ­ it reverts to average precision in the case of binary relevance. With respect to the model described in Section 2.1, binary relevance means that all users find documents with some relevance grade t > 0 relevant and the rest non-relevant (i.e., gj , 1 if j ,"" t, for some relevance grade t > 0 and 0 otherwise).""",1,GAP,True
+192,"Furthermore, GAP behaves in the expected way under document swaps. That is, if a document is swapped with another document of smaller relevance grade that appears lower in the list, the value of GAP decreases and vice-versa. As a corollary to this property, GAP acquires its maximum value when documents are returned in non-increasing relevance grade order.",1,GAP,True
+193,"In the following sections, we describe a probabilistic interpretation of GAP and show that GAP is an approximation to the area under a graded precision-recall curve.",1,GAP,True
+194,3.1 Probabilistic interpretation,0,,False
+195,"In this section we define GAP as the expected outcome of a random experiment, which is a generalization of the random experiment whose expected outcome is average precision [25], for the case of graded relevance. This offers an intuition behind the new measure.",1,GAP,True
+196,3.1.1 Probabilistic interpretation of AP,1,AP,True
+197,Yilmaz and Aslam [25] have shown that AP corresponds to the expected outcome of the following random experiment:,1,AP,True
+198,1. Select a relevant document at random. Let the rank of this document be n.,0,,False
+199,"2. Select a document at or above rank n, at random. Let the rank of that document be m.",0,,False
+200,"3. Output 1 if the document at rank m, dm, is relevant.",0,,False
+201,"In expectation, steps (2) and (3) effectively compute the precision at a relevant document. Then step (1), in combination with steps (2) and (3), effectively computes the average of these precisions. Hence, average precision corresponds to the probability that a document retrieved above a randomly picked relevant document is also relevant.",0,,False
+202,3.1.2 Probabilistic interpretation of GAP,1,GAP,True
+203,Consider the case where graded relevance judgments are available. We claim that GAP corresponds to the expected outcome of the following random experiment:,1,ad,True
+204,605,0,,False
+205,"1. Select a document that is considered relevant by a user (according to the afore-defined user model), at random. Let the rank of this document be n.",0,,False
+206,"2. Select a document at or above rank n, at random. Let the rank of that document be m.",0,,False
+207,"3. Output 1 if the document at rank m, dm, is also considered relevant by the user.",0,,False
+208,"Hence, GAP can be seen as the probability that a document retrieved above a randomly picked ""relevant"" document is also ""relevant"", where relevance is defined according to the user model previously described.",1,GAP,True
+209,"We compute the expectation of the above random experiment to show that it corresponds to GAP. In expectation, step (3) corresponds to the conditional probability of document dm being considered as relevant given that document dn is also considered as relevant. To calculate this probability, let's consider all possible cases of the relative ordering of the relevant grades for documents dn and dm.",1,GAP,True
+210,"· (in  im) : Since the relevance grade of dn is smaller than or equal to the one for dm, if dn is considered relevant then dm will also be considered as relevant.",1,ad,True
+211,"P r(dm , rel|dn , rel) ,",0,,False
+212,",1,",0,,False
+213,Pin,0,,False
+214,"j,1",0,,False
+215,gj,0,,False
+216,Pin,0,,False
+217,"j,1",0,,False
+218,gj,0,,False
+219,",",0,,False
+220,"Pmin(in ,im )",0,,False
+221,"j,1",0,,False
+222,gj,0,,False
+223,Pin,0,,False
+224,"j,1",0,,False
+225,gj,0,,False
+226,"since min(in, im) ,"" in. · (in > im) : By applying the Bayes' Theorem,""",0,,False
+227,"P r(dm , rel|dn , rel) ,",0,,False
+228,", P r(dn , rel|dm , rel) · P r(dm , rel) P r(dn , rel)",0,,False
+229,",",0,,False
+230,1,0,,False
+231,·,0,,False
+232,Pim,0,,False
+233,"j,1",0,,False
+234,gj,0,,False
+235,Pin,0,,False
+236,"j,1",0,,False
+237,gj,0,,False
+238,",",0,,False
+239,"Pmin(in ,im )",0,,False
+240,"j,1",0,,False
+241,gj,0,,False
+242,Pin,0,,False
+243,"j,1",0,,False
+244,gj,0,,False
+245,"since min(in, im) , im",0,,False
+246,"In expectation, steps (2) and (3) together, correspond to the value the ""pivot"" document dn will contribute to GAP,",1,GAP,True
+247,1 n,0,,False
+248,·,0,,False
+249,n,0,,False
+250,X,0,,False
+251,"m,1",0,,False
+252,"Pmin(in ,im )",0,,False
+253,"j,1",0,,False
+254,Pin,0,,False
+255,"j,1",0,,False
+256,gj,0,,False
+257,gj,0,,False
+258,"In step (1), the probability that a document dn is consid-",0,,False
+259,ered,0,,False
+260,relevant,0,,False
+261,is,0,,False
+262,Pin,0,,False
+263,"j,1",0,,False
+264,gj,0,,False
+265,.,0,,False
+266,"Thus,",0,,False
+267,the,0,,False
+268,probability,0,,False
+269,of,0,,False
+270,selecting,0,,False
+271,this document out of all documents that are considered rel-,0,,False
+272,"evant is,",0,,False
+273,pdn,0,,False
+274,",",0,,False
+275,Pin,0,,False
+276,"j,1",0,,False
+277,gj,0,,False
+278,Pc,0,,False
+279,"i,1",0,,False
+280,Ri,0,,False
+281,Pin,0,,False
+282,"j,1",0,,False
+283,gj,0,,False
+284,"Therefore, step (1) in combination with steps (2) and (3) effectively computes the average of the contributed values, which corresponds to GAP,",1,GAP,True
+285,GAP,1,GAP,True
+286,",",0,,False
+287,X,0,,False
+288,"n,1",0,,False
+289,1 n,0,,False
+290,n,0,,False
+291,X,0,,False
+292,"m,1",0,,False
+293,"Pmin(in ,im )",0,,False
+294,"j,1",0,,False
+295,gj,0,,False
+296,Pin,0,,False
+297,"j,1",0,,False
+298,gj,0,,False
+299,·,0,,False
+300,Pin,0,,False
+301,"j,1",0,,False
+302,gj,0,,False
+303,Pc,0,,False
+304,"i,1",0,,False
+305,Ri,0,,False
+306,·,0,,False
+307,Pin,0,,False
+308,"j,1",0,,False
+309,gj,0,,False
+310,",",0,,False
+311,P,0,,False
+312,"n,1",0,,False
+313,1 n,0,,False
+314,Pn,0,,False
+315,"m,1",0,,False
+316,"Pmin(in ,im )",0,,False
+317,"j,1",0,,False
+318,gj,0,,False
+319,Pc,0,,False
+320,"i,1",0,,False
+321,Ri,0,,False
+322,Pi,0,,False
+323,"j,1",0,,False
+324,gj,0,,False
+325,3.2 GAP as the area under the graded precisionrecall curves,1,GAP,True
+326,In this section we first intuitively extend recall and preci-,0,,False
+327,"sion to the case of multi-graded relevance, based on the prob-",1,ad,True
+328,abilistic model defined in Section 2.1. Then we define the,0,,False
+329,"graded precision-recall curve, and finally show that GAP ap-",1,ad,True
+330,"proximates the area under the graded precision-recall curve,",1,ad,True
+331,as AP approximates the area under the binary precision-,1,AP,True
+332,recall curve.,0,,False
+333,Precision-recall curves are constructed by plotting pre-,0,,False
+334,cision against recall each time a relevant document is re-,0,,False
+335,"trieved. In the binary relevance case, recall is defined as the",0,,False
+336,ratio of relevant documents up to rank n to the total number,0,,False
+337,of relevant documents in the query. In the graded relevance,1,ad,True
+338,"case, a document is considered relevant only with some prob-",0,,False
+339,"ability. Therefore, recall at a relevant document at rank n",0,,False
+340,can be defined as the ratio of the expected number of rele-,0,,False
+341,vant documents up to rank n to the expected total number,0,,False
+342,of relevant documents in the query (under the independence,0,,False
+343,assumption between numerator and denominator).,0,,False
+344,"In particular, according to the user model defined in Sec-",0,,False
+345,"tion 2.1, documents of relevance grade im are considered rel-",1,ad,True
+346,evant,0,,False
+347,with,0,,False
+348,probability,0,,False
+349,Pim,0,,False
+350,"j,1",0,,False
+351,gj,0,,False
+352,",",0,,False
+353,and,0,,False
+354,"thus,",0,,False
+355,the,0,,False
+356,expected,0,,False
+357,num-,0,,False
+358,ber,0,,False
+359,of,0,,False
+360,relevant,0,,False
+361,documents,0,,False
+362,up,0,,False
+363,to,0,,False
+364,rank,0,,False
+365,n,0,,False
+366,"is,",0,,False
+367,Pn,0,,False
+368,"m,1",0,,False
+369,Pim,0,,False
+370,"j,1",0,,False
+371,"gj ,",0,,False
+372,"while the expected total number of relevant document is,",0,,False
+373,Pc,0,,False
+374,"i,1",0,,False
+375,Ri,0,,False
+376,Pi,0,,False
+377,"j,1",0,,False
+378,gj,0,,False
+379,.,0,,False
+380,"Hence, the graded recall at rank n can be computed as,",1,ad,True
+381,graded,1,ad,True
+382,Recall@n,0,,False
+383,",",0,,False
+384,Pn,0,,False
+385,"m,1",0,,False
+386,Pim,0,,False
+387,"j,1",0,,False
+388,gj,0,,False
+389,Pc,0,,False
+390,"i,1",0,,False
+391,Ri,0,,False
+392,Pi,0,,False
+393,"j,1",0,,False
+394,gj,0,,False
+395,"The recall step, i.e. the proportion of relevance information",0,,False
+396,"acquired when encountering a ""relevant"" document at rank n",0,,False
+397,to,0,,False
+398,the,0,,False
+399,total,0,,False
+400,amount,0,,False
+401,of,0,,False
+402,"relevance,",0,,False
+403,"is,",0,,False
+404,Pin,0,,False
+405,"j,1",0,,False
+406,gj,0,,False
+407,/,0,,False
+408,Pc,0,,False
+409,"i,1",0,,False
+410,Ri,0,,False
+411,Pi,0,,False
+412,"j,1",0,,False
+413,gj,0,,False
+414,.,0,,False
+415,This corresponds to the expected outcome of step (1) of the,0,,False
+416,random experiment described in Section 3.1 and expresses,0,,False
+417,"the probability of selecting a ""relevant"" document at rank n",0,,False
+418,"out of all possible ""relevant"" documents.",0,,False
+419,"In the binary case, precision at a relevant document at",0,,False
+420,rank n is defined as the fraction of relevant documents up,0,,False
+421,"to that rank. In the multi-graded case, precision at a ""rel-",1,ad,True
+422,"evant"" document at rank n can be defined as the expected",0,,False
+423,number of documents at or above that rank that are also,0,,False
+424,"considered as ""relevant"" This quantity corresponds to the",0,,False
+425,expected outcome of steps (2) and (3) of the random exper-,0,,False
+426,iment,0,,False
+427,"in Section 3.1, graded Precision@n",1,ad,True
+428,",",0,,False
+429,1 n,0,,False
+430,n,0,,False
+431,X ·,0,,False
+432,"m,1",0,,False
+433,"Pmin(in ,im )",0,,False
+434,"j,1",0,,False
+435,gj,0,,False
+436,Pin,0,,False
+437,"j,1",0,,False
+438,gj,0,,False
+439,"Therefore, graded average precision can be alternatively defined as the cumulated product of graded precision values and graded recall step values at documents of positive relevance grade, as average precision can be defined as the cumulated product of precision values and recall step values at relevant documents.",1,ad,True
+440,"Given the definitions of graded precision and graded recall, one can construct precision-recall curves. Now it is easy to see that GAP is an approximation to the area under the non-interpolated graded precision-recall curve as AP is an approximation to the area under the non-interpolated binary precision-recall curve.",1,ad,True
+441,Note that Kek¨al¨ainen and J¨arvelin [13] have also proposed a generalization of precision and recall. The way they generalized the two statistics is radically different than the one we,1,ad,True
+442,606,0,,False
+443,propose; in their work precision and recall follow the nDCG framework where gain values are assigned to each document.,0,,False
+444,4. EVALUATION OF GAP,1,GAP,True
+445,"There are two important properties that a system-oriented evaluation metric should have: (1) it should be highly informative [2] ­ that is it should summarize the quality of a search engine well, and (2) it should be highly discriminative ­ that is it should identify the significant differences in the performance of the systems. We evaluated GAP in terms of both of these properties. We used nDCG as a baseline for comparison purposes. Given that our goal is to propose a good system-oriented metric that can be used as an objective function to optimize for in LTR, in what follows we mostly focus on the informativeness of the metric since it has been shown to correlate well with the effectiveness of the trained ranking function [26].",1,GAP,True
+446,"In particular, when a ranking function is optimized for an objective evaluation metric, the evaluation metric used during training acts as a bottleneck that summarizes the available training data. At each training epoch, given the relevance of the documents in the training set and the ranked list of documents retrieved by the ranking function for that epoch, the only information the learning algorithm has access to is the value of the evaluation metric. Thus, the ranking function will change on the basis of the change in the value of the metric. Since more informative metrics better summarize the relevance of the documents in the ranked list and thus better capture any change in the ranking of documents, the informativeness of a metric is intuitively correlated with the ability of the LTR algorithm to ""learn"" well.",0,,False
+447,4.1 Informativeness,0,,False
+448,To assess the informativeness of the evaluation metrics we use the Maximum Entropy Method (MEM) as proposed in Aslam et al. [2].,0,,False
+449,"Similar to Aslam et al. we make the assumption that the quality of a list of documents retrieved in response to a given query is strictly a function of the relevance of the documents within that list (as well as the total number of relevant documents for the given query). Then, the question that naturally arises is how well does a metric capture the relevance of the output list and consequently the effectiveness of a retrieval system? In other words, given the value of a metric, for a given system on a given query, how accurately can one predict the relevance of documents retrieved?",0,,False
+450,"Suppose that you were given a list of length N corresponding to output of a retrieval system for a given query, and suppose that you were asked to predict the probability of seeing a relevant document at some rank. Since there are no constraints, all possible lists of length N are equally likely, and hence the probability of seeing a relevant document at any rank is 1/2. Suppose now that you are also given the information that the expected number of relevant documents over all lists of length N is R. The most natural answer would be a R/N uniform probability for each rank. Finally, suppose that you are given the additional constraint that the expected value of a metric is v. Under the assumption that our distribution over lists is a product distribution, i.e. p(r1, r2, ..., rN ) ,"" p(r1) · p(r2) · ... · p(rN ) (Aslam et al. call this probability-at-rank distribution), we can solve the problem by using MEM. That is, we find the most random probability-at-rank distribution (by maximizing the entropy""",1,ad,True
+451,"of p) that satisfies the following constraints: (a) the expected value of the metric over the probability-at-rank distribution is v, and (b) the expected number of relevant documents in each grade  is R).",1,ad,True
+452,To apply the maximum entropy method we derive the expected GAP and nDCG over the probability-at-rank distribution. The derivations are omitted due to space limitations. The maximum entropy formulations are shown in Figure 1. Both of them are constraint optimization problems and numerical methods were used to determine their solutions.,1,GAP,True
+453,"The result of the above optimization is a maximum entropy probability-at-rank distribution (over all relevance grades). Using this probability-at-rank distribution, we can infer the maximum entropy precision-recall curve. If a metric is very informative then the maximum entropy precision-recall curve should approximate well the actual precision-recall curve.",1,ad,True
+454,"We then test the performance of GAP and nDCG using data from TRECs 9 and 10 Web Tracks (ad-hoc task) and TREC 12 Robust Track (only the topics 601-650 that have multi-graded judgments). Using the setup described above, we first infer the probability-at-rank distributions given the value of each metric and then calculate the maximum entropy precision-recall curves when only highly relevant documents are considered as relevant and when both relevant and highly relevant documents are considered as relevant (the graded PR-curves described in Section 3.2 are not used due to their bias towards GAP). As in Aslam et al. [2], for any query, we choose those systems that retrieved at least 5 relevant and 5 highly relevant documents to have a sufficient number of points on the precision-recall curves. We use different values for g1 and g2 to investigate their effect on the informativeness of GAP.",1,GAP,True
+455,"The mean RMS error between the inferred and the actual precision-recall curves, calculated at the points where recall changes, is illustrated in Figure 2. The x-axis corresponds to different pairs of threshold probabilities, g1 and g2. The blue solid line corresponds to the RMS error between the actual and the inferred precision-recall curves subject to GAP, while the red dashed line indicates the RMS error of the inferred precision-recall curves subject to nDCG.",1,GAP,True
+456,"As it can be observed (1) the choice of g1 and g2 appears to affect the informativeness of GAP; when g1 is high GAP appears to summarize well the sequence of all relevant documents independently of their grade, while when g2 is high GAP appears to summarize well the sequence of all highly relevant documents, (2) choosing g1 and g2 to be relatively balanced (around 0.5) seems to be the best compromise between summarizing well the sequence of all relevant documents independent of their grade and highly relevant documents only, and (3) with g1 and g2 to relatively balanced GAP appears to be more informative than nDCG in most of the cases1. Finally, note that when the thresholding probability g1 ,"" 1 (the right-most point for GAP curve in all plots), GAP reduces to average precision since relevant and highly relevant documents are conflated in a sin-""",1,GAP,True
+457,"1Different gain (linear vs. exponential) and discount (linear vs. log) functions used in the definition of nDCG were tested. The ones that utilized the log discount function appeared to be the most informative, while the effect of the gain function on informativeness was limited. The nDCG metric used here utilizes an exponential gain and a log discount function.",0,,False
+458,607,0,,False
+459,N,0,,False
+460,"X Maximize: H(p) , H(pn)",0,,False
+461,"n,1",0,,False
+462,Subject to:,0,,False
+463,1.,0,,False
+464,Nc,0,,False
+465,XX,0,,False
+466,"n,1 ,0",0,,False
+467,"P r(in , n",0,,False
+468,),0,,False
+469,0,0,,False
+470,X · @ gj,0,,False
+471,"j,1",0,,False
+472,"n-1 c 00min(,) 1",0,,False
+473,XX,0,,False
+474,X,0,,False
+475,+,0,,False
+476,@@,0,,False
+477,gj A P r(im,0,,False
+478,"m,1 ,0",0,,False
+479,"j,1",0,,False
+480,",",0,,False
+481,11 )AA,0,,False
+482,/,0,,False
+483,"Pc
+i=1
+
+Ri
+
+Pi
+j=1
+
+ gi",0,,False
+484,",",0,,False
+485,gap,0,,False
+486,N,0,,False
+487,X,0,,False
+488,2.,0,,False
+489,"P r(in , ) , R",0,,False
+490, : 1    c,0,,False
+491,"n,1",0,,False
+492,c,0,,False
+493,X,0,,False
+494,3.,0,,False
+495,"P r(in , ) , 1",0,,False
+496,n : 1  n  N,0,,False
+497,",0",0,,False
+498,N,0,,False
+499,"X Maximize: H(p) , H(pn)",0,,False
+500,"n,1",0,,False
+501,Subject to:,0,,False
+502,1.,0,,False
+503,N,0,,False
+504,X,0,,False
+505,c,0,,False
+506,X,0,,False
+507,(eg(),0,,False
+508,-,0,,False
+509,1),0,,False
+510,·,0,,False
+511,P r(in,0,,False
+512,",",0,,False
+513,) / (optDCG),0,,False
+514,",",0,,False
+515,ndcg,0,,False
+516,lg(n + 1),0,,False
+517,"n,1 ,0",0,,False
+518,N,0,,False
+519,X,0,,False
+520,2.,0,,False
+521,"P r(in , ) , R",0,,False
+522,"n,1",0,,False
+523,c,0,,False
+524,X,0,,False
+525,3.,0,,False
+526,"P r(in , ) , 1",0,,False
+527,",0",0,,False
+528, : 1    c n : 1  n  N,0,,False
+529,RMS Error,0,,False
+530,"Figure 1: Maximum entropy setup for GAP and nDCG, respectively.",1,GAP,True
+531,0.2 0.18 0.16 0.14 0.12,0,,False
+532,"0[.01,1]",0,,False
+533,0.24 0.22,0,,False
+534,"0.2 0.18 0.16 0.14 0.1[02,1]",0,,False
+535,TREC 9 : relevant and highly relevant,1,TREC,True
+536,GAP nDCG,1,GAP,True
+537,"[0.25,0.75] [0.5,0.5] [0.75,0.25]",0,,False
+538,"[1,0]",0,,False
+539,TREC 9 : only highly relevant,1,TREC,True
+540,"[0.25,0.75]",0,,False
+541,"[0.5,0.5]",0,,False
+542,GAP nDCG,1,GAP,True
+543,"[0.75,0.25]",0,,False
+544,"[1,0]",0,,False
+545,RMS Error,0,,False
+546,RMS Error,0,,False
+547,TREC 10 : relevant & highly relevant 0.13,1,TREC,True
+548,GAP nDCG,1,GAP,True
+549,0.12,0,,False
+550,0.11,0,,False
+551,0.1,0,,False
+552,"0.0[09,1]",0,,False
+553,0.15 0.14 0.13 0.12 0.11,0,,False
+554,"0.1 0.0[09,1]",0,,False
+555,"[0.25,0.75] [0.5,0.5] [0.75,0.25]",0,,False
+556,"[1,0]",0,,False
+557,TREC 10 : only highly relevant,1,TREC,True
+558,GAP nDCG,1,GAP,True
+559,"[0.25,0.75] [0.5,0.5] [0.75,0.25]",0,,False
+560,"[1,0]",0,,False
+561,RMS Error,0,,False
+562,RMS Error,0,,False
+563,0.24 0.22,0,,False
+564,"0.2 0.18 0.16 0.14 0.1[02,1]",0,,False
+565,0.21 0.2,0,,False
+566,"0.19 0.18 0.17 0.16 0.1[05,1]",0,,False
+567,TREC 12 : relevant and highly relevant,1,TREC,True
+568,GAP nDCG,1,GAP,True
+569,"[0.25,0.75] [0.5,0.5] [0.75,0.25]",0,,False
+570,"[1,0]",0,,False
+571,TREC 12 : highly relevant,1,TREC,True
+572,"[0.25,0.75]",0,,False
+573,"[0.5,0.5]",0,,False
+574,GAP nDCG,1,GAP,True
+575,"[0.75,0.25]",0,,False
+576,"[1,0]",0,,False
+577,RMS Error,0,,False
+578,Figure 2: Mean RMS error between inferred and actual PR curves when only highly relevant documents are considered as relevant and when both relevant and highly relevant documents are considered as relevant.,0,,False
+579,"gle grade. Therefore, one can compare the informativeness of GAP with the informativeness of AP by comparing the right-most point on the GAP curve with any other point on the same curve. For instance one can compare GAP with equal thresholding probabilities (g1 , g2 ,"" 0.5) with AP by comparing the point on the blue line that corresponds to the [0.5,0.5] on the x-axis with the point on the blue line that corresponds to the [1,0] on the x-axis. This way we can test whether graded relevance add any value in the informativeness of the metric on the top of binary relevance. What is striking about Figure 2 is that in TREC 9 and 10 GAP (with g1 "", g2 ,"" 0.5) appears more informative than AP when relevant and highly relevant documents are combined (top row plots). That is, the ability to capture the sequence of relevance regardless the relevance grade is benefited by differentiating between relevant and highly relevant documents.""",1,ad,True
+580,4.2 Discriminative Power,0,,False
+581,"A number of researchers have proposed the evaluation of effectiveness metrics based on their discriminative power.That is, given a fixed set of queries, which evaluation metric can better identify significant differences in the performance of systems? By utilizing the framework proposed by Sakai [18], based on the Bootstrap Hypothesis Testing and using data from TREC 9, 10 and 12, we observed that the GAP metric appeared to outperform nDCG over TREC 12 data while",1,TREC,True
+582,"the opposite was true for TREC 9 and 10. When limiting our experiments to the best performing systems (top 15 by both metrics), GAP consistently outperformed nDCG in all three data sets. The results for TREC 9 are illustrated in Figure 3. Due to space limitations we omit the figures from TREC 10 and 12. In the figure the more towards the origin of the axes the curve is the more discriminative the metric is. The inner plot corresponds to the test over the best performing systems.",1,TREC,True
+583,achieved significance level (ASL),0,,False
+584,TREC9,1,TREC,True
+585,0.1,0,,False
+586,0.1,0,,False
+587,gap,0,,False
+588,0.08,0,,False
+589,ndcg,0,,False
+590,0.06,0,,False
+591,0.05,0,,False
+592,0.04,0,,False
+593,0 150,0,,False
+594,200,0,,False
+595,0.02,0,,False
+596,8000 1000 1200 1400 1600 1800 2000 2200 system pair sorted by ASL,0,,False
+597,Figure 3: Discriminative power based on bootstrap hypothesis tests for TREC 9.,1,TREC,True
+598,5. GAP FOR LEARNING TO RANK,1,GAP,True
+599,"Finally, we employed GAP as an objective function to optimize for in the context of LTR. For comparison pur-",1,GAP,True
+600,608,0,,False
+601,Opt nDCG SoftRank Opt GAP,1,GAP,True
+602,Opt AP Opt nDCG LambdaRankOpt GAP Opt AP,1,AP,True
+603,Test Metric,0,,False
+604,nDCG AP,1,AP,True
+605,PC(10),0,,False
+606,0.6162 0.6084 0.5329,0,,False
+607,0.6290 0.6276 0.5478,0,,False
+608,0.6129 0.6195 0.5421,0,,False
+609,0.6301 0.6158 0.5355,0,,False
+610,0.6363 0.6287 0.5388,0,,False
+611,0.6296 0.6217 0.5360,0,,False
+612,"Table 1: Test set performance for different metrics when SoftRank and LambdaRank are trained for nDCG, GAP, and AP as the objective over 5K Web Queries from a commercial search engine.",1,GAP,True
+613,Opt nDCG SoftRank Opt GAP,1,GAP,True
+614,Opt AP Opt nDCG LambdaRankOpt GAP Opt AP,1,AP,True
+615,Test Metric,0,,False
+616,nDCG AP,1,AP,True
+617,PC(10),0,,False
+618,0.4665 0.4452 0.4986,0,,False
+619,0.4747 0.4478 0.5001,0,,False
+620,0.4601 0.4448 0.4900,0,,False
+621,0.4585 0.4397 0.5005,0,,False
+622,0.4665 0.4432 0.5042,0,,False
+623,0.4528 0.4408 0.4881,0,,False
+624,"Table 2: Test set performance for different metrics when SoftRank and LambdaRank are trained for nDCG, GAP, and AP as the objective over the OSHUMED data set.",1,GAP,True
+625,"poses we also optimized for AP and nDCG. In our experiments we employed two different learning algorithms, (a) SoftRank [22] and (b) LambdaRank [6] over two different data sets, (a) a Web collection with 5K queries and 382 features taken from a commercial search engine, and (b) the OHSUMED collection provided by LETOR [21]. The relevance judgments in the both data set are in a 3 grade scale (non-relevant, relevant and highly relevant). Five-fold cross validation was used in the case of OHSUMED collection.",1,AP,True
+626,"Since the informativeness of the metric is well correlated with the effectiveness of the constructed ranking function, we select g1 and g2 based on the criterion of informativeness. As we observed in Section 4.1, the values of gi that result in the most informative GAP variation is g1 , g2 ,"" 0.5. Intuitively, these values of gi indicate that highly relevant documents are """"twice as important as relevant documents.""",1,GAP,True
+627,"LTR algorithms: SoftRank [22] is a neural network based algorithm that is designed to directly optimize for nDCG, as most other learning to rank algorithms. Since most IR metrics are non-smooth as as they depend on the ranks of documents, the main idea used in SoftRank to overcome the problem of optimizing non-smooth IR metrics is based on defining smooth versions of information retrieval metrics by assuming that the score sj of each document j is a value generated according to a Gaussian distribution with mean equal to sj and shared smoothing variance s. Based on this, Taylor et al. [22] define ij as the probability that document i will be ranked higher than document j. This distribution can then be used to define smooth versions of IR metrics as expectations over these rank distributions.",0,,False
+628,"Based on these definitions, we extend SoftRank to optimize for GAP by defining SoftGAP, the expected value of Graded Average Precision with respect to these distributions and compute the gradient of SoftGAP.",1,GAP,True
+629,"Given the probabilistic interpretation of GAP defined earlier and the distribution ij, the probability that document i will be ranked higher than document j, SoftGAP can be computed as follows:",1,GAP,True
+630,Let P Cn be:,0,,False
+631,P Cn,0,,False
+632,",",0,,False
+633,Pin,0,,False
+634,"j,1",0,,False
+635,gj,0,,False
+636,+,0,,False
+637,PN,0,,False
+638,"m,1",0,,False
+639,mn,0,,False
+640,"Pmin(im ,in )",0,,False
+641,"j,1",0,,False
+642,gj,0,,False
+643,PN,0,,False
+644,"m,""1,m"",n",0,,False
+645,mn,0,,False
+646,+,0,,False
+647,1,0,,False
+648,then,0,,False
+649,Sof tGAP,1,GAP,True
+650,",",0,,False
+651,N,0,,False
+652,X,0,,False
+653,"n,1",0,,False
+654,Pc,0,,False
+655,"i,1",0,,False
+656,P Cn,0,,False
+657,Ri,0,,False
+658,Pi,0,,False
+659,"j,1",0,,False
+660,gi,0,,False
+661,Optimizing for an evaluation metric using neural networks and gradient ascent requires computing the gradient of the objective metric with respect to the score of an individual,1,ad,True
+662,"document s¯m. To compute the gradients of SoftGAP, we use a similar approach as the one Taylor et al. [22] used to compute the gradients of nDCG. Detailed derivations for the computation of the gradients are omitted due to space limitations.",1,ad,True
+663,"LambdaRank [6] is another neural network based algorithm that is also designed to optimize for nDCG. In order to overcome the problem of optimizing non-smooth IR metrics, LambdaRank uses the approach of defining the gradient of the target evaluation metric only at the points needed.",1,ad,True
+664,"Given a pair of documents, the virtual gradients ( functions) used in LambdaRank are obtained by scaling the RankNet [5] cost with the amount of change in the value of the metric obtained by swapping the two documents [6].",1,ad,True
+665,"Following the same setup, in order to optimize for GAP, we scale the RankNet cost with the amount of change in the value of GAP metric when two documents are swapped. This way of building gradients in LambdaRank is shown to find the local optima for the target evaluation metrics [7]. Detailed derivations for the computation of the virtual gradients for LambdaRank are also omitted due to space limitations.",1,GAP,True
+666,"Results: Tables 1 and 2 show the results of training and testing using different metrics. In particular the rows of the table correspond to training for nDCG, GAP and AP, respectively. The columns correspond to testing for nDCG at cutoff 10, AP and precision at cutoff 10. As it can be observed in the table training for GAP outperforms both training for nDCG and AP, even if the test metric is nDCG or AP respectively. The differences among the effectiveness of the resulting ranking functions are not large, however, (1) most of them are statistically significant, indicating that the fact that GAP outperforms AP and nDCG is not a results of any random noise in training data, (2) GAP consistently leads to the best performing ranking function over two radically different data sets, and (3) GAP consistently leads to the best performing ranking function over two different LTR algorithms. Thus, even if the differences among the constructed ranking functions are not large, optimizing for GAP can only lead to better ranking functions.",1,GAP,True
+667,"These results strengthen the conclusion drawn from the discussion about the informativeness of the metrics. First, it can be clearly seen that even in the case that we care about a binary measure (AP or PC at 10) the utilization of multi-graded relevance judgments is highly beneficial. Furthermore, these results suggest that even if one cares for nDCG at early ranks, one should still train for GAP as opposed to training for nDCG.",1,AP,True
+668,609,0,,False
+669,6. CONCLUSIONS,0,,False
+670,"In this work we constructed a new metric of retrieval effectiveness (GAP) in a systematic manner that directly generalizes average precision to the multi-graded relevance case. As such, it inherits all desirable properties of AP: it has a nice probabilistic interpretation and a theoretical foundation; it estimates the area under the non-interpolated grade precision-recall curve. Furthermore, the new metric is highly informative and highly discriminative. Finally, when used as an objective function for learning-to-rank purposes GAP consistently outperforms AP and nDCG over two different data sets and over three different learning algorithms even when the test metric is AP or nDCG itself.",1,GAP,True
+671,7. REFERENCES,0,,False
+672,"[1] A. Al-Maskari, M. Sanderson, and P. Clough. The relationship between ir effectiveness measures and user satisfaction. In SIGIR '07: Proceedings of the 30th annual international ACM SIGIR conference on Research and development in information retrieval, pages 773­774, New York, NY, USA, 2007. ACM.",0,,False
+673,"[2] J. A. Aslam, E. Yilmaz, and V. Pavlu. The maximum entropy method for analyzing retrieval measures. In G. Marchionini, A. Moffat, J. Tait, R. Baeza-Yates, and N. Ziviani, editors, Proceedings of the 28th Annual International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 27­34. ACM Press, August 2005.",0,,False
+674,"[3] P. Bailey, N. Craswell, A. P. de Vries, I. Soboroff, and P. Thomas. Overview of the trec 2008 enterprise track. In Proceedings of the Seventeenth Text REtrieval Conference (TREC 2008), 2008.",1,trec,True
+675,"[4] P. Bailey, N. Craswell, I. Soboroff, P. Thomas, A. P. de Vries, and E. Yilmaz. Relevance assessment: are judges exchangeable and does it matter. In SIGIR '08: Proceedings of the 31st annual international ACM SIGIR conference on Research and development in information retrieval, pages 667­674, New York, NY, USA, 2008. ACM.",0,,False
+676,"[5] C. Burges, T. Shaked, E. Renshaw, A. Lazier, M. Deeds, N. Hamilton, and G. Hullender. Learning to rank using gradient descent. In ICML '05: Proceedings of the 22nd international conference on Machine learning, pages 89­96, New York, NY, USA, 2005. ACM Press.",1,ad,True
+677,"[6] C. J. C. Burges, R. Ragno, and Q. V. Le. Learning to rank with nonsmooth cost functions. In B. Sch¨olkopf, J. C. Platt, T. Hoffman, B. Sch¨olkopf, J. C. Platt, and T. Hoffman, editors, NIPS, pages 193­200. MIT Press, 2006.",0,,False
+678,"[7] P. Donmez, K. M. Svore, and C. J. Burges. On the local optimality of lambdarank. In SIGIR '09: Proceedings of the 32nd international ACM SIGIR conference on Research and development in information retrieval, pages 460­467, New York, NY, USA, 2009. ACM.",0,,False
+679,"[8] K. J¨arvelin and J. Kek¨al¨ainen. Ir evaluation methods for retrieving highly relevant documents. In SIGIR '00: Proceedings of the 23rd annual international ACM SIGIR conference on Research and development in information retrieval, pages 41­48, New York, NY, USA, 2000. ACM Press.",0,,False
+680,"[9] K. J¨arvelin and J. Kek¨al¨ainen. Cumulated gain-based evaluation of ir techniques. ACM Transactions on Information Systems, 20(4):422­446, 2002.",0,,False
+681,"[10] T. Joachims, L. Granka, B. Pan, H. Hembrooke, and G. Gay. Accurately interpreting clickthrough data as implicit feedback. In SIGIR '05: Proceedings of the 28th annual international ACM SIGIR conference on Research and development in information retrieval, pages 154­161, New York, NY, USA, 2005. ACM.",0,,False
+682,[11] E. Kanoulas and J. A. Aslam. Empirical justification of the gain and discount function for ndcg. In To appear in CIKM,0,,False
+683,"'09: Proceedings of the 18th ACM international conference on Information and knowledge management, 2009.",0,,False
+684,"[12] J. Kek¨al¨ainen. Binary and graded relevance in ir evaluations: comparison of the effects on ranking of ir systems. Inf. Process. Manage., 41(5):1019­1033, 2005.",1,ad,True
+685,"[13] J. Kek¨al¨ainen and K. J¨arvelin. Using graded relevance assessments in ir evaluation. J. Am. Soc. Inf. Sci. Technol., 53(13):1120­1129, 2002.",1,ad,True
+686,"[14] T. Minka, J. Winn, J. Guiver, and A. Kannan. Infer.net user guide : Tutorials and examples.",0,,False
+687,"[15] M. S. Pollock. Measures for the comparison of information retrieval systems. American Documentation, 19(4):387­397, 1968.",0,,False
+688,"[16] S. Robertson. A new interpretation of average precision. In SIGIR '08: Proceedings of the 31st annual international ACM SIGIR conference on Research and development in information retrieval, pages 689­690, New York, NY, USA, 2008. ACM.",0,,False
+689,"[17] T. Sakai. Ranking the NTCIR Systems Based on Multigrade Relevance, volume 3411/2005 of Lecture Notes in Computer Science. Springer Berlin / Heidelberg, February 2005.",1,ad,True
+690,"[18] T. Sakai. Evaluating evaluation metrics based on the bootstrap. In SIGIR '06: Proceedings of the 29th annual international ACM SIGIR conference on Research and development in information retrieval, pages 525­532, New York, NY, USA, 2006. ACM.",0,,False
+691,"[19] T. Sakai. On penalising late arrival of relevant documents in information retrieval evaluation with graded relevance. In First International Workshop on Evaluating Information Access (EVIA 2007), pages 32­43, 2007.",1,ad,True
+692,"[20] T. Sakai and S. Robertson. Modelling a user population for designing information retrieval metrics. In The Second International Workshop on Evaluating Information Access (EVIA 2008) (NTCIR-7 workshop) Tokyo, December 2008, 2008.",0,,False
+693,"[21] J. X. Tao Qin, Tie-Yan Liu and H. Li. Letor: A benchmark collection for research on learning to rank for information retrieval. Information Retrieval Journal, 2010.",0,,False
+694,"[22] M. Taylor, J. Guiver, S. E. Robertson, and T. Minka. Softrank: optimizing non-smooth rank metrics. In WSDM '08: Proceedings of the international conference on Web search and web data mining, pages 77­86, New York, NY, USA, 2008. ACM.",0,,False
+695,"[23] E. M. Voorhees. Evaluation by highly relevant documents. In SIGIR '01: Proceedings of the 24th annual international ACM SIGIR conference on Research and development in information retrieval, pages 74­82, New York, NY, USA, 2001. ACM.",0,,False
+696,"[24] J. Xu and H. Li. Adarank: a boosting algorithm for information retrieval. In SIGIR '07: Proceedings of the 30th annual international ACM SIGIR conference on Research and development in information retrieval, pages 391­398, New York, NY, USA, 2007. ACM.",0,,False
+697,"[25] E. Yilmaz and J. A. Aslam. Estimating average precision with incomplete and imperfect judgments. In P. S. Yu, V. Tsotras, E. Fox, and B. Liu, editors, Proceedings of the Fifteenth ACM International Conference on Information and Knowledge Management, pages 102­111. ACM Press, November 2006.",0,,False
+698,"[26] E. Yilmaz and S. Robertson. Deep versus shallow judgments in learning to rank. In SIGIR '09: Proceedings of the 32nd international ACM SIGIR conference on Research and development in information retrieval, pages 662­663, New York, NY, USA, 2009. ACM.",0,,False
+699,"[27] Y. Yue, T. Finley, F. Radlinski, and T. Joachims. A support vector method for optimizing average precision. In SIGIR '07: Proceedings of the 30th annual international ACM SIGIR conference on Research and development in information retrieval, New York, NY, USA, 2007. ACM Press.",1,ad,True
+700,610,0,,False
+701,,0,,False

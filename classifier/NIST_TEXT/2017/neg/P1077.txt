@@ -1,0 +1,367 @@
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+X D : Blending Dropout and Pruning for E icient Learning To Rank
+
+Claudio Lucchese
+ISTI-CNR, Pisa, Italy c.lucchese@isti.cnr.it
+
+Franco Maria Nardini
+ISTI-CNR, Pisa, Italy f.nardini@isti.cnr.it
+
+Salvatore Orlando
+Ca' Foscari Univ. of Venice, Italy orlando@unive.it
+
+Ra aele Perego
+ISTI-CNR, Pisa, Italy r.perego@isti.cnr.it
+
+Salvatore Trani
+ISTI-CNR, Pisa, Italy s.trani@isti.cnr.it
+
+ABSTRACT
+In this paper we propose X D , a new Learning to Rank algorithm focusing on the training of robust and compact ranking models. Motivated from the observation that the last trees of MART models impact the prediction of only a few instances of the training set, we borrow from the D algorithm the dropout strategy consisting in temporarily dropping some of the trees from the ensemble while new weak learners are trained. However, di erently from this algorithm we drop permanently these trees on the basis of smart choices driven by accuracy measured on the validation set. Experiments conducted on publicly available datasets shows that X D outperforms D in training models providing the same e ectiveness by employing up to 40% less trees.
+KEYWORDS
+Multiple Additive Regression Trees, Dropout, Pruning.
+ACM Reference format: Claudio Lucchese, Franco Maria Nardini, Salvatore Orlando, Ra aele Perego, and Salvatore Trani. 2017. X D : Blending Dropout and Pruning for E cient Learning To Rank. In Proceedings of SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan, , 5 pages. DOI: h p://dx.doi.org/10.1145/3077136.3080725
+1 INTRODUCTION
+Learning-to-Rank (LtR) techniques leverage machine learning algorithms and large training datasets to build high-quality ranking models. A training dataset consists in a collection of querydocument pairs where each document is annotated with a relevance label. ese labels induce a partial ordering over the assessed documents, thus de ning an ideal ranking which the LtR algorithm aims at approximating. LtR boosting algorithms building forests of regression trees, e.g., Multiple Additive Regression Trees (MART) [4], are considered nowadays the state-of-the-art solutions for addressing complex ranking problems [1, 5]. eir success is also witnessed by the Kaggle 2015 competitions, where the majority of the winning solutions exploited MART models, and by the KDD Cup 2015 where MART-based algorithms were used by all the top-10 teams [2].
+Publication rights licensed to ACM. ACM acknowledges that this contribution was authored or co-authored by an employee, contractor or a liate of a national government. As such, the Government retains a nonexclusive, royalty-free right to publish or reproduce this article, or to allow others to do so, for Government purposes only. SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3080725
+
+However, MART su ers from over-specialization [8]. It builds the model iteratively by adding a tree at a time trying to minimize the cost function adopted. e trees added at later iterations tend however to impact the prediction of only a few instances and to give a negligible contribution to the nal score of the remaining instances. is has two important negative e ects: i) it negatively a ects the performance of the model on unseen data, and ii) it makes the learned model over-sensitive to the contributions of a few initial trees. To address these two limitations, recently Rashmi and Gilad-Bachrach proposed D [8], a new algorithm that borrows the concept of dropout from neural networks [10] and blends it in the MART iterative algorithm. In neural networks, dropout is used to mute a random fraction of the neural connections during the learning process. As a consequence, nodes at higher layers of the network must relay on fewer connections to deliver the information needed for the prediction. is method has contributed signi cantly to the success of deep neural networks for many tasks. Dropout is adapted to ensemble of trees in a novel way, by muting complete trees as opposed to muting neurons. e experimental results obtained on publicly available datasets prove that D remarkably outperforms MART both in classi cation and regression tasks. Moreover, Rashmi and Gilad-Bachrach show that D overcomes the over-specialization issue to a considerable extent. On the other hand, driven by e ciency reasons [3, 7], recently Lucchese et al. proposed CLE VER [6], a post-learning optimization framework for MART models. e goal is in this case improving the e ciency of the learned model at document scoring time without a ecting ranking quality. CLE VER works in two steps: i) it rst removes a subset of the trees from the MART ensemble and ii) it then ne-tunes the weights of the remaining trees according to the given quality measure.
+Inspired by these two orthogonal works, in this paper we propose X D , a novel LtR algorithm that improves over D by borrowing from CLE VER the tree pruning strategy, eventually providing more robust and compact ranking models. As D , X D mutes from the ensemble built so far some of the trees (dropouts) before learning an additional tree. Di erently from D but like CLE VER, it drops permanently these trees when their contribution to the accuracy is considered negligible. We investigate three di erent pruning strategies aimed at maximizing pruning opportunities and limiting over ing. e experiments conducted on two publicly available datasets show that X D achieves a statically equivalent e ectiveness with respect to the reference D and  M models by employing up to 40% and 75% less
+
+1077
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Algorithm 1 e X D Algorithm.
+
+1: function X D (N , , L, A,  )
+
+N : ensemble size,  : dropout strategy, L : loss function
+
+A : learning algorithm ( M ),  : shrinkage
+
+2: E  
+
+the current ensemble model
+
+3: while |E | < N do
+
+4:
+
+k  D O S (E, )
+
+use dropout strategy
+
+5:
+
+D  D O S (E, k)
+
+random sample
+
+6:
+
+E  E\D
+
+discard dropout set
+
+7:
+
+T   · A.T T (E, L)
+
+train a new tree
+
+8:
+
+if L(E  T ) < LBest then
+
+pruning condition
+
+9:
+
+E  E T
+
+permanent removal of D
+
+10:
+
+else
+
+11:
+
+E  E  {1/(k +  ) · T } D normalization
+
+12:
+
+E  E  {k/(k +  ) · Td | Td  D}
+
+13: return E
+
+trees, respectively. To the best of our knowledge, this is the rst work investigating pruning strategies in D -based algorithms.
+
+2 METHODOLOGY
+X D improves D by embedding actual tree removal strategies that allow more compact ranking models to be learned. We use the pseudo-code of X D shown in Algorithm 1 to discuss its di erences with respect to D .
+X D is an iterative algorithm where at each iteration a given base tree-learning algorithm A is used to train a new tree T which is used to possibly grow the current forest E until the desired model size N is achieved. At each iteration, the dropout size k is selected
+rst (line 4). In the original D algorithm, this size is set as a fraction of the current ensemble size |E |. e proposed X D can exploit di erent selection strategies  as discussed later on. A dropout set D is then selected by picking uniformly at random k trees from the current model E. is set of trees is discarded from the current model E (line 6) when building a new tree T (line 7).
+is perturbation strategy allows to reduce the risk of over ing. Note that a learning rate  (or shrinkage) is applied to the tree T produced by A. e D algorithm adds back the dropout set D together with the new tree T to the pruned model E a er a normalization step (lines 11-12). As T is build without taking into consideration D, adding back the dropout set would a ect negatively (overshoot [8]) the overall model prediction. To avoid this e ect, the leaves predictions of T are rescaled by a factor of  /(k + ), and for the trees in the dropout set by a factor of k/(k + ).
+e resulting model E is further re ned in the subsequent iteration. e proposed X D algorithm introduces a pruning step that
+drops permanently the dropout set D from the model. A er removing from E the dropout set and learning the new tree T , its bene t is evaluated by applying the loss function L to the model E  T . If the loss L(E  T ) is smaller than the smallest loss LBest observed in any previous iteration, then we conclude that the quality of T is larger than the joint quality of the dropout set D (line 8). In this case, X D behaves di erently from D as it permanently removes D and, consequently, it does not normalize the tree T which is added to the pruned model E. e rationale of introducing a pruning step is twofold. First, X D aims at building compact
+
+models which are more e cient when applied. Second, the smaller
+
+models are less prone to over ing, and therefore X D can
+
+potentially achieve be er quality gures than the original D .
+
+e pruning step introduced by X D is indeed driven by the
+
+dropout selection strategy  . e strategy  determines the size k of
+
+the dropout set D. When k is large, several trees are disregarded
+
+before applying the learning algorithm A. A large perturbation
+
+forces A to explore novel regions of the search space, potentially
+
+moving away from local optima. On the other hand, a large k may
+
+introduce too noise and drive the algorithm away from the optimal
+
+solution. e size k has also a relevant impact on the D -based
+
+normalization. A large k reduces the impact of the newly learned
+
+tree T (line 11). e original D algorithm uses a value of k
+
+proportional to the current ensemble size |E |. Increasing the value
+
+of k during the D 's iteration has the same e ect of a decaying
+
+learning rate. During the rst iterations a large learning rate is
+
+used so as to speed-up the convergence, while a smaller learning
+
+rate is used later on to achieve a ne-grained optimization.
+
+e proposed dropout selection strategies are aimed at exploit-
+
+ing the above trade-o s among convergence speed, accuracy and
+
+over ing, by properly tuning k over the training iterations. We
+
+investigate three di erent strategies. R (X D R). is strategy mimics the behavior of D .
+
+At each iteration the dropout set size k is set equal to a fraction r
+
+of the current ensemble size |E |. is provides a good convergence
+
+speed and high resilience to over ing as the model grows. F (X D F). e dropout set size k is constant along the
+
+algorithms iterations. is variant stems from the observation
+
+that large models are o en required to achieve high quality, and
+
+therefore a proportional dropout set size k may introduce too much
+
+noise into the learning process. At the same time, a large k reduces
+
+tree removal opportunities as it may be di cult nd a tree able to
+
+replace several. On the other hand, a small k allows to increase tree
+
+removal chances, producing compact but highly e ective forests.
+
+is is apparent when k = 1, where a new tree is intended to simply
+
+replace the dropout one (when the pruning condition is veri ed),
+
+thus improving e ectiveness without increasing the model size.
+
+A
+
+(X D A). In order to bene t from the advantages
+
+of the above two strategies we also propose an adaptive variant.
+
+We aim at exploiting a small k when a promising search direction
+
+is detected. is speeds-up convergence as it reduces the scaling
+
+factor of the D -based normalization for the new tree. When
+
+the algorithm falls into a local optimum, we aim at exploiting a
+
+large k. To this end, the dropout set size k, initially set to k = 1, is
+
+increased at each iteration by a constant value 0.5. Whenever the
+
+loss of the new model a er the introduction of T , either with or
+
+without permanent removal of the dropout set, improves over the
+
+smallest loss observed so far, this is interpreted as the discovery of a
+
+promising search direction and the value of k is reset to k = 1 for the
+
+subsequent iteration. Note that reducing k improves tree removal
+
+chances, especially with large models. To avoid introducing large
+
+noise the value of k is upper-bounded to a user-de ned parameter.
+
+3 RESULTS AND DISCUSSION
+We evaluate the e ectiveness of X D on two publicly available datasets: MSLR-WEB30K-F1 (Fold 1) and Istella-S [6].
+
+1078
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 1: Comparison of X D against D and  M . NDCG@10 is reported at incremental steps of 100 trees. Values in bold highlight the models that are statistically equivalent or better than the reference D model employing 500 trees.
+
+Strategy D
+M M A
+XD R
+XD F
+XD A
+
+Dropout
+
+MSLR-WEB30K-F1
+
+Istella-S
+
+Model Size
+
+Model Size
+
+100 200 300 400 500 1,199 100 200 300 400 500 1,500
+
+1.5%
+
+.4659 .4737 .4775 .4795 .4807 N. A. .7329 .7434 .7477 .7494 .7516 N. A.
+
+­
+
+.4540 .4694 .4745 .4752 .4766 .4791 .6988 .7239 .7343 .7397 .7433 .7530
+
+.
+
+­
+
+.4520 ­
+
+­
+
+­
+
+­ N. A. .7255 .7278 .7303 .7314 .7320 .7353
+
+1.0%
+
+.4627 .4713 .4749 .4766 .4784 N. A. .7274 .7408 .7467 .7499 .7513 N. A.
+
+1.5%
+
+.4646 .4729 .4758 .4785 .4788 N. A. .7364 .7451 .7488 .7517 .7526 N. A.
+
+2.0%
+
+.4694 .4757 .4778 .4797 .4812 N. A. .7344 .7442 .7477 .7490 ­ N. A.
+
+3.0%
+
+.4746 .4785 .4792 .4808 .4809 N. A. .7377 .7431 .7449 ­
+
+­
+
+N. A.
+
+1
+
+.4715 .4722 ­
+
+­
+
+­
+
+N. A. .7414 .7465 .7465 .7471 .7482 N. A.
+
+2
+
+.4740 .4770 .4784 .4776 .4777 N. A. .7403 .7476 .7504 .7517 .7529 N. A.
+
+3
+
+.4738 .4775 .4783 .4799 .4793 N. A. .7374 .7455 .7482 .7508 .7532 N. A.
+
+4
+
+.4725 .4776 .4788 .4800 .4804 N. A. .7330 .7439 .7491 .7511 .7535 N. A.
+
+UB
+
+5 .4729 .4777 .4794 .4805 .4802 N. A. .7427 .7480 .7517 .7532 .7526 N. A.
+
+UB
+
+10 .4729 .4765 .4770 .4789 .4793 N. A. .7427 .7478 .7514 ­
+
+­
+
+N. A.
+
+UB
+
+1.5% .4709 .4737 .4768 .4770 .4766 N. A. .7428 .7484 .7507 .7518 .7525 N. A.
+
+e MSLR-WEB30K-F11 dataset is composed of 31,351 queries. Each of the 3,771,125 query-document pairs is represented by means of 136 features. e Istella-S2 dataset is composed of 33,018 queries and each of the 3,408,630 query-document pairs is represented by means of 220 features. e query-document pairs in both the datasets are labeled with relevance judgments ranging from 0 (irrelevant) to 4 (perfectly relevant). Each dataset is split in three sets: train (60%), validation (20%), and test (20%). Training and validation data were used to train two reference algorithms: i)  M , a list-wise algorithm that is capable of using NDCG in its loss function, resulting in a predictor of the ranking [11] and ii) D [8] a novel algorithm employing dropout as an e ective regularization mechanism. e two algorithms were ne-tuned by sweeping their parameters to maximize NDCG@10. For the training of the  M models, the maximum number of leaves was tested in the set {5, 10, 25, 50}, while the learning rate in {0.05, 0.1, 0.5, 1.0}. To avoid over ing, we implemented an early stop condition, allowing the algorithm to train up to 1,500 trees unless there is no improvement in NDCG@10 on the validation set during the last 100 iterations. e D algorithm was trained up to 500 trees by varying the dropout rate in {1%, 1.5%, 2%, 3%} and the learning rate in {0.05, 0.1, 0.5, 1.0}.
+e best performance of  M have been obtained by using a learning rate equal to 0.05 and 50 leaves. e nal sizes of the forests are 1,199 and 1,500 on the MSLR-WEB30K-F1 and Istella-S datasets, respectively. e former result is due to the aforementioned early stop condition reached by the algorithm. Regarding D , the best performing model was produced by using a learning rate of 1.0 and a dropout rate of 1.5%.
+Performance of D . We rst investigate the e ectiveness of D compared to that of  M (Table 1). Interestingly D (500 trees) is able to achieve a NDCG@10 of 0.4807 on MSLRWEB30K-F1 and of 0.7516 on Istella-S (see Table 1), thus outperforming the original  M models of similar size. On the former dataset the performance of D is higher than that of the full
+1h p://research.microso .com/en-us/projects/mslr/ 2h p://blog.istella.it/istella-learning-to-rank-dataset/
+
+ M model while on the la er dataset D performs similarly to the full  M model of size 1,500. D is thus able to achieve same or higher performance of  M by using up to 66% less trees. e superiority of D in learning smaller models is thus con rmed in both the datasets employed.
+We claim that D is able to achieve signi cant improvements by exploiting i) dropout as a regularization strategy and ii) an adaptive learning rate. We further investigate which one of the two aspects is most responsible for the gain we observe with respect to  M . To this end, we extend the  M algorithm by introducing an adaptive learning rate strategy, namely  M A ., that simulates the behaviour of D without performing dropout during each training iteration.  M A . thus adopts  /(k +  ) as learning rate for the i-th iteration, where k = r · i.
+Table 1 reports the performance of the aforementioned algorithm when adopting the best performing learning rate of D , i.e.,  = 1.0.  M A . does not outperform the D algorithm in terms of NDCG@10. Moreover, on the MSLR-WEB30K-F1 dataset, the algorithm reached the early stop condition during the
+rst 100 iterations thus con rming that a large learning rate, even when employed with adaptive learning rate strategies, does not allow to mitigate the over-specialization phenomenon in the MART algorithm. It is worth remarking that D and  M A . share almost the same initial training behavior since D cannot drop any tree as long as r · i < 1. From this point on, and di erently from  M A ., D is able to go beyond this local optimum while  M A . soon reaches the early stop condition. is analysis reveals that the performance of D are mostly due to the adoption of dropout as a regularization strategy since the adaptive learning rate alone is not su cient for handling over-specialization.
+Performance of X D . We analyse the performance of X D 3 by reporting the e ectiveness of each of the three dropout strategies introduced in Section 2, namely X D R, X D F, X D A. We experiment X D R by varying the dropout rate in the set {1.0%, 1.5%, 2.0%, 3.0%} while X D F employs a constant
+3 e source code of X D is available at: h p://quickrank.isti.cnr.it.
+
+1079
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Figure 1: E ectiveness of X D strategies and D in terms of NDCG@10 on Istella-S dataset.
+dropout k in {1, 2, 3, 4}. We test X D A by using three di erent upper bounds for k. Two of them are xed: 5 and 10, while the third one is expressed as a percentage of the ensemble size, i.e., 1.5%. For each X D strategy reported in Table 1, values in bold highlight performance statistically greater than or equal to that of the reference D model employing 500 trees. We do the analysis by employing the randomization test [9] with 10, 000 permutations and p-value  0.05 to assess if the di erences in terms of NDCG@10 between the reference and the pruned models are statistically signi cant or not.
+e best performance of X D R on the MSLR-WEB30K-F1 dataset is observed when employing a dropout rate equal to 2.0% and 3.0%. Indeed, both the models of 500 trees achieve an higher value of NDCG@10 w.r.t. the reference D despite the di erence is not statistically signi cant. More interestingly, X D R allows to achieve a statistically equivalent performance w.r.t. D by employing almost half of the trees needed by D , i.e., 300 trees against 500 used by D , with a saving of up to 40% in terms of e ciency. A similar behavior can be observed on the Istella-S dataset. Here, the best dropout rate is 1.5%, where X D R is able to achieve a statistically equivalent performance w.r.t. D by employing 100 trees less.
+e X D F strategy shows good performance on the Istella-S dataset by employing k  {2, 3, 4} with a NDCG@10 higher than the reference D model. By analyzing the statistical equivalence, we observe that X D F allows to prune up to 200 and 100 trees on Istella-S and MSLR-WEB30K-F1 datasets, respectively.
+X D A is globally the best performing strategy as it allows to save up to 200 and 1,100 trees w.r.t. D and  M respectively on both the datasets when employing an upper bound of 5. is is a consequence of how X D A works as it inherits the advantages of the two previous dropout strategies. We also remark that the same upperbound resulted the best on both datasets. We can conclude that the dynamic strategy X D A can e ectively adapt on di erent datasets.
+To highlight the e ectiveness of X D , Figure 1 reports the performance of the three X D strategies (solid lines) against
+
+D (dashed horizontal lines) at incremental steps of 100 trees on the Istella-S dataset. We report the X D R strategy employing a dropout rate of 1.5%, X D F with a xed k = 2, and X D A using an upper bound of 5. It is worth noting that all X D strategies outperform the D model of equivalent size and, more importantly, they allow to always save at least 100 trees without a ecting the quality of the resulting model. Moreover, the e ectiveness of X D employing 400 trees is always higher or equal than the one provided by the reference D model, with X D A showing statistically signi cant improvement.
+e proposed experimental evaluation allows for a deeper understanding of the dynamics behind the D algorithm and, more importantly, con rms the validity of the proposed X D strategies as a way to blend pruning in the training of D ensembles.
+4 CONCLUSION AND FUTURE WORK
+We proposed X D , a new LtR algorithm that improves D by embedding tree removal strategies within the learning process. X D mutes some of the trees from the ensemble built so far (dropouts) before learning an additional tree but, di erently from D , it drops permanently these trees when their contribution to the accuracy is considered negligible. By doing so, X D is able to reduce over ing a ecting the learned model as the strategies proposed for permanently deleting the trees allow for a be er exploration of the search space. Experiments conducted on publicly available datasets con rm the validity of the proposals by showing that X D achieves statistically equivalent e ectiveness (measured in terms of NDCG@10) with respect to the reference D and  M models by employing up to 40% and 75% less trees, respectively. As future work we intend to investigate in depth the behavior of X D when training forests of larger size and to assess the performance of X D on other LtR datasets. Acknowledgments. is work was supported by EC H2020 INFRAIA1-2014-2015 SoBigData: Social Mining & Big Data Ecosystem (654024).
+REFERENCES
+[1] G. Capannini, C. Lucchese, F. M. Nardini, S. Orlando, R. Perego, and N. Tonello o. 2016. ality versus e ciency in document scoring with learning-to-rank models. Information Processing & Management 52, 6 (2016), 1161 ­ 1177.
+[2] T. Chen and C. Guestrin. 2016. XGBoost: A Scalable Tree Boosting System. In Proc. ACM SIGKDD. ACM, 785­794.
+[3] D. Dato, C. Lucchese, F. M. Nardini, S. Orlando, R. Perego, N. Tonello o, and R. Venturini. 2016. Fast Ranking with Additive Ensembles of Oblivious and Non-Oblivious Regression Trees. ACM Trans. Inf. Syst. 35, 2, Article 15 (2016), 15:1­15:31 pages.
+[4] J. H. Friedman. 2000. Greedy Function Approximation: A Gradient Boosting Machine. Annals of Statistics 29 (2000), 1189­1232.
+[5] A. Gulin, I. Kuralenok, and D. Pavlov. 2011. Winning e Transfer Learning Track of Yahoo!'s Learning To Rank Challenge with YetiRank.. In Yahoo! Learning to Rank Challenge. 63­76.
+[6] C. Lucchese, F. M. Nardini, S. Orlando, R. Perego, F. Silvestri, and S. Trani. PostLearning Optimization of Tree Ensembles for E cient Ranking. In Proc. ACM SIGIR '16'. ACM, 949­952.
+[7] C. Lucchese, F. M. Nardini, S. Orlando, R. Perego, N. Tonello o, and R. Venturini. 2015. ickScorer: A Fast Algorithm to Rank Documents with Additive Ensembles of Regression Trees. In Proc. ACM SIGIR. 73­82.
+[8] K.V. Rashmi and R. Gilad-Bachrach. 2015. Dart: Dropouts meet multiple additive regression trees. Journal of Machine Learning Research 38 (2015).
+[9] M. D. Smucker, J. Allan, and B. Cartere e. 2007. A Comparison of Statistical Signi cance Tests for Information Retrieval Evaluation. In Proc. CIKM. ACM.
+[10] N. Srivastava, G. E Hinton, A. Krizhevsky, I. Sutskever, and R. Salakhutdinov. 2014. Dropout: a simple way to prevent neural networks from over ing. Journal of Machine Learning Research 15, 1 (2014), 1929­1958.
+[11] Q. Wu, C.J.C. Burges, K.M. Svore, and J. Gao. 2010. Adapting boosting for information retrieval measures. Information Retrieval (2010).
+
+1080
+
+

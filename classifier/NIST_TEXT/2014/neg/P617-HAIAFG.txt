@@ -1,0 +1,812 @@
+Coarse-to-Fine Review Selection via Supervised Joint Aspect and Sentiment Model
+
+Zhen Hai, Gao Cong, Kuiyu Chang, Wenting Liu, Peng Cheng
+School of Computer Engineering, Nanyang Technological University 50 Nanyang Avenue, Singapore 639798
+{haiz0001, gaocong, askychang, wliu7, pcheng1}@ntu.edu.sg
+
+ABSTRACT
+Online reviews are immensely valuable for customers to make informed purchase decisions and for businesses to improve the quality of their products and services. However, customer reviews grow exponentially while varying greatly in quality. It is generally very tedious and difficult, if not impossible, for users to read though the huge amount of review data for decision-making. Fortunately, review quality evaluation enables a system to recommend automatically the most helpful reviews to users. Previous studies predict only the overall review utility about a product, and often focus on developing different data features to learn a quality function for the problem. In this paper, we aim to select the most helpful reviews not only at the product level, but also at a fine-grained product aspect level. We propose a novel supervised joint aspect and sentiment model (SJASM), which is a probabilistic topic modeling framework that jointly discovers aspects and sentiments guided by a review helpfulness metric. One key advantage of SJASM is its ability to infer the underlying aspects and sentiments, which are indicative of the helpfulness of a review. We validate SJASM using publicly available review data, and our experimental results demonstrate the superiority of SJASM over several competing models.
+Categories and Subject Descriptors
+H.3.3 [Information Search and Retrieval]: Text Mining; I.2.7 [Artificial Intelligence]: Natural language Processing--Text Analysis
+General Terms
+Algorithms, Experimentation
+Keywords
+review selection; review helpfulness; supervised joint topic model; sentiment analysis
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'14, July 6­11, 2014, Gold Coast , Queensland, Australia. Copyright 2014 ACM 978-1-4503-2257-7/14/07 ...$15.00. http://dx.doi.org/10.1145/2600428.2609570 .
+
+1. INTRODUCTION
+Nowadays, customers readily create textual reviews to share their hands-on experiences and opinions on the purchased products or services on websites such as Amazon 1. Online reviews are immensely valuable because: 1) They have become an inevitable part of the decision making process on product purchases, hotel bookings, etc. According to a survey, a massive 88% of respondents agreed that they "sometimes or always" consult customer reviews prior to making a purchase 2; and 2) They collectively form a lowcost and efficient feedback channel for businesses to keep track of their reputation and customer sentiments, which can be used to improve the quality of their products and services.
+However, customer reviews are constantly growing in quantity, while varying greatly in quality or helpfulness. A popular product can easily accumulate hundreds or even thousands of online reviews within a very short period of time. For instance, the book "Harry Potter and the Half-Blood Prince" on Amazon had received 4,193 customer reviews by January 24, 2014. Among the large number of reviews, the helpful and high-quality reviews are usually intermixed with the useless ones. It is thus practically impossible for users to read through such large number of reviews for good decisionmaking.
+Some existing e-commerce websites already provide a crowdsource mechanism to evaluate review quality. For instance, Amazon allows customers to vote each product review as helpful or unhelpful. As a matter of fact, a good many of reviews of the unpopular products receive very few or no votes at all. As a result, decisions made using the online sparse voting information alone tend to suffer from bias, and are perhaps unreliable. Moreover, no websites currently provide a mechanism for assessing the review utility at the fine-grained aspect level.
+By formulating the review utility prediction simply as a regression or classification problem, previous studies mainly focus on defining data features, on which a review utility function can be then learnt [7, 20, 11, 13, 3]. Further, all the existing approaches are proposed for review utility prediction at the product level. In other words, the approaches cannot be used to detect product aspects and therefore to select the most useful reviews at the fine-grained product aspect level. In reality, savvy consumers not only want to read the most helpful reviews for a product, but also are
+1http://www.amazon.com/ 2http://www.reevoo.com/about-us/press-releases/halfconsumers-find-social-content-useful-when-shopping-online
+
+617
+
+eager to know what aspects are evaluated in reviews, and which reviews are the most useful for learning the individual aspects of the reviewed product. Such fine-grained review utility information may very well tip the balance in customer purchase decisions. Additionally, in opinion summarization system, incorporating the selected useful reviews with the summarized compact sentiment analysis results could provide much more informative first-hand experiences to users.
+In this work, we focus on the problem of review helpfulness/utility prediction and review selection from coarse grain (product-level) to fine grain (aspect-level), namely, coarse-to-fine review selection. In particular, we study three closely related problems as described below:
+1. Overall review helpfulness prediction. We predict the overall review helpfulness scores at the product level, and select the most helpful reviews for each product in terms of the scores.
+2. Aspect detection. We detect the individual product aspects that are evaluated in customer reviews, in order to address the fine-grained review selection problem.
+3. Aspect-based review utility estimation. For each detected product aspect, we estimate the aspect-based review utility scores, and then recommend the most useful reviews for the aspect in terms of the scores.
+It is observed that online customer reviews often come with helpfulness voting, for instance, in the form of "x of y people found the following review helpful" on Amazon. Typically, a customer review is helpful in the sense that the review: 1) mentions the particular attributes, components, or aspects of a commented product, and 2) expresses pertinent sentiments, opinions, and evaluations on such specific aspects. We propose to model the helpfulness voting of a review in a unified framework to supervise the inference process of underlying aspects and sentiments in the review. In addition, the vast majority of existing topic modeling approaches use the bag-of-words (BOW) representation of a document. Differently, we reduce each review document as a bag of opinion pairs (BOOP), and then model each pair of aspect term and its associated opinion word simultaneously in the unified framework.
+We propose a novel supervised joint aspect and sentiment model (SJASM), which is a probabilistic topic modeling framework that jointly detects aspects and sentiments from reviews under the supervision of the helpfulness voting data. One key advantage of SJASM is that it can discover the underlying sentimental aspects which are predictive of the review helpfulness voting. We then apply it to the review helpfulness/utility prediction to address the coarse-tofine review selection problem. We evaluate SJASM using three publicly available review collections, and experimentally show the improved effectiveness of the proposed model against benchmark models.
+We summarize our contributions as follows:
+· We define a new problem in opinion mining field, namely, aspect-based review selection. To the best of our knowledge, this is the first work that addresses the review utility prediction and helpful review selection with regard to individual aspects of a reviewed product.
+· By incorporating the helpfulness voting into a unified framework, we propose a novel supervised joint topic
+
+model called SJASM. One key advantage of SJASM is its ability to infer the hidden aspects and sentiments which are indicative of the helpfulness voting of a review.
+· We employ SJASM to address the coarse-to-fine review recommendation problem. As far as we know, our approach is the first to apply topic modeling technique to the problem of review helpfulness/utility prediction and review selection.
+2. RELATED WORK
+2.1 Review Utility Prediction
+Previous work typically focuses on manually coming up with data features, and then formulating review helpfulness/utility prediction as a regression or classification problem on these features.
+Kim et al. [7] proposed to utilize five classes of textual features to estimate the helpfulness of a review. They found that the most useful features were the length of review, unigrams, and ratings. Zhang and Varadarajan [20] built regression models by incorporating a diverse set of textual features. They claimed that the shallow syntactic features turned out to be the most influential predictors, which indicates that the utility of a review highly depends on its linguistic style. To predict the helpfulness of online reviews, Liu et al. [12] used a regression model based on the data features like the reviewer's expertise, the review writing style, and the timeliness of a review. Ghose and Ipeirotis [3] proposed to exploit the text-related features, such as subjectivity, readability, and linguistic correctness, to estimate the helpfulness of product reviews. Two other classificationbased approaches were developed to recommend the most helpful reviews by filtering out the low-quality ones in [11, 16]. Further, to improve the textual feature based review quality predictor, Lu et al. [13] proposed to exploit social contextual information about reviewers' identities and social networks.
+All of the aforementioned existing studies focus on only predicting the review helpfulness/utility/quality with regard to a whole reviewed product, with the objective to recommend/select the most helpful reviews at the product level. However, when faced with fine-grained aspect-level helpful review selection problem, the previous studies may become useless.
+2.2 Probabilistic Topic Models
+Topic modeling algorithms aim to uncover the hidden topical structure of a document collection [2, 5]. Blei et al. [2] proposed the first latent Dirichlet allocation (LDA), in which a document is modeled as a mixture over a latent set of topics, where each topic is modeled by a distribution over words. Based on LDA, many other topic models have been developed to address review mining problems.
+Titov and McDonald [17] developed a joint topic model of text and aspect ratings, called multi-aspect sentiment model (MAS). MAS can identify latent topics in customer reviews and extract textual evidence from the reviews supporting each of the aspect ratings. But the assumption of MAS that every aspect-based sentiment rating is present in review data may lead to its limited use in reality. This is because a large quantity of online reviews have not been annotated with
+
+618
+
+aspects as well as the aspect-specific sentiment ratings by customers.
+Lin and He [9] extended LDA by designing a new sentiment layer, and proposed a joint sentiment-topic model (JST), which is based on the assumption that topic generation depends on sentiments, and word generation is dependent on the sentiment-topic pairs. Lin et al. [10] then extended JST by incorporating sentiment priors, and introduced a weakly supervised joint sentiment-topic model. The supervision knowledge comes from a domain independent sentiment lexicon. The weakly supervised JST model may yield improved performance compared to the unsupervised one, however suffers from two problems: 1) The inference of the sentiment labels for the out-of-lexicon expressions becomes unsupervised, negating the supervised advantage; and 2) The detection of underlying topics is completely unsupervised.
+Jo and Oh [6] proposed a sentence-LDA model, and then extended the model to an aspect and sentiment unification model (ASUM), which detects sentiments toward different aspects in a unified framework. A sentiment lexicon was also incorporated in the model. One limitation of ASUM is its assumption that each review sentence contains exactly one aspect is often violated when modeling the long and complicated real-world reviews. Moghaddam and Ester [15] developed an interdependent LDA model (ILDA) to jointly detect hidden aspects and sentiments from product reviews. Wang et al. [19] proposed a latent aspect rating analysis model (LARAM) to discover latent aspects and their sentiment ratings. But one challenge that remains in LARAM is the aspect segmentation, which may provide inaccurate segments for the subsequent aspect-specific rating analysis task.
+All of the topic models mentioned above were introduced primarily for classifying the sentiments on the latent aspects in each review, but not for predicting the helpfulness of the review. Though benefitting from the modeling of the subjective and objective information in individual reviews, they cannot model the review helpfulness voting information in their frameworks, and will be thus less successful for discovering the topical structure of review data for the review helpfulness analysis tasks.
+Blei and McAuliffe [1] developed a supervised latent Dirichlet allocation model (sLDA), a statistical model of labelled documents. Though sLDA can be used to model the review document and helpfulness voting pairs, it cannot discover the sentiments expressed towards the hidden topics in reviews, simply due to no sentiment analysis module designed in the structure.
+Our supervised joint topic model SJASM is related to but different from the aforementioned topic models. The incorporation of review helpfulness voting into the modeling framework enables SJASM to exploit the supervision information to guide the inference process of underlying aspects and aspect-specific sentiments in each review. One key advantage of our proposed model is the identified sentimental aspects are predictive of review helpfulness response.
+3. PROBLEM DEFINITION
+We define some terminologies, followed by the definitions of the problems that we will address in this paper.
+Aspect Term: An aspect term t indicates an attribute, a component, or a feature of an entity (e.g., product), which
+
+appears typically as noun or noun phrase in customer reviews. For example, in this review sentence, "The price is too expensive for me", the noun "price" is an aspect term.
+Opinion Word: An opinion word o refers to the word used to express subjectivity, opinion, and sentiment in a review. It occurs typically as an adjective in review sentences. The adjective "expensive" in the above example is an opinion word.
+Aspect: An aspect a refers to a unique ratable attribute or component of an entity. In our model setting, it is also known as an underlying topic, and typically clusters a set of semantically related aspect terms and opinion words. For instance, we can infer a hidden aspect "price" via the opinion word "pricey" in this sentence "It is really too pricey".
+Sentiment: A sentiment s refers to the opinion/sentiment orientation expressed on the aspects of an entity or the entity itself. In our work it also indicates a sentimental cluster which groups the opinion words with the same sentimental orientation. Typically, the sentiment orientation can be represented in sentimental labels such as positive, negative, and neutral, or in sentimental ratings like 1-to-5 star ratings. For instance, a negative sentiment is expressed on the underlying aspect "price" via the opinion word "pricey" in the above example.
+Opinion Pair: An opinion pair op = t, o is defined as a pair of aspect term t and its corresponding opinion word o extracted from a customer review. For instance, we can extract an opinion pair price, expensive from this review sentence "The price is really expensive for me".
+Helpfulness: The helpfulness h of a review indicates the utility or usefulness of the review to fellow users for making decisions.
+Next, given a product from a category, there is a collection of M customer reviews R = {r1, r2, . . . , rM } for the product, where each review rm is reduced to a set of Nm opinion pairs rm = { t1, o1 , t2, o2 , . . . , tNm , oNm }. We define the problems to be addressed in this work below:
+Overall Review Helpfulness Prediction: This task is to predict the overall helpfulness score hm of a review rm with regard to a reviewed product. The most helpful reviews will be then selected in terms of the scores hm for the product itself.
+Aspect Detection: This task aims to discover the K ratable product aspects ak evaluated in the collection of reviews R, typically by clustering the synonymous or semantically related keywords (aspect terms or opinion words) appearing in the reviews. For example, the aspect "price" can be inferred from such semantically related keywords like "price", "cost" "pricey", and "expensive".
+Aspect-based Review Utility Estimation: This task is to estimate the fine-grained aspect-based utility score hmk of the review rm with regard to a particular aspect ak. Then, a list of useful reviews will be recommended based on the utility scores hmk for the detected aspect ak.
+4. PROPOSED MODEL
+By incorporating the review helpfulness voting information into a unified framework, we propose a novel probabilistic graphical model called Supervised Joint Aspect and Sentiment Model (SJASM) to address the problems defined above. SJASM simultaneously models the pairwise aspect terms and their corresponding opinion words in a review, and jointly detects the underlying aspects and sentiments
+
+619
+
+
+
+P
+
+
+
+DPQ
+
+KP
+
+
+
+VPQ
+
+PN
+.
+
+
+WPQ
+RPQ
+Q>1P@
+
+N 
+.
+NO 
+./
+
+P>0@
+
+Figure 1: Graphical model representation of Supervised Joint Aspect and Sentiment Model.
+
+under the supervision of the helpfulness voting of the review. One key advantage of SJASM is that it can identify the sentimental aspects that are predictive of the helpfulness of a customer review.
+We make the following assumptions for the generative process of SJASM:
+· Sentiment generation depends on aspects. We first generate a hidden aspect, on which we subsequently generate the associated sentiment orientation. This is because different product aspects have different utility quality, and thus leads to different sentimental experiences and evaluations.
+· Opinion word generation depends on both sentiment and aspect, while aspect term generation depends on the aspect itself. For instance, the generation of an opinion word "expensive" is dependent not only on the sentiment orientation "negative" but also on the aspect "price".
+· The generation of helpfulness voting of a review depends on the generated hidden aspects and sentiments in the review. It is intuitive, since the helpfulness of a review will be voted high if the review describes the particular aspects of a product and also expresses the pertinent sentiments on the aspects.
+Based on the assumptions, to generate a review document and the helpfulness response by SJASM, underlying aspects are first generated conditioned on the document-specific aspect distribution. The sentiments are then generated conditioned on the generated aspects as well as the documentspecific sentiment distribution. Next, the aspect term and opinion word in every opinion pair of the review are generated conditioned on their corresponding aspect and sentiment. Review helpfulness response is finally generated conditioned on the realized aspect and sentiment assignments in the review.
+The graphical model representation of SJASM is shown in Figure 1, and the notations used in this model are listed in Table 1. The generative process of the graphical model is as follows:
+
+M Nm K L tmn omn amn smn hm m mk k kl      2 U V am,-n sm,-n n(mk) n(ml),k
+n(ku) n(kv,l)
+
+Table 1: Notations of SJASM
+number of review documents in a corpus number of opinion pairs in review rm number of aspects number of sentiments aspect term in the nth opinion pair of review rm opinion word in the nth opinion pair of review rm aspect assignment to tmn and omn sentiment assignment to opinion word omn helpfulness of review rm aspect distribution in review document rm sentiment distribution on aspect k in review rm aspect word distribution for aspect k opinion word distribution for aspect k and sentiment l Dirichlet parameter for aspect distribution Dirichlet parameter for sentiment distribution Dirichlet parameter for aspect word distribution Dirichlet parameter for opinion word distribution helpfulness response parameter
+helpfulness response parameter number of unique aspect words in vocabulary number of unique opinion words in vocabulary all aspect assignments except for amn all sentiment assignments except for smn
+count of aspect k being assigned to words in review rm
+count of sentiment l being assigned to words
+that are also assigned to aspect k in review rm
+count of unique aspect word u assigned to aspect k
+count of word v assigned to aspect k and sentiment l
+
+1. For each aspect k  {1, . . . , K}
+
+(a) Draw aspect word distribution k  Dir(). (b) For each sentiment orientation l  {1, . . . , L}
+i. Draw opinion word distribution kl  Dir().
+
+2. For each review rm and its helpfulness response hm
+
+(a) Draw aspect distribution m  Dir().
+(b) For each aspect k under review rm
+i. Draw sentiment distribution mk  Dir().
+(c) For each opinion pair tmn, omn , n  {1, . . . , Nm}
+i. Draw aspect amn  Mult(m). ii. Draw sentiment smn  Mult(mamn ). iii. Draw aspect term tmn  Mult(amn ). iv. Draw opinion word omn  Mult(amnsmn ). (d) Draw helpfulness hm  N(T z¯m, 2), where we define
+
+z¯m
+
+=
+
+1 C
+
+Nm
+(amn
+
+×
+
+(T
+
+× smn))
+
+(1)
+
+n=1
+
+In Equation 1, z¯m represents the combined empirical frequencies of the underlying aspects and sentiments in a review rm, where C is a normalization constant, and  is a weight vector for sentiment orientations (labels/ratings), which can be obtained experimentally from data.
+The real-valued helpfulness response hm is drawn from a normal linear model, where the quantity z¯m works as the covariates, and  indicates the regression coefficients, while the parameters T z¯m and 2 are the mean and variance of the normal distribution. We regress the helpfulness response on the empirical frequencies of the hidden aspects and sentiments generated in the review. This means that the aspect terms and opinion words as well as their aspect and sentiment assignments in the review are generated first,
+
+620
+
+then, based on the aspects and sentiments of the review, the helpfulness response is generated.
+The formulation agrees with the intuition that reviews that clearly convey positive or negative evaluations on the specific aspects of a product could be more constructive and informed, and should be selected for use.
+
+5. INFERENCE AND PREDICTION
+In this section, we describe the approximate inference and parameter estimation procedure for SJASM. We also describe how to apply SJASM to review helpfulness prediction and review selection problem.
+
+5.1 Inference and Parameter Estimation
+Our goal of inference is to evaluate the posterior distribution P (a, s | t, o, h), as shown below (parameters are omitted):
+
+P (a, s | t, o, h) =
+
+a
+
+P
+
+(a, s, t, s P (a,
+
+o, s,
+
+h) t, o,
+
+h)
+
+.
+
+(2)
+
+The exact inference for this distribution is intractable, due to the difficulty in the denominator of Equation 2.
+At this point, the Gibbs sampling technique comes into play. Following Griffiths and Steyvers [4] we use a collapsed Gibbs sampling algorithm for the approximate inference of SJASM.
+We compute the full conditional distribution as follows:3
+
+P (amn = k, smn = l | am,-n, sm,-n, tm, om, hm, , ,
+
+, , , 2)
+
+
+
+{n(mk)}-n {nm}-n +
+
++ k
+
+K k=1
+
+k
+
+×
+
+{n(ml),k
+
+}
+-n
+
++
+
+
+
+{nm,k}-n + L
+
+×
+
+{n(ku)}-n +  {nk}-n + U 
+
+×
+
+{n(kv,l)
+
+}
+-n
+
++
+
+
+
+{nk,l}-n + V 
+
+(3)
+
+×
+
+1 22
+
+exp{-
+
+(hm
+
+- T 22
+
+z¯m)2
+
+}.
+
+where am,-n and sm,-n are all aspect and sentiment assignments, excluding am,n and sm,n, respectively, n(mk) is the
+count of aspect k assigned to words in review document rm, n(ml),k is the count of sentiment l allocated to words that are also assigned to aspect k in review rm, n(ku) is the number of times unique aspect word u is assigned to aspect k, and n(kv,l) is the number of times unique opinion word v is assigned to sentiment l as well as to aspect k. The subscript
+"-n" in a quantity indicates that the quantity excludes the data at the index of n. For example, {n(ku)}-n indicates the count of the unique aspect word u being assigned to aspect
+k, excluding the aspect term instance of the word u and
+the corresponding aspect assignment at the index n. The
+notations in Equation 3 are listed in Table 1.
+Based on the samples from the full conditional distribu-
+tion, we compute document aspect distribution as below:
+
+m,k =
+
+n(mk) + k
+
+K k=1
+
+n(mk)
+
++
+
+k
+
+.
+
+(4)
+
+3Derivation of the conditional distribution is omitted due to page limitation.
+
+The document-aspect sentiment distribution is computed by:
+
+m,k,l =
+
+n(ml),k +
+
+L l=1
+
+n(ml,)k
+
+ +
+
+L
+
+.
+
+(5)
+
+The aspect word distribution is computed by:
+
+k,u =
+
+n(ku) + 
+
+U u=1
+
+n(ku)
+
++
+
+U
+
+
+
+.
+
+(6)
+
+We compute the aspect-sentiment opinion word distribution as follows:
+
+klv =
+
+n(kv,l) +
+
+V v=1
+
+n(kv,l)
+
+ +
+
+V
+
+
+
+.
+
+(7)
+
+Previous work has shown that an asymmetric Dirichlet prior over the document topic distribution has substantial advantages over a symmetric prior, while an asymmetric prior over the topic word distribution provides no real benefit [18]. We thus use an asymmetric prior  for the document aspect distribution, while using symmetric priors  and  for the aspect word distribution and aspect-sentiment opinion word distribution, respectively. Note we use symmetric prior  for the sentiment distribution. In particular, we apply a fixed-point iteration scheme [14] for the estimation of the prior . The symmetric prior  is set as 1/L, while both priors  and  are specified as the same value 0.01.
+We follow Blei and McAuliffe [1] to approximately evaluate the normal linear model parameters  and 2.
+Let Z be the M × K matrix whose rows are the vectors z¯m T . Then  is approximated as follows:
+
+^  (ZT Z)-1ZT h,
+
+(8)
+
+where h indicates the helpfulness response vector. We approximate 2 as follows:
+
+^ 2
+
+
+
+1 M
+
+[hT h - hT Z(ZT Z)-1ZT h].
+
+(9)
+
+5.2 Review Helpfulness Prediction and Review Selection
+Next, we apply SJASM to the review helpfulness prediction and review selection problem.
+
+5.2.1 Product-level Review Selection
+
+Given a new unlabeled review rm and a fitted model {k, kl, , , , , , 2}(k : 1, . . . , K; l : 1, . . . , L), our idea for the overall review helpfulness prediction is to first infer all the evaluated aspects of the product and their associated sentiments in the review, and then approximately form the regression function on the posterior mean z¯m, as shown below:
+
+h^m  T z¯m.
+
+(10)
+
+Note that we approximate the posterior mean of z¯m by applying Gibbs sampling as described in the previous section. However, the terms relying on the helpfulness response are removed from the sampling formula, as testing reviews contain no helpfulness annotations.
+We estimate the overall helpfulness scores of all the testing reviews using Equation 10, and recommend the most helpful reviews for the commented product to users for decisionmaking.
+
+621
+
+5.2.2 Aspect-level Review Selection
+
+As for the fine-grained aspect-level review selection, we need to fix two problems, one is to detect aspects, the other is to estimate the aspect-based utility score of each review.
+The aspects are recognized via the aspect word distribution and aspect-sentiment opinion word distribution. Then, for each aspect, we estimate the aspect-based review utility score based on two criteria: document aspect distribution and the predicted review helpfulness. This is because the reviews to be recommended for an aspect are required to be not only useful but also relevant to the aspect.
+In particular, we approximate the aspect-based utility score hmk of the review rm for the aspect k by weighting the document aspect distribution mk with the predicted review helpfulness h^m, as given in the function below:
+
+h^mk  mk 
+
+h^ m m h^m
+
+.
+
+(11)
+
+We then recommend the most useful reviews for each aspect in terms of the estimated aspect-based utility scores.
+
+6. EXPERIMENT RESULTS
+We evaluated SJASM on the problem of review utility prediction and coarse-to-fine review selection. In particular, we conducted three types of experimental evaluations:
+· Overall review helpfulness prediction. We predicted overall helpfulness via SJASM, and selected the most helpful reviews for a product in terms of the scores.
+· Aspect detection. The aspects commented on in reviews were detected via SJASM, and were then evaluated qualitatively against baseline models.
+· Aspect-based review utility estimation. The aspectbased review utility was estimated based on the review helpfulness and document (review) aspect distribution. The most useful and relevant reviews were recommended for each detected aspect in terms of the aspect-based utility scores.
+We compared SJASM against three well-established benchmark models: a supervised topic model called supervised latent Dirichlet allocation (sLDA) [1], a weakly supervised topic model called joint sentiment-topic (JST) model [10], as well as a classic linear regression model (LR). Note that: 1) JST is weakly supervised in the sense that it incorporates a pre-compiled sentiment lexicon to supervise the generation of sentiment label, but for the topic/aspect detection, it is unsupervised; and 2) LR is used only for the evaluation of overall review helpfulness prediction, as it cannot discover the latent topical structure of data.
+6.1 Data Sets
+We tested SJASM against the baselines using publicly available review data from three product categories, namely, Audio CD, Video Games, and Books, which were collected from Amazon 4. Some statistics of review data sets are listed in Table 2. Note each data set contains only the reviews of one product from each category 5.
+4http://liu.cs.uic.edu/download/data/ 5Audio CD: "American Idiot"; Video Games: "Grand Theft Auto: San Andreas"; Books: "Harry Potter and the HalfBlood Prince".
+
+Table 2: Some Statistics of Review Data Sets
+
+Category
+
+Audio CD Video Games Books
+
+# Reviews # Words Vocabulary size Average # words/review
+
+1,480 282,477 15,122 190
+
+650 129,838 10,733 199
+
+2,500 535,040 20,686 214
+
+Amazon users are allowed to vote whether a review is helpful or not, and the helpfulness voting is represented in the form "x of y people found the following review helpful". In our experiments, we used only the reviews with at least 10 votes (i.e., y  10) in order to conduct a fair and reliable evaluation. We simply estimated the helpfulness h of a review as: h = x/y, and used the score as a golden standard for the evaluation of overall review helpfulness prediction.
+All reviews in each of the three data sets were analyzed and parsed using the Stanford Parser [8]. We then simply applied the grammatical dependency relations adjectival modifier ("amod"), direct object ("dobj"), and nominal subject ("nsubj") to opinion pair extraction from each parsed review. We then extended the extracted set of opinion pairs via applying the dependency relations negation modifier ("neg") and conjunct ("conj").
+For each corpus we held out 20% of the data for testing and trained all the models on the remaining 80% of the data.
+6.2 Overall Review Helpfulness Prediction
+The fitted supervised SJASM and sLDA models were directly employed to form the overall review helpfulness prediction for unlabeled testing reviews. Since JST is weakly supervised, we relied on a separate regression procedure on the detected JST topics to do the prediction. We utilized unigram textual features to learn LR model for prediction.
+6.2.1 Evaluation via Correlation
+We first evaluated SJASM and the baseline models via Pearson correlation versus the number of aspects (K) while keeping the sentiment orientation count at 3 (L = 3).
+
+&RUUHODWLRQ
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+6-$60 V/'$ -67 /5
+
+
+
+
+
+
+
+
+
+
+
+1XPEHU RI $VSHFWV
+
+Figure 2: Correlation versus number of aspects on Audio CD reviews.
+Figure 2 plots the correlation curves against the aspect number on Audio CD reviews. Only one correlation value was shown for LR as it cannot mine the hidden topical structure of data.
+
+622
+
+SJASM outperforms benchmark models sLDA, JST, and LR across all the numbers of aspects. The average correlation of SJASM over all the observations is 43.79%, which is 7.23%, 10.86%, and 25.36% better than that of sLDA, JST, and LR, respectively. The curve of SJASM overall improves with increasing number of aspects. The largest performance gain of SJASM over sLDA is 12.47% at aspect number 30, while the largest gain of SJASM over JST is 15.99% at aspect number 10.
+
+Correlation
+
+0.55 0.5
+0.45 0.4
+0.35 0.3
+0.25 0.2
+0.15 0.1
+0.05 5
+
+SJASM sLDA JST LR
+
+10
+
+15
+
+20
+
+25
+
+30
+
+Number of Aspects
+
+Figure 3: Correlation versus number of aspects on Video Games reviews.
+Figure 3 plots the correlation of SJASM versus the benchmark models on Video Games reviews. SJASM again performs better than the baseline models. As the number of aspects grows, the SJASM curve increases, exhibiting a similar trend as Figure 2. The average correlation of SJASM across all the six observations is 46.53%, which is 8.65%, 11.30%, and 25.92% better than that of sLDA, JST, and LR, respectively.
+
+&RUUHODWLRQ
+
+ 
+ 
+ 
+ 
+ 
+ 
+
+6-$60 V/'$ -67 /5
+
+
+
+
+
+
+
+
+
+
+
+1XPEHU RI $VSHFWV
+
+Figure 4: Correlation versus number of aspects on Books reviews.
+Figure 4 plots the results on the Books review data. Again, SJASM results in better performance compared to sLDA, JST, and LR. The average correlation score of SJASM across all the observations is 28.13%, which is 5.79%, 9.59%, and 18.78% larger than that of sLDA, JST, and LR, respectively.
+The proposed SJASM outperforms the state-of-the-art topic models sLDA and JST, as well as one classic linear regression model for the overall review helpfulness prediction.
+
+6.2.2 Evaluation via MSE
+Next, we used mean squared error (MSE) to evaluate SJASM against baseline models for overall review helpfulness prediction, as shown in Table 3.
+SJASM leads to consistently better prediction performance in MSE (the lower, the better) across all six observations on the Audio CD reviews. The largest performance gap between SJASM and sLDA is found at aspect number 15, where the MSE of sLDA increases by 7.8% with respect to SJASM. The largest gap between SJASM and JST is located at aspect number 10, where the MSE of JST increases by 15.2% over SJASM.
+On the Video Games review category, the best performance gains of SJASM against the sLDA and JST are located at the same aspect number of 30, where the MSE values of sLDA and JST exceed by 15.3% and 23.4% compared to the MSE of SJASM.
+The best performance gaps of SJASM over sLDA and JST on the Books category are found at the aspect numbers of 10 and 15, where the MSE values of sLDA and JST exceed by 8.6% and 8.4% over SJASM, respectively.
+The LR model results in MSE scores 0.0639, 0.0609, and 0.1862 on the Audio CD, Video Games, and Books categories, respectively, and loses out to SJASM for the overall helpfulness prediction.
+The experimental results again demonstrated the improved effectiveness of SJASM compared to the benchmark models sLDA, JST, and LR on the three review categories. The main reasons for the improvement of SJASM over the benchmark models may lie in:
+· By jointly modeling the aspects and the aspect-associated sentiments, we can figure out which positive or negative aspects contribute to the final overall review helpfulness, while sLDA cannot mine such constructive sentimental topics, simply due to the lack of sentiment analysis module in its model structure.
+· By modeling helpfulness voting as supervision information, the detected sentimental aspects by SJASM are predictive of review helpfulness response, compared to the weakly supervised model JST.
+· SJASM benefits from supervised dimensionality reduction, while LR cannot gain from this.
+Next, we selected the most helpful reviews for each product in terms of the predicted review helpfulness scores. Example results (from testing review data) were listed in Table 4. Due to page limitation, we just showed the major sentences and URLs for the selected reviews (note online review data may be updated).
+6.3 Aspect Detection
+In this section, we qualitatively evaluated the aspect detection of SJASM against sLDA and JST on the Audio CD, Video Game, and Books categories. For every category, we showed one same aspect detected by each model, given the aspect number K at which the minimum MSE was achieved for that model.
+Table 5 lists an example aspect "lyrics" on Audio CD reviews. Note for SJASM we showed the aspect terms and opinion words semantically related to the aspect in column 1 and column 2 (first 5 opinion words are positive, the follow-
+
+623
+
+Aspects 5
+
+Table 3: MSE of SJASM versus Benchmark Models
+
+10
+
+15
+
+20
+
+25
+
+30
+
+Audio CD
+
+SJASM 0.0380±0.0002
+
+0.0356±0.0003
+
+0.0357±0.0005
+
+0.0344±0.0004
+
+0.0356±0.0002
+
+0.0361±0.0010
+
+sLDA 0.0384±0.0001(1.1%) 0.0377±0.0001(5.9%) 0.0385±0.0010(7.8%) 0.0362±0.0003(5.2%) 0.0356±0.0005(0.0%) 0.0383±0.0007(6.1%)
+
+JST 0.0403±0.0006(6.1%) 0.0410±0.0006(15.2%) 0.0393±0.0004(10.1%) 0.0357±0.0005(3.8%) 0.0389±0.0009(9.3%) 0.0401±0.0007(11.1%)
+
+LR
+
+0.0639
+
+Video Games
+
+SJASM 0.0242±0.0003
+
+0.0264±0.0010
+
+0.0243±0.0006
+
+0.0223±0.0002
+
+0.0245±0.0008
+
+0.0248±0.0005
+
+sLDA 0.0270±0.0003(11.6%) 0.0276±0.0004(4.6%) 0.0256±0.0002(5.4%) 0.0249±0.0003(11.7%) 0.0250±0.0006(2.0%) 0.0286±0.0003(15.3%)
+
+JST 0.0292±0.0005(20.7%) 0.0277±0.0005(4.9%) 0.0268±0.0004(10.3%) 0.0245±0.0006(9.9%) 0.0293±0.0009(19.6%) 0.0306±0.0010(23.4%)
+
+LR
+
+0.0609
+
+Books
+
+SJASM 0.0414±0.0002
+
+0.0406±0.0003
+
+0.0403±0.0005
+
+0.0408±0.0005
+
+0.0409±0.0005
+
+0.0395±0.0005
+
+sLDA 0.0433±0.0003(4.6%) 0.0441±0.0001(8.6%) 0.0430±0.0001(6.7%) 0.0415±0.0001(1.7%) 0.0418±0.0003(2.2%) 0.0418±0.0001(5.8%)
+
+JST 0.0437±0.0001(5.6%) 0.0435±0.0001(7.1%) 0.0437±0.0003(8.4%) 0.0437±0.0005(7.1%) 0.0434±0.0001(6.1%) 0.0422±0.0005(6.8%)
+
+LR
+
+0.1862
+
+Products
+"American Idiot" @ Audio CD
+"Grand Theft Auto: San Andreas" @ Video Games "Harry Potter and the Half-Blood Prince" @ Books
+
+Table 4: Product-level Review Selection Results
+Reviews
+"A True Masterpiece... With this album, Green Day has made their opus. From the title track "American Idiot" to the final act in "Whatsername" Green Days is able to bring the listener the closest to aural bliss... I highly recommend this album to anyone." http://www.amazon.com/review/R9SZB2VH39N9K/ref=cm_srch_res_rtr_alt_2 "DIDNT LIVE UP. GTA: San Andreas did not live up to its expectations... PROBLEMS: 1. Even though the map is HUGE it is way to hard to find your way around... GOOD STUFF 1. The freedom is great... 2. YOU CAN GO TO CASINO'S AND PLAY..." http://www.amazon.com/review/R6KVMDRC2JAGR/ref=cm_srch_res_rtr_alt_2
+"A book to just fill in the gap. This has been a below par effort by Rowling... The story does not move... Also the mention of Quidditch now and then was an irritation with the games having no real meaning... The death of a key character...deserved a more fitting end..." http://www.amazon.com/review/R172CBMAV010JS/ref=cm_srch_res_rtr_alt_1
+
+Table 5: Example Aspect on Audio CD Reviews
+"lyrics" @ Audio CD
+
+SJASM
+
+sLDA
+
+JST
+
+lyrics views life government Bush messages kid Republican bush losers
+
+lyrical real serious enjoyable contemporary rebel conservative unoriginal bashing mindless
+
+lyrics bad Bush true rock idea messages conservative metal liberal
+
+great lyrics political best fan CD conservative kids Republican masterpiece
+
+Table 6: Example Aspect on Video Games Reviews
+"gameplay" @ Video Games
+
+SJASM
+
+sLDA
+
+JST
+
+map fan features gameplay game vehicles driving weapons level action
+
+graphic played greatest realistic real hard terrible boring bloody dull
+
+missions map nice lose features fine big gameplay action muscle
+
+big fan gamer played greatest excellent comic gameplay dull muscle
+
+ing 5 are negative), respectively, since SJASM models separately both types of words in its unified framework. Both sLDA and JST fail to do this, the aspect terms and opinion words recognized for the aspect by the two models are mixed together, as shown in column 3 and 4, respectively.
+In particular, the aspect terms recognized for the aspect "lyrics" by SJASM (column 1), such as "lyrics", "views", "life", "government", "Bush", etc., reflect the content of lyrics, and the keywords are coherent as well as are indicative of the aspect "lyrics". The opinion words (column 2), such as "lyrical", "rebel", and "conservative", are also semantically related to the "lyrics" aspect.
+sLDA identifies some relevant keywords like "lyrics", "Bush", "conservative", etc., however, it also recognizes incorrectly the keywords like "rock" and "metal" which are typically mentioned in the aspect "genre". The keywords recognized for the aspect by JST contains non-specific terms like "CD" and "masterpiece" which usually indicate the audio CD itself.
+Table 6 lists a typical example aspect "gameplay" on Video Games category. SJASM again detects a coherent "gameplay" aspect which covers the aspect terms, such as "map", "features", and "gameplay", as well as the semantically re-
+
+lated opinion words, such as "graphic", "played", "realistic", and "bloody". sLDA recognizes the semantically related words like "missions", "map", and "features", but mixes together the general terms like "nice" and "fine". Similar to sLDA, the aspect keywords clustered by JST are not as specific as that by SJASM.
+
+Table 7: Example Aspect on Books Reviews
+"story" @ Books
+
+SJASM
+
+sLDA
+
+JST
+
+story life events ending death fear climax scene world magic
+
+real strong serious greatest imaginative dark evil tragic shocking dramatic
+
+life real magical world right sense horrible sad atmosphere death
+
+ending Book shorter dull pathetic shocking death potion matured killed
+
+Table 7 lists an example aspect "story" on Books reviews. The aspect detected by SJASM is specific and coherent enough in itself, which contains aspect terms, such as "story" itself,
+
+624
+
+"life", "events", "ending", and "climax", as well as the semantically related opinion words like "real", "imaginative", "dark", and "evil", compared to the aspect detection results by both sLDA and JST, which recognize some non-specific words like "right", "sense", and "Book".
+The improvement of SJASM over sLDA and JST for underlying aspect detection is mainly attributed to:
+· The incorporation of review helpfulness voting information into the modeling framework enables SJASM to exploit the supervision knowledge to guide the aspect inference process. But JST does not benefit from such guidance for aspect detection.
+· SJASM separates and simultaneously models the aspect terms and their corresponding opinion words in individual opinion pairs to detect the underlying aspects, while both slDA and JST do not gain from this.
+6.4 Aspect-based Review Utility Estimation
+The recommendation of the most useful reviews for each detected product aspect is required to satisfy two conditions: the review must be helpful, and the aspect must be relevant to the helpful review.
+For each aspect, the aspect-based review utility score was estimated using Equation 11, which incorporates two criteria corresponding to the aforementioned requirements: the predicted review helpfulness and document-specific aspect distribution. We selected the most helpful and relevant reviews for each aspect in terms of the aspect-based review utility scores.
+We tested the aspect-based review utility estimation of SJASM using precision at top N (P @T op - N ) selected reviews for each detected aspect, as shown in Table 8.
+
+Table 8: Aspect-based Review Utility Estimation
+
+Performance
+
+Aspects
+
+Models P@Top-1 P@Top-5 P@Top-10
+
+"lyrics" @Audio CD
+
+SJASM sLDA JST
+
+100% 100% 100%
+
+100% 60% 40%
+
+80% 50% 50%
+
+"gameplay" @Video Games
+
+SJASM sLDA JST
+
+100% 100% 100%
+
+80% 40% 60%
+
+80% 40% 40%
+
+"story" @Books
+
+SJASM sLDA JST
+
+100% 100% 100%
+
+100% 40% 60%
+
+80% 60% 50%
+
+For the aspect "lyrics" on Audio CD category, all evaluated models achieved 100% precision at the top-1 selected review. SJASM achieves 100% precision, while both sLDA and JST have precision of 60% and 40%, respectively, at the top-5 recommended reviews. For the top-10 selected review for the aspect, SJASM achieves 80% precision, while the two baseline models sLDA and JST have only 50% precision. That is, 8 out of top-10 reviews selected by SJASM are truly useful for the aspect, while only 5 out of 10 reviews selected by sLDA or JST are useful.
+On the Video Games reviews, all models achieve 100% precision at top-1 recommended review for the aspect "gameplay". SJASM reaches 80% precision at top-5 and top-10 selected reviews, while sLDA has only 40% precision for both cases. JST reaches 60% precision for its top-5 reviews, then decreases to 40% precision at its top-10 selected reviews for the aspect.
+
+All the models achieve 100% precision at top-1 selected review for the aspect "story" on Books category. sLDA results in 40% and 60% precision at top-5 and top-10 selected reviews, while JST leads to 60% and 50% precision, respectively. Overall, SJASM achieves the best performance with 100% and 80% precision at top-5 and top-10 selected useful reviews for the aspect.
+
+Table 9: Aspect-based Review Utility Estimation
+
+Performance on Books Reviews
+
+Aspects
+
+Models P@Top-1 P@Top-5 P@Top-10
+
+"character" @Books
+
+SJASM sLDA JST
+
+100% 100% 0%
+
+100% 40% 40%
+
+70% 60% 50%
+
+"plot" @Books
+
+SJASM sLDA JST
+
+100% 0% 100%
+
+80% 20% 40%
+
+70% 50% 50%
+
+"writing" @Books
+
+SJASM sLDA JST
+
+100% 0% 0%
+
+80% 40% 40%
+
+80% 50% 60%
+
+Further, we evaluated the aspect-based review utility estimation for three more aspects "character", "plot", and "writing" on Books category, as shown in Table 9. SJASM again achieves the best performance (P @T op - N ) compared to sLDA and JST.
+The improved effectiveness of SJASM over sLDA and JST for the aspect-based review utility estimation can be attributed to the following reasons:
+· SJASM leads to more coherent and clean aspect detection compared to sLDA and JST.
+· SJASM outperforms the two benchmark models for review helpfulness prediction on the review corpora.
+· Benefitting from the supervised joint topic modeling nature, SJASM discovers better the hidden topical structure of review data.
+In addition, we listed the example results for aspect-based review selection in Table 10.
+
+7. CONCLUSIONS
+In this paper, we focus on selecting the most helpful reviews not only for a reviewed product itself but also for the evaluated aspects of the product. We propose a novel supervised joint topic model called SJASM to address the coarseto-fine review selection problem. SJASM jointly discovers underlying aspects and sentiments guided by review helpfulness voting information. One key advantage of SJASM is that it can detect the sentimental aspects which are predictive of review helpfulness. The evaluation results on the three publicly available review data sets demonstrated the superiority of SJASM over a supervised topic model sLDA, a weakly supervised model JST, as well as a classic LR model. For future work, we plan to evaluate SJASM on other different product categories for coarse-to-fine review selection problem.
+
+8. ACKNOWLEDGMENTS
+We would like to thank Dr Chenghua Lin and Dr Yulan He for providing the code of joint sentiment-topic model (JST). This work was supported in part by a grant awarded by a Singapore MOE AcRF Tier 2 Grant (ARC30/12) and a Singapore MOE AcRF Tier 1 Grant (RG 66/12).
+
+625
+
+Product Aspects "lyrics" @ Audio CD "gameplay" @ Video Games
+"story" @ Books
+
+Table 10: Aspect-based Review Selection Results
+Reviews
+"True Green Day fans understand that their political views are just that - THEIR political views... Green Day lyrics are poignant, honest and thought-provoking, it's the combination of those intelligent lyrics with their punk attitude music..." http://www.amazon.com/review/R1FHPGZ4Q2J162/ref=cm_srch_res_rtr_alt_1 "The Honest Truth... I noticed in playing the first few missions and walking around town, that in trying to bring realism to this game, the designers left out some of the comic element... I mean, you hear some of the characters of San Andreas say some funny things, but overall, they're silent or too serious, which makes for dull gameplay... San Andreas is really difficult... designers probably wanted to bring more of a challenge... I'm really having a hard time getting to the next level...getting frustrated..." (URL not found) "I'll forgive Rowling for making the story so dark... I could go on and on about death and murders... But my problem is that very little of this dark imagery has much to do with the story... No action... The plot is just weak..." http://www.amazon.com/review/R16J3QKI1L37LT/ref=cm_srch_res_rtr_alt_3
+
+9. REFERENCES
+[1] D. M. Blei and J. D. McAuliffe. Supervised topic models. In Proceedings of the 21st Annual Conference on Neural Information Processing Systems - Volume 7, pages 121­128, Vancouver, Canada, 2007.
+[2] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation. J. Mach. Learn. Res., 3:993­1022, March 2003.
+[3] A. Ghose and P. Ipeirotis. Estimating the helpfulness and economic impact of product reviews: Mining text and reviewer characteristics. IEEE Trans. on Knowl. and Data Eng., 23(10):1498­1512, 2011.
+[4] T. L. Griffiths and M. Steyvers. Finding scientific topics. In Proceedings of the National Academy of Science, volume 101, pages 5228­5235, Jan 2004.
+[5] T. Hofmann. Probabilistic latent semantic analysis. In Proceedings of the 15th Conference on Uncertainty in Artificial Intelligence, pages 289­296, Stockholm, Sweden, 1999.
+[6] Y. Jo and A. H. Oh. Aspect and sentiment unification model for online review analysis. In Proceedings of the 4th ACM International Conference on Web Search and Data Mining, pages 815­824, Hong Kong, China, 2011.
+[7] S.-M. Kim, P. Pantel, T. Chklovski, and M. Pennacchiotti. Automatically assessing review helpfulness. In Proceedings of the Conference on Empirical Methods in Natural Language Processing, pages 423­430, Sydney, Australia, 2006.
+[8] D. Klein and C. D. Manning. Accurate unlexicalized parsing. In Proceedings of the 41st Annual Meeting on Association for Computational Linguistics - Volume 1, pages 423­430, Sapporo, Japan, 2003.
+[9] C. Lin and Y. He. Joint sentiment/topic model for sentiment analysis. In Proceedings of the 18th ACM Conference on Information and Knowledge Management, pages 375­384, Hong Kong, China, 2009.
+[10] C. Lin, Y. He, R. Everson, and S. Ruger. Weakly supervised joint sentiment-topic detection from text. IEEE Trans. on Knowl. and Data Eng., 24(6):1134­1145, June 2012.
+[11] J. Liu, Y. Cao, C.-Y. Lin, Y. Huang, and M. Zhou. Low-quality product review detection in opinion summarization. In Proceedings of the Joint Conference on Empirical Methods in Natural Language Processing and Computational Natural Language Learning, pages 334­342, Prague, Czech Republic, 2007.
+[12] Y. Liu, X. Huang, A. An, and X. Yu. Modeling and predicting the helpfulness of online reviews. In
+
+Proceedings of the 8th IEEE International Conference on Data Mining, pages 443­452, Pisa, Italy, 2008.
+[13] Y. Lu, P. Tsaparas, A. Ntoulas, and L. Polanyi. Exploiting social context for review quality prediction. In Proceedings of the 19th International Conference on World Wide Web, pages 691­700, Raleigh, North Carolina, USA, 2010.
+[14] T. Minka. Estimating a dirichlet distribution. In Technical report, MIT, 2000.
+[15] S. Moghaddam and M. Ester. Ilda: Interdependent lda model for learning latent aspects and their ratings from online product reviews. In Proceedings of the 34th International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 665­674, Beijing, China, 2011.
+[16] M. P. OMahony and B. Smyth. Learning to recommend helpful hotel reviews. In Proceedings of the 3rd ACM Conference on Recommender Systems, pages 305­308, New York, USA, 2009.
+[17] I. Titov and R. T. McDonald. A joint model of text and aspect ratings for sentiment summarization. In Proceedings of the 46th Annual Meeting of the Association for Computational Linguistics, pages 308­316, Columbus, Ohio, USA, 2008.
+[18] H. M. Wallach, D. M. Mimno, and A. McCallum. Rethinking lda: Why priors matter. In Proceedings of the 23rd Annual Conference on Neural Information Processing Systems, pages 1973­1981, Vancouver, Canada, 2009.
+[19] H. Wang, Y. Lu, and C. Zhai. Latent aspect rating analysis without aspect keyword supervision. In Proceedings of the 17th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining, pages 618­626, San Diego, California, USA, 2011.
+[20] Z. Zhang and B. Varadarajan. Utility scoring of product reviews. In Proceedings of the 15th ACM International Conference on Information and Knowledge Management, pages 51­57, Arlington, Virginia, USA, 2006.
+
+626
+
+

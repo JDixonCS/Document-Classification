@@ -1,0 +1,1077 @@
+Hierarchical Multi-Label Classification of Social Text Streams
+
+Zhaochun Ren
+University of Amsterdam
+Amsterzd.armen, T@heuvNae.tnhel rlands
+
+Maria-Hendrike Peetz
+University of Amsterdam
+Amsmte.rhd.apme,eTthze@Nuevthae.rnlal nds
+
+Shangsong Liang
+University of Amsterdam
+Amstesrd.laiamn,gT@heuNveat.hnelrlands
+
+Willemijn van Dolen
+Business School University of Amsterdam
+Amw.smte.rvdaamnd, TohleenN@etuhevrala.nndl s
+
+Maarten de Rijke
+University of Amsterdam
+Amstedrdearmijk,eT@heuNveath.nelrlands
+
+ABSTRACT
+Hierarchical multi-label classification assigns a document to multiple hierarchical classes. In this paper we focus on hierarchical multi-label classification of social text streams. Concept drift, complicated relations among classes, and the limited length of documents in social text streams make this a challenging problem. Our approach includes three core ingredients: short document expansion, time-aware topic tracking, and chunk-based structural learning. We extend each short document in social text streams to a more comprehensive representation via state-of-the-art entity linking and sentence ranking strategies. From documents extended in this manner, we infer dynamic probabilistic distributions over topics by dividing topics into dynamic "global" topics and "local" topics. For the third and final phase we propose a chunk-based structural optimization strategy to classify each document into multiple classes. Extensive experiments conducted on a large real-world dataset show the effectiveness of our proposed method for hierarchical multi-label classification of social text streams.
+Categories and Subject Descriptors
+H.3.3 [Information Search and Retrieval]: Information filtering
+Keywords
+Twitter; tweet classification; topic modeling; structural SVM
+1. INTRODUCTION
+The growth in volume of social text streams, such as microblogs and web forum threads, has made it critical to develop methods that facilitate understanding of such streams. Recent work has confirmed that short text classification is an effective way of assisting users in understanding documents in social text streams [25, 26, 29, 46]. Straightforward text classification methods, however, are not adequate for mining documents in social streams.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'14, July 6­11, 2014, Gold Coast, Queensland, Australia. Copyright is held by the owner/author(s). Publication rights licensed to ACM. ACM 978-1-4503-2257-7/14/07 ... $15.00. http://dx.doi.org/10.1145/2600428.2609561
+
+For many social media applications, a document in a social text stream usually belongs to multiple labels that are organized in a hierarchy. This phenomenon is widespread in web forums, question answering platforms, and microblogs [11]. In Fig. 1 we show an example of several classes organized in a tree-structured hierarchy, of which several subtrees have been assigned to individual tweets. The tweet "I think the train will soon stop again because of snow . . . " is annotated with multiple hierarchical labels: "Communication," "Personal experience" and "Complaint." Faced with many millions of documents every day, it is impossible to manually classify social streams into multiple hierarchical classes. This motivates the hierarchical multi-label classification (HMC) task for social text streams: classify a document from a social text stream using multiple labels that are organized in a hierarchy.
+Recently, significant progress has been made on the HMC task, see, e.g., [4, 7, 10]. However, the task has not yet been examined in the setting of social text streams. Compared to HMC on stationary documents, HMC on documents in social text streams faces specific challenges: (1) Because of concept drift a document's statistical properties change over time, which makes the classification output different at different times. (2) The shortness of documents in social text streams hinders the classification process.
+In this paper, we address the HMC problem for documents in social text streams. We utilize structural support vector machines (SVMs) [41]. Unlike with standard SVMs, the output of structural SVMs can be a complicated structure, e.g., a document summary, images, a parse tree, or movements in video [22, 45]. In our case, the output is a 0/1 labeled string representing the hierarchical classes, where a class is included in the result if it is labeled as 1. For example, the annotation of the top left tweet in Fig. 1 is 1100010000100. Based on this structural learning framework, we use multiple structural classifiers to transform our HMC problem into a chunk-based classification problem. In chunk-based classification, the hierarchy of classes is divided into multiple chunks.
+To address the shortness and concept drift challenges mentioned above, we proceed as follows. Previous solutions for working with short documents rely on extending short documents using a large external corpus [32]. In this paper, we employ an alternative strategy involving both entity linking [30] and sentence ranking to collect and filter relevant information from Wikipedia. To address concept drift [1, 39], we track dynamic statistical distributions of topics over time. Time-aware topic models, such as dynamic topic mod-
+
+213
+
+There are quite cramped trains
+I really feel like Smullers
+I think the train will soon stop again because of
+snow...
+
+200,000 people travel with
+... ... book as ticket
+ROOT
+
+Communication
+
+Product
+
+Traveler
+
+Personal report Personal experience
+
+Retail on station
+
+Parking
+
+Incident
+
+Compliment Complaint
+
+Product Experience Smullers
+
+Figure 1: An example of predefined labels in hierarchical multi-label classification of documents in a social text stream. Documents are shown as colored rectangles, labels as rounded rectangles. Circles in the rounded rectangles indicate that the corresponding document has been assigned the label. Arrows indicate hierarchical structure between labels.
+els (DTM) [5], are not new. Compared to latent Dirichlet allocation (LDA) [6], dynamic topic models are more sensitive to bursty topics. A global topic is a stationary latent topic extracted from the whole document set and a local topic is a dynamic latent topic extracted from a document set within a specific time period. To track dynamic topics, we propose an extension of DTM that extracts both global and local topics from documents in social text streams.
+Previous work has used Twitter data for streaming short text classification [29]. So do we. We use a large real-world dataset of tweets related to a major public transportation system in a European country to evaluate the effectiveness of our proposed methods for hierarchical multi-label classification of documents in social text streams. The tweets were collected and annotated as part of their online reputation management campaign. As we will see, our proposed method offers statistically significant improvements over state-of-the-art methods.
+Our contributions can be summarized as follows:
+· We present the task of hierarchical multi-label classification for streaming short texts.
+· We use document expansion to address the shortness issue in the HMC task for short documents, which enriches short texts using Wikipedia articles. We tackle the time-aware challenge by developing a new dynamic topic model that distinguishes between local topics and global topics.
+· Based on a structural learning framework, we transform our hierarchical multi-label classification problem into a chunkbased classification problem via multiple structural classifiers, which is shown to be effective in our experiments using a large-scale real-world dataset.
+We introduce related work in §2; in §3 we formulate our research problem. We describe our approach in §4; §5 details our experimental setup and §6 presents the results; §7 concludes the paper.
+2. RELATED WORK
+2.1 Short text classification
+In recent years, short text classification has received considerable attention. Most previous work in the literature addresses the sparseness challenge by extending short texts using external knowledge.
+
+Those techniques can be classified into web search-based methods and topic-based ones.
+Web search-based methods handle each short text as a query to a search engine, and then improve short text classification performance using external knowledge extracted from web search engine results [8, 44]. Such approaches face efficiency and scalability challenges, which makes them ill-suited for use in our data-rich setting [13]. As to topic-based techniques, Phan et al. [32] extract topic distributions from a Wikipedia dump based on the LDA [6] model. Similarly, Chen et al. [13] propose an optimized algorithm for extracting multiple granularities of latent topics from a largescale external training set; see [37] for a similar method.
+Besides those two strategies, other methods have also been employed. E.g., Nishida et al. [28], Sun [38] improve classification performance by compressing shorts text into entities. Zhang et al. [46] learn a short text classifier by connecting what they call the "information path," which exploits the fact that some instances of test documents are likely to share common discriminative terms with the training set. Few previous publications on short text classification consider a streaming setting; none focuses on a hierarchical multiple-label version of the short text classification problem.
+2.2 Hierarchical multi-label classification
+In the machine learning field, multi-label classification problems have received lots of attention. Discriminative ranking methods have been proposed in [36], while label-dependencies are applied to optimize the classification results by [18, 20, 31]. However, none of them can work when labels are organized hierarchically.
+The hierarchical multi-label classification problem is to classify a given document into multiple labels that are organized as a hierarchy. Koller and Sahami [19] propose a method using Bayesian classifiers to distinguish labels; a similar approach uses a Bayesian network to infer the posterior distributions over labels after training multiple classifiers [3]. As a more direct approach to the HMC task, Rousu et al. [34] propose a large margin method, where a dynamic programming algorithm is applied to calculate the maximum structural margin for output classes. Decision-tree based optimization has also been applied to the HMC task [7, 42]. Cesa-Bianchi et al. [10] develop a classification method using hierarchical SVM, where SVM learning is applied to a node if and only if this node's parent has been labeled as positive. Bi and Kwok [4] reformulate the "tree-" and "DAG-" hierarchical multi-label classification tasks as problems of finding the best subgraph in a tree and DAG structure, by developing an approach based on kernel density estimation and the condensing sort and select algorithm.
+To the best of our knowledge there is no previous work on HMC for (short) documents in social text streams. Additionally, we present a chunk-based structural learning method for the HMC task, which is different from existing HMC approaches, and which we show to be effective for the traditional stationary case and the streaming case.
+3. PRELIMINARIES
+We detail the task that we address and introduce important concepts, including preliminaries about structural SVMs.
+3.1 Problem formulation
+We begin by defining the hierarchical multi-label classification (HMC) task. We are given a class hierarchy (C, ), where C is a set of class labels and  is a partial order representing the parent relationship, i.e., ci, cj  C, ci  cj if and only if ci is the parent class of cj. We write x(i) to denote a feature vector, i.e., an element of the feature space X , and we write y(i)  {0, 1}|C|
+
+214
+
+for the target labeling. Let D be the set of input documents, and |D| the size of D. The target of a hierarchical multi-label classifier, whether for stationary documents or for a stream of documents, is to learn a hypothesis function f : X  {0, 1}C from training data {(x(i), y(i))}|iD=1| to predict a y when given x. Suppose the hierarchy is a tree structure. Then, classes labeled positive by y must satisfy the T -property [4]: if a labeled c  C is labeled positive in output y, its parent label must also be labeled positive in y. Given the T property, we define a root class r in the beginning of each C, which refers to the root vertex in HMC tree structure. Thus for each y in HMC, we have y(r) = 1.
+Hierarchical multi-label classification for short documents in social streams (HMC-SST) learns from previous time periods and predicts an output when a new document arrives. More precisely, given a class hierarchy (C, ) and a collection of documents seen so far, X = {X1, . . . , Xt-1}, HMC-SST learns a hypothesis function f : X  {0, 1}C that evolves over time. Thus, at time period t, t > 1, we are given a function f that has been trained during the past t - 1 periods and a set of newly arriving documents Xt. For each x(ti)  Xt, f (x) predicts y^t(i) that labels each class c  C as 0 or 1. Classes in C that are labeled positive must follow the T property. Afterwards, f updates its parameters using Xt and their true labels {y(ti)}|iX=1t|.
+Concept drift indicates the phenomenon that topic distributions change between adjacent time periods [17]. In streaming classification of documents [29] this problem needs to be addressed. We assume that each document in a stream of documents is concerned with multiple topics. By dividing the timeline into time periods, we dynamically track latent topics to cater the phenomenon of concept drift over time. For streaming documents, global statistics such as tf-idf or topic distributions cannot reflect drift phenomena. However, local statistics derived from a specific period are usually helpful for solving this problem [5, 21, 29]. Ideally, one would find a trade-off between tracking the extreme local statistics and extreme global statistics [21]. Thus, in this paper we address the issue of concept drift by tracking both global topics (capturing the complete corpus) and local, latent and temporally bounded, topics over time. Given a document set Xt published at time t, we split the topic set Zt into Ztg  Ztl, with global topics Ztg that depend on all time periods and documents seen so far, and local topics Ztl derived from the previous period t - 1 only. We then train our temporal classifier incrementally based on those global and local topic distributions.
+
+3.2 Structural SVMs
+Structural SVMs have been proposed for complex classification problems in machine learning [22, 23, 35]. We follow the notation from [41]. Given an input instance x, the target is to predict the structured label y from the output space Y by maximizing a discriminant F : X × Y  :
+
+y = f (x; w) = arg maxyY F (x, y; w) ,
+
+(1)
+
+where the discriminant F measures the correlation between (x, y), and w indicates the weights of x in F. The discriminant F will get its maximal value when y = f (x; w), which is set as hypoth-
+esis function in HMC-SST. We assume the discriminant F to be linear in a joint feature space  : X × Y  RK , thus F can be rewritten as F(x, y; w) = w, (x, y) . The feature mapping  maps the pair (x, y) into a suitable feature space endowed with the
+dot product. Then the function F can be learned in a large-margin framework through the training set {(x(i), y(i))}Ti=1 by minimizing the objective function:
+
+min0
+
+1 2
+
+w
+
+2+C
+
+n i=1
+
+i
+
+(2)
+
+such that for all i and all y  Y \y(i):
+wT (x(i), y(i)) - wT (x(i), y)  (y, y(i)) - i, (3)
+where wT (x(i), y) indicates the hypothesis function value given x(i) and a random y from Y \y(i). For each (x(i), y(i)), a set of constraints (see Eq. 3) is added to optimize the parameters w. Note that y(i) is the prediction that minimizes the loss function (y, y(i)). The loss function equals 0 if and only if y = y(i), and it decreases when y and y(i) become more similar. Given the exponential size of Y , the number of constraints in Eq. 3 makes the optimization challenging.
+4. METHOD
+We start by providing an overview of our approach to HMC for documents in social text streams. We then detail each of our three main steps: document expansion, topic modeling and incremental structural SVM learning.
+4.1 Overview
+We provide a general overview of our scenario for performing HMC on (short) documents in social text streams in Fig. 2. There are three main phases: (A) document expansion; (B) time-aware topic modeling; (C) chunk-based structural classification. To summarize, at time period ti, we are given a temporally ordered short documents set Xti = {x(ti1), x(ti2), . . . , xt(i|Xt|)}. For each short text xti  Xti , in phase (A) (see §4.2) we expand xti through entity linking and query-based sentence ranking; we obtain xti from xti by extracting relevant sentences from related Wikipedia articles.
+Next, in phase (B) (see §4.3), we extract dynamic topics ti ; building on an extended DTM model, we extract both global and local topical distributions for xti ; then, a feature vector for xti is generated as (x (i), y).
+Based on the extracted features, we train an incremental chunkbased structural learning framework in (C) in §4.4. We introduce multiple structural classifiers to the optimization problem by transferring the set of classes C to another representation using multiple chunks S. Traversing from the most abstract chunk rS  S, we define each chunk s  S to be a set of chunks or classes. Leaves in S only include classes. For each chunk sc  S, we employ a discriminant to address the optimization problem over parameters Fsc, where sc's child chunk/class will not be addressed unless it is labeled positive during our prediction. Accordingly, multiple discriminants are applied to predict labels given xti and update their parameters based on true labels yti .
+4.2 (A) Document expansion
+To address the challenge offered by short documents, we propose a document expansion method that consists of two parts: entity linking and query-based sentence ranking and extraction.
+4.2.1 Entity linking
+Given a short document xt at time t, the target of entity linking is to identify the entity e from a knowledge base E that is the most likely referent of xt. For each xt, a link candidate ei  E links an anchor a in xt to a target w, where an anchor is a word n-gram tokens in a document and each w is a Wikipedia article. A target is identified by its unique title in Wikipedia.
+As the first step of our entity linking, we aim to identify as many link candidates as possible. We perform lexical matching of each n-gram anchor a of document dt with the target texts found in Wikipedia, resulting in a set of link candidates E for each document dt. As the second step, we employ the commonness (CMNS)
+
+215
+
+ti
+
+Short text xti 2 Xti
+
+...
+
+... ...
+
+tj
+
+Short text xtj 2 Xtj
+
+... ...
+
+---- Entity linking with Wikipedia ---- Query-based sentence ranking
+(A) Document expansion
+
+---- Dynamic topic modelling at ti ---- Global topics z 2 Ztgi ---- Local topics z 2 Ztli
+(B) Time-aware topic modelling
+
+document x0ti 2 Xt0i
+
+Global topic distributions
+
+g ti ,z
+
+Local topic distributions
+
+l ti ,z
+
+Feature vector for xti : (x(i), y)
+
+---- Before classification: ---- Agglomerate classes into multiple chunks ---- A chunks structure S = {sci}Si=C1 with L levels
+---- Traverse S from most abstract chunk rS ---- Current chunk sc 2 S ---- Label inner chunks in sc using S-SVM ---- Update classifier's parameters in Fsc ---- Move to next chunk labeled positive
+---- Integrate output from all leaves chunks in S ---- Output yti
+(C) Chunk-based structural classification
+
+Output yti 2 {0, 1}|C| Discriminants set {Fi}Si=C1
+
+Figure 2: Overview of our approach to hierarchical multi-label classification of documents in social text streams. (A) indicates document expansion; (B) indicates the topic modeling process; (C) refers to chunk-based structural learning and classification.
+
+method from [27] and rank link candidates E by considering the prior probability that anchor text a links to Wikipedia article w:
+
+CMNS (a, w) =
+
+|Ea,w |
+
+,
+
+w W |Ea,w |
+
+where Ea,w is the set of all links with anchor text a and target w. The intuition is that link candidates with anchors that always link to the same target are more likely to be a correct representation. In the third step, we utilize a learning to rerank strategy to enhance the precision of correct link candidates. We extract a set of 29 features proposed in [27, 30], and use a decision tree-based approach to rerank the link candidates.
+
+4.2.2 Query-based sentence ranking
+Given the link candidates list, we extract the most central sentences from the top three most likely Wikipedia articles. As in LexRank [15], Markov random walks are employed to optimize the ranking list iteratively, where each sentence's score is voted from other sentences. First, we build the similarity matrix M , where each item in M indicates the similarity between two sentences given xt as a query. Given two sentences si and sj, we have:
+
+Mi,j = sim(si, sj |xt)/
+
+sim(si, sj |xt)
+
+(4)
+
+j |S|
+
+At the beginning of the iterative process, an initial score for each sentence is set as 1/|S|, and at the t-th iteration, the score of si is calculated as follows:
+
+score(si)(t) = (1 - )
+
+Mi,j
+
+·
+
+score(sj )(t-1)
+
++
+
+
+
+1 |S|
+
+,
+
+(5)
+
+i=j
+
+where |S| equals the number of sentences in Wikipedia documents that have been linked to the anchor text a in §4.2.1 and the damping factor  = 0.15. Then the transition matrix M equals to:
+
+M = (1 - )M + e¯e¯T /|S|,
+
+(6)
+
+where e is a column vector with all items equal to 1. The iter-
+ative process will stop when it convergences. Since M is a column stochastic matrix, it can be proven that the value of score converges [43], and a value of score can be derived from the principle
+eigenvector of M . We extract the top Ext sentences from the ranked list, and extend xt to xt by including those Ext sentences in xt.
+
+4.3 (B) Time-aware topic modeling
+Concept drift makes tracking the change of topic distributions crucial for HMC of social text streams. We assume that each document in a social text stream can be represented as a probabilistic distribution over topics, where each topic is represented as a prob-
+
+abilistic distribution over words. The topics are not necessarily assumed to be stationary. We employ a dynamic extension of the LDA model to track latent dynamic topics. Comparing to previous work on dynamic topic models [5], our method is based on the conjugate prior between Dirichlet distribution and Multinomial distribution. To keep both stationary statistics and temporary statistics, we present a trade-off strategy between stationary topic tracking and dynamic topic tracking, where topic distributions evolve over time.
+Fig. 3 shows our graphical model representation, where shaded and unshaded nodes indicate observed and latent variables, respectively. Among the variables related to document set Xt in the graph, z, , r are random variables and w is the observed variable; |Xt-1|, |Xt| and |Xt+1| indicate the number of variables in the model. As usual, directed arrows in a graphical model indicate the dependency between two variables; the variables lt depend on variables lt-1.
+
+t-1
+
+t
+
+ t+1
+
+
+
+t 1
+
+t
+
+t+1
+
+g
+
+rz
+
+rz
+
+rz
+
+g Kg
+
+w
+N
+
+w
+N
+
+w
+N
+
+|Xt 1|
+
+|Xt|
+
+|Xt+1|
+
+l t1
+Kl
+l t1
+
+l t
+Kl
+l t
+
+l t+1
+Kl
+l t+1
+
+Figure 3: Graphical representation of topical modelling, where t - 1, t and t + 1 indicate three time periods.
+The topic distributions xt for a document xt  Xt are derived from a Dirichlet distribution over hyper parameter . Given a word wi  xt, a topic zwi for word wi is derived from a multinomial distribution xt over document xt. We derive a probabilistic distribution t over topics Zt = Ztg  Ztl from a Dirichlet distribution over hyper parameters bt: if topic z  Zl, then bt = tl · wi,t-1, otherwise bt = g. The generative process for our topic model at time t > 1, is described in Fig. 3.
+Due to the unknown relation between t and t, the posterior distribution for each short text xt is intractable. We apply Gibbs collapsed sampling [24] to infer the posterior distributions over both,
+
+216
+
+1. For each topic z, z  Ztl  Ztg: · Draw g  Dirichlet(g) ; · Draw lt  Dirichlet(tl · lt-1) ;
+2. For each candidate short text xt  Xt:
+· Draw t  Dirichlet(t);
+· For each word w in dt
+­ Draw r  Bernoulli(); ­ Draw zw  M ultinomial(t);
+ if r = 0: Draw w  M ultinomial(gz);  if r = 1: Draw w  M ultinomial(lz,t);
+
+Figure 4: Generative process for the topic model.
+
+global and local topics. For each iteration during our sampling process, we derive the topic z via the following probability:
+
+p(ri
+
+=
+
+m, zi
+
+=
+
+z|W, Z-i, , bt)
+
+
+
+ntd,m,-i +  ntd,-i + 2
+
+·
+
+ntd,z,-i +  (ntd,z, -i +
+
+)
+
+·
+
+ntw,z,-i + ntw ,z,-i
+
+bm w,z,t + Nt
+
+bm w,z,t
+
+,
+
+(7)
+
+z Zm
+
+w Nu,t
+
+where m indicates the possible values of variable r for the ith word
+in document dt, and the value m indicates the corresponding kind of topics when ri = m. We set bw,z,t = tl ·w,z,t-1 when ri = 1, and bw,z,t = g when ri = 0. After sampling the probability for each topic z, we infer the posterior distributions for random
+variable w,z,t, which are shown as follows:
+
+rw=,z0,t =
+
+nw,z,t + g nw,z,t + g
+
+z Z m
+
+rw=,z1,t =
+
+nw,z,t + tl · w,z,t-1 nw,z,t + tl · w,z,t-1
+
+(8)
+
+z Z m
+
+4.4 (C) Chunk-based structural classification
+Some class labels, specifically for some leaves of the hierarchy, only have very few positive instances. This skewedness is a common problem in hierarchical multi-label classification. To handle skewedness, we introduce a multi-layer chunk structure to replace the original class tree. We generate this chunk structure by employing a continuous agglomerative clustering approach to merge multiple classes/chunks to a more abstract chunk that contains a predefined number of items. Merging from classes, considered as leave nodes in the final chunk structure, our clustering strategy continues until what we call the root chunk, the most abstract chunk, has been generated. Following this process, we agglomerate the set of classes C into another set of chunks S, each of which, denoted as sc, includes s items. During this continuous agglomerative clustering process from classes C to the root chunk, we define successive relations among chunks in S. Each chunk sc's successive chunks/classes in S are chunks/classes that exist as items in sc, i.e., chunk sc is a successive chunk of chunk scpa iff there exist a vertex in scpa corresponding to chunk sc.
+Thus we can think of S as a tree structure. From the most abstract chunk rS  S that is not included in any other chunk, each layer l of S is the set of child nodes in those chunks that exist in
+
+l's last layer. The leaves of S indicate classes. Then, a structural SVM classifier Fsc for chunk sc includes Lsc chunks, and its output space Ysc refers to a set of binary labels {0, 1}Lsc over chunks.
+At each time period t, we divide the HMC for documents in so-
+cial text streams into a learning process and a inference process,
+which we detail below.
+
+4.4.1 Learning with structural SVMs
+
+For the learning process, we train multiple structural SVM clas-
+sifiers from S's root chunk rS to the bottom, where the T -property
+must be followed by each chunk sc  S. After generating the
+chunk structure S, we suppose S has SC chunks with L levels. At time t, we are given a set of training instances Tt = {(x(t1), y(t1)), (x(t2), y(t2)), . . . , (xt(|Xt|), y(t|Xt|))}, and our target is to update parameters of multiple structural SVM classifiers during the learning process. Thus y(ti) in (x(ti), y(ti)) is divided and extended into SC parts scS {y(t,is)c}, where y(t,is)c indicates the output vector in chunk sc. The structural classifier Fsc for chunk sc  S, sc = rc,
+learns and updates its parameters after its parent chunk p(sc) has
+received a positive label on the item corresponding to sc. For each
+chunk sc  S, we utilize the following structural SVM formulation
+to learn a weight vector w, shown in Equation 9:
+
+1 min 0 2
+
+wt,sc 2 + C
+
+n
+
+i
+
+(9)
+
+i=1
+
+subject to:
+
+1. yt,sc  Ysc\y(t,is)c; 2. c  cyt,sc , p(c)  cyt,sc ;
+
+3. wT (x(ti), y(t,is)c) - wT (x(i), yt,sc)  (y, y(t,is)c) - i;
+
+where cyt,sc are positive chunks labeled by y(t,is)c, and (x(ti), yt,sc) indicates the feature representation for x(ti), y(t,is)c.
+Traditional SVMs only consider zero-one loss as a constraint
+during learning. This is inappropriate for complicated classifica-
+tion problems such as hierarchical multi-label classification. We
+define a loss function between two structured labels y and yi based on their similarity as (ysc, yi,sc) = 1 - sim(ysc, yi,sc). Here, sim(ysc, yi,sc) indicates the structural similarity between two different subsets of sc's child sets cy and cy(i) . We compute the similarity between yt,sc and y(t,is)c by comparing the overlap of nodes in these two tree structures, as follows:
+
+wn,n · |(n  n )|
+
+sim(y(t,is)c, yt,sc)
+
+=
+
+ncy(i) ,n
+
+cy
+wn,n
+
+, · |(n  n )|
+
+ncy(i) ,n cy
+
+(10)
+
+where we set wn,n to be the weight between two chunks n and n , each of which is included in cy(i) and cy respectively. Since it is intractable to compare two chunks that are not at the same level in
+S, here we set wn,n to be:
+
+wn,n =
+
+1/hn hn = hn
+
+0
+
+else
+
+(11)
+
+To optimize Eq. 9, we adjust the cutting plane algorithm [16, 45]
+to maintain the T -property. In general, the cutting plane algorithm
+iteratively adds constraints until the problem is solved by a desired tolerance . It starts with an empty set yi, for i = 1, 2, . . . , n, and iteratively looks for the most violated constraint for (x(ti), y(t,is)c).
+
+217
+
+Algorithm 1: Cutting Plane Optimization for Equation 9
+
+Input: (x(1), y(1)), (x(2), y(2)), ..., (x(t), y(t)), C,  yi = ; repeat
+for i = 1, 2, ... , n do   wT (x(i), y(i)) - wT (x(i), y); H(y; w)  (y(i), y) + ; compute y^ = arg maxyY H(y; w); repeat for leaves node n  sc do if p(n) / cy^ then y^+ = y^  p(n); y^- = y^ - n; y^ = arg maxy(H(y^+; w), H(y^-; w)) end
+end
+
+until y^  Y hold T -property; if H(y^; w) > i +  then
+w  optimize Equation 9 over end
+
+i{yi}
+
+end until no working set has changed during iteration;
+
+Algorithm 1 shows that to maintain the T -property, we adjust the set of positive chunks in y^ iteratively. The parameter wt,sc is updated with respect to the combined working set i{yi}.
+
+4.4.2 Making predictions
+The feature representation for (x(ti), yt,sc) must enable meaningful discrimination between high quality and low quality predictions [45]. Our topic model generates a set of topical distributions, t, where each item (w|z, t)  t is a conditional distribution P (w|z, t) over words w given topic z. Assuming that each document's saliency is summed up by votes from all words in the document, we then define (x, y) as follows:
+
+
+
+1 Nx
+
+(w|z1, t) ·
+wx
+
+1 Ny
+
+nw,y
+
+
+
+
+
+
+
+(x,
+
+y)
+
+=
+
+ 
+
+
+
+
+
+1 Nx
+
+(w|z2, t) ·
+wx
+
+1 Ny
+
+nw,y
+
+...
+
+
+
+
+
+ 
+
+,
+
+
+
+
+
+(12)
+
+
+
+1 Nx
+
+(w|zK , t)
+wx
+
+·
+
+1 Ny
+
+nw,y
+
+
+
+where nw,y indicates the number of times word w exist in y for the past t - 1 periods; Nx refers to the number of words in documents x whereas Ny is the number of words in y.
+Given multiple structural SVMs Ft,sc that have been updated at time t - 1, the target of our prediction is to select yt,sc for instance xt from the root chunk rS  S to S's bottom level. Our selection procedure is shown in Algorithm 2. After prediction and learning at time t, our classifiers are given document set Xt+1 at time t + 1. Given a document xt+1  Xt+1, we traverse the whole chunk structure S from root chunk rS to leaves, and output the predicted classes that xt+1 belongs to. Parameters in discriminants Ft+1,sc are updated afterwards.
+
+5. EXPERIMENTAL SETUP
+In §5.1, we propose 5 research questions to guide our experiments; we describe our dataset in §5.2 and set up our experiments
+
+Algorithm 2: Greedy Selection via Chunk Structure S
+Input: S, xt wt-1 = {wt-1,sc}scS y = ; for sc = 1, 2, ..., SC do
+if sc  cyt,p(sc) then ysc = arg maxyYsc,y=ysc (wT (xt, ysc  y));
+end if sc is leaves chunk in S then
+y = y  ysc; end end return y
+in §5.3; §5.4 gives details about our evaluation metrics; the baselines are described in §5.5.
+5.1 Research questions
+We list the research questions, RQ1 to RQ5, to guide the remainder of the paper.
+RQ1 As a preliminary question, how does our chunk-based method perform in stationary HMC? (See §6.1)
+RQ2 Is our document expansion strategy helpful for classifying documents in a HMC setting? (See §6.2)
+RQ3 Does concept drift occur in our streaming short text collection? Does online topic extraction help to avoid concept drift on HMC-SST? (See §6.3)
+RQ4 How does our proposed method perform on HMC-SST? Does it outperform baselines in terms of our evaluation metrics? (See §6.4)
+RQ5 What is the effect of we change the size of chunks? Can we find an optimized value of the size of chunks in HMC-SST? (See §6.5)
+5.2 Dataset
+General statistics. We use a dataset of tweets related to a major public transportation system in a European country. The tweets were posted between January 18, 2010 and June 5, 2012, covering a period of nearly 30 months. The dataset includes 145, 692 tweets posted by 77,161 Twitter users. Using a state-of-the-art language identification tool [9], we found that over 95% tweets in our dataset is written in Dutch, whereas most other tweets are written in English. The dataset has human annotations for each tweet. A diverse set of social media experts produced the annotations after receiving proper training. In total, 81 annotators participated in the process.
+The annotation tree for the dataset has 493 nodes. The annotations describe such aspects as reputation dimensions and product attributes and service. All annotators use Dutch during the annotating process. Unlike many other Twitter datasets with human annotations, e.g., Amigó et al. [2], in our dataset those labels are not independent from each other. Instead, each tweet is labeled by multiple hierarchical classes. From the root class, we divide the dataset into 13 individual subsets following the root node's child classes, which are shown in Table 1. In our experiment, not all subsets are included in our experiments: we ignore the subset with the fewest tweets: Citizenship. As all instances in Online Source are annotated by the same labels, we also omit it.
+Author and temporal statistics. Fig. 5 shows the number of authors for different numbers of posted tweets in our dataset. Most
+
+218
+
+# authors # published Tweets # published Tweets
+
+Table 1: The 13 subsets that make up our dataset, all annotations are in Dutch. The second column shows the English translation, the third column gives the number of tweets per subset, the fourth indicates whether a subset was included in our experiments.
+
+Tag (in Dutch)
+
+Translation
+
+Number Included
+
+Berichtgeving
+
+Communications 208, 503
+
+Yes
+
+Aanbeveling
+
+Recommendation 150, 768
+
+Yes
+
+Bron online
+
+Online source
+
+2, 505
+
+No
+
+Bron offline
+
+Offline source 179, 073
+
+Yes
+
+Reiziger
+
+Type of traveler 123, 281
+
+Yes
+
+Performance
+
+Performance
+
+28, 545
+
+Yes
+
+Product
+
+Product
+
+82, 284
+
+Yes
+
+Innovation
+
+Innovation
+
+114, 647
+
+Yes
+
+Workplace
+
+Workplace
+
+16, 910
+
+Yes
+
+Governance
+
+Governance
+
+11, 340
+
+Yes
+
+Bedrijfsgerelateerd Company related 15, 715
+
+Yes
+
+Citizenship
+
+Citizenship
+
+628
+
+No
+
+Leadership
+
+Leadership
+
+10, 410
+
+Yes
+
+105
+
+104
+
+103
+
+102
+
+101
+
+1000
+
+100
+
+200
+
+30#0 tweet4s00
+
+500
+
+600
+
+700
+
+Figure 5: Number of tweets per user in our dataset, where
+
+the y-axis denotes the number of tweets and the x-axis denotes
+
+the corresponding number of tweets the author posted in our
+
+dataset. One user with more than 9000 tweets is omitted to im-
+
+prove readability.
+
+users post fewer than 200 tweets. In our dataset, 73, 245 users posts fewer than 10 tweets within the whole time period, and the maximum number of tweets posted by one user is 9, 293: this is a news aggregator that accumulates and retweets information about public transportation systems.
+One of the most interesting parts of the corpus is the possibility to analyze and test longitudinal temporal statistics. We can display the trends of tweets with various ways of binning. We can look at general developments over long periods of time and bin documents per day and per week. Fig. 6 shows the total number of tweets posted at each hour over 24 hours. Clearly, people commute in the train: the rush hours between 6am and 8am and between 4pm and 5pm correspond to a larger output of tweets. Fig. 6 also gives us statistics on the number of tweets posted per day; many more tweets are posted within the period from November 2011 to March 2012, and a peak of the number of tweets happening around February 18, 2012, a day with a lot of delays (according to the uttered tweets).
+5.3 Experimental setup
+Following [33], we set the hyper parameters  = 50/ Kg + Kl and l = g = 0.5 in our experiments. We set  = 0.2 and the number of samples to 5000 in our experiment for both docu-
+
+20000
+
+15000
+
+10000
+
+5000
+
+00
+
+5
+
+10 # hours 15
+
+20
+
+(a) Tweets per hour
+
+3000 2500 2000 1500 1000 500 20100-022010-052010-082010-112011-022011-052011-082011-112012-022012-05
+# days
+(b) Tweets per day
+
+Figure 6: Number of tweets in our dataset. (Left): number of published tweets published per hour. (Right): number of published tweets published per day.
+
+ment expansion and topic modeling. The number of topics in our topic modeling process is set to 50, for both Z0u and Z0com. For our chunk-based structural SVM classification, we set parameter C = 0.0001. For simplicity, we assume that each chunk in our experiments has at most 4 child nodes.
+Statistical significance of observed differences between two comparisons is tested using a two-tailed paired t-test. In our experiments, statistical significance is denoted using ( ) for strong (weak) significant differences for  = 0.01 ( = 0.05). For the stationary HMC evaluation, all experiments are executed using 10fold cross validation combining training, validation and test sets.
+
+5.4 Evaluation metrics
+
+We adapt precision and recall to hierarchical multi-label learning following [4]. Given a class i  C, let TPi, FPi and FNi be the number of true positives, false positives and false negatives, respectively. Precision and recall for the whole output tree-structure are:
+
+TPi
+
+P=
+
+iC
+TPi +
+
+; FPi
+
+iC
+
+iC
+
+TPi
+
+R=
+
+iC
+TPi + FNi
+
+iC
+
+iC
+
+(13)
+
+We evaluate the performance using macro F1-measure (combining precision and recall) and average accuracy. The macro F1measure measures the classification effectiveness for each individual class and averages them, whereas average accuracy measures the proportion correctly identified. For simplicity's sake, we abbreviate average accuracy as accuracy and acc. in §6.
+
+5.5 Baselines and comparisons
+We list the methods and baselines that we consider in Table 2. We write C-SSVM for the overall process as described in §4, which includes both document expansion and topic tracking. To be able to answer RQ1, we consider NDC-SSVM, which is C-SSVM without document expansion. Similarly, in the context of RQ2 we consider GTC-SSVM and LTC-SSVM for variations of C-SSVM that only have global topics and local topics, respectively.
+There are no previous methods that have been evaluated on the hierarchical multi-label classification of streaming short text. Because of this, we consider two types of baseline: stationary and streaming. For stationary hierarchical multi-label classification, we use CSSA, CLUS-HMC and H-SVM as baselines. We implement CSSA [4] by using kernel dependency estimation to reduce the possibly large number of labels to a manageable number of single-label learning problems. CLUS-HMC [42] is a method based on decision trees. H-SVM [14] extends normal SVMs to a hierarchical structure, where the SVM is trained in each node if, and only if, its parent node has been labeled positive. As CSSA and CLUS-HMC need to predefine the number of classes that each document belongs to, we employ MetaLabeler [40] to integrate with those two baselines.
+
+219
+
+Table 2: Baselines and methods used for comparison.
+
+Acronym Gloss
+
+Reference
+
+C-SSVM Chunk-based structural learning method NDC-SSVM C-SSVM without document expansion GTC-SSVM C-SSVM only with global topics LTC-SSVM C-SSVM only with local topics
+
+This paper This paper This paper This paper
+
+Stationary
+
+CSSA
+
+Kernel density estimation based HMC method
+
+[4]
+
+CLUS-HMC Decision tree-based HMC method
+
+[42]
+
+H-SVM Hierarchical SVM for multi-label classification
+
+[14]
+
+Streaming
+
+H-SVM Hierarchical SVM for multi-label classification
+
+[14]
+
+CSHC
+
+Structural multi-class learning method
+
+[12]
+
+NBC
+
+Naive Bayesian method
+
+[21]
+
+For the streaming short text classification task, besides H-SVM, we implement NBC and CSHC, a naive bayesian classifier framework, which has proved effective in streaming classification [21], and a structural multi-class learning method. Since NBC and CSHC are designed for single-label classification, we introduce a widelyused "one vs. all" strategy on multi-label situation [40]. We evaluate their performance after document expansion (§4.2)
+6. RESULTS AND DISCUSSION
+In §6.1, we compare C-SSVM to other baselines for stationary hierarchical multi-label classification; in §6.2 we examine the performance of document expansion. §6.3 details the effect of topic modeling on overcoming concept drift; §6.4 provides overall performance comparisons; §6.5 evaluates the influence of the number of items per chunk.
+6.1 Performance on stationary HMC
+We start by addressing RQ1 and test if our C-SSVM is effective for the stationary HMC task, even though this is not the main purpose for which it was designed. Table 3 compares the macro F1 of C-SSVM to the three HMC baselines. C-SSVM and CSSA tend to outperform the other baselines: for 6 out of 11 tags C-SSVM provides the best performance, while for the remaining 5 CSSA performs best. The performance differences between C-SSVM and CSSA are not statistically significant. This shows that, when compared against state of the art baselines in terms of the macro F1 metric, C-SSVM is competitive.
+6.2 Document expansion
+Next, we turn to RQ2 and evaluate the effectiveness of document expansion for HMC-SST. As described in §4, we extend a short
+
+Table 3: RQ1: macro F1 values for stationary comparisons. C-SSVM CSSA CLUS-HMC H-SVM
+
+Communications Recommendation Offline source Type of traveler Performance Product Innovation Workplace Governance Company related Leadership
+
+0.5073 0.4543 0.4245 0.4623 0.5221 0.4762 0.4991 0.4645 0.4932 0.4922 0.4672
+
+0.5066 0.4612 0.4176 0.4677 0.5109 0.4722 0.4921 0.4725 0.5025 0.4972 0.4654
+
+0.4812 0.4421 0.4164 0.4652 0.5054 0.4686 0.4822 0.4687 0.4987 0.4901 0.4624
+
+0.4822 0.4452 0.4161 0.4615 0.5097 0.4609 0.4812 0.4623 0.4923 0.4852 0.4602
+
+Table 4: An example of document expansion.
+Short text I'm tempted to get that LG Chocolate Touch. Or at least get a touchscreen phone
+Extension The original LG Chocolate KV5900 was released in Korea long before the UK or U.S. version. The LG VX8500 or "Chocolate" is a slider cellphone-MP3 player hybrid that is sold as a feature phone. The sensory information touch, pain, temperature etc., is then conveyed to the central nervous system by afferent neurones ...
+
+Table 5: RQ2: Effect of document expansion in HMC.
+
+C-SSVM
+
+NDC-SSVM
+
+Subset
+
+macro-F1 Acc. macro-F1 Acc.
+
+Communication Recommendation Offline source Type of traveler Performance Product Innovation Workplace Governance Company related Leadership
+
+0.5073 0.4543 0.4245 0.4623 0.5221 0.4762 0.4991 0.4645 0.4932 0.4922 0.4672
+
+0.5164 0.4663 0.4523 0.4731 0.5321 0.4823 0.5121 0.4724 0.5072 0.5072 0.4754
+
+0.4887 0.4542 0.4112 0.4647 0.5013 0.4612 0.4522 0.4601 0.4787 0.4772 0.4601
+
+0.4972 0.4655 0.4421 0.4791 0.5111 0.4721 0.4612 0.4695 0.4944 0.4921 0.4707
+
+text into a longer document by extracting sentences from linked Wikipedia articles. Table 4 shows an example of the document expansion where the new sentences are relevant to the original text.
+Table 5 contrasts the evaluation results for C-SSVM with that of NDC-SSVM, which excludes documents expansion, in terms of macro-F1 and average accuracy. We find that C-SSVM outperforms NDC-SSVM for most subsets of stationary HMC comparisons. In terms of macro F1, C-SSVM offers an increase over NDC-SSVM of up to 9.4%, whereas average accuracy increases by up to 9.9% significantly. We conclude that document expansion is effective for the stationary HMC task, especially for short text classification.
+6.3 Time-aware topic extraction
+Our third research question RQ3 aims at determining whether concept drift occurs and whether topic extraction helps to avoid this. Fig. 7 shows the propagation process of an example local topic for the subset "Communication." The upper part of Fig. 7 shows the 5 most representative terms for the topic during 5 time periods. The bottom half of the figure plots fluctuating topical distributions over time, which indicates concept drift between two adjacent periods.
+Fig. 8 shows the macro F1 score over time for C-SSVM, CSSVM with only local topics (LTC-SSVM), and C-SSVM with only globale topics (GTC-SSVM). This helps us understand whether C-SSVM is able to deal with concept drift during classification. We see that the performance in terms of macro F1 increases over time, rapidly in the early stages, more slowly in the later periods covered by our data set, while not actually plateauing. We also see that the performance curves of LTC-SSVM and GTC-SSVM behave similarly, albeit at a lower performance level. Between LTC-SSVM and GTC-SSVM, LTC-SSVM outperforms GTC-SSVM slightly: local
+
+220
+
+1"Train"Schedule 2"winter"chaos
+3"sta8on 4"hot"drinks 5"ede>wageningen
+
+1"sta8on 2"winter"chaos
+3"chocomel 4"wheel 5"change
+
+1"netherlands 2"train 3"bomb
+4"NS"company 5"police
+
+1"train 2"train"cancel
+3"snow"fall 4"froze
+5"clumsy"work
+
+1"bomb 2"NS
+3"pains 4"police 5"train
+
+Figure 7: RQ3: An example local topic propagation in the subset "Communication." The text blocks at the top indicate the top 5 representative terms for the topic being propagated at a specific time period; the bottom side shows the topic distribution over the whole timeline.
+
+topic distributions are more sensitive, and hence adaptive, when drift occurs.
+
+0.5
+
+0.45
+
+macro F1
+
+0.4
+
+0.35
+
+0.3 0.25
+0
+
+C-SSVM LTC-SSVM GTC-SSVM
+50 100 150 200 250 300 350 400 450 500
+#days
+
+Figure 8: RQ3: macro F1 performance of C-SSVM, LTCSSVM and GTC-SSVM over the entire data set.
+
+6.4 Overall comparison
+To help us answer RQ4, Table 6 lists the macro F1 and average accuracy for all methods listed in Table 2 for all subsets over all time periods. We see that our proposed methods C-SSVM, NDCSSVM, GTC-SSVM and LTC-SSVM significantly outperform the baselines on most of subsets.
+As predicted, NBC performs worse. Using local topics (LTCSSVM) performs second best (after using both local and global topics), which indicates the importance of dynamic local topics tracking in our streaming classification. C-SSVM achieves a 3.2% (4.5%) increase over GTC-SSVM in terms of macro F1 (accuracy), whereas the macro F1 (accuracy) increases 1.9% (2.2%) over LTCSSVM. Compared to CSHC, C-SSVM offers a statistically significant improvement of up to 7.6% and 8.1% in terms of macro F1 and accuracy, respectively.
+
+0.49
+
+0.5
+
+C-SSVM
+
+C-SSVM
+
+0.48
+
+LTC-SSVM
+
+GTC-SSVM
+
+0.49
+
+LTC-SSVM GTC-SSVM
+
+0.47
+
+0.48
+
+macro F1 Accuracy
+
+0.46
+
+0.47
+
+0.45
+
+0.46
+
+0.44
+
+0.45
+
+0.43 3
+
+4
+
+5
+
+6
+
+7
+
+0.443
+
+4
+
+5
+
+6
+
+7
+
+#items per chunk
+
+#items per chunk
+
+(a) macro F1
+
+(b) Accuracy
+
+Figure 9: RQ5: Performance with different numbers of items of each chunk, in terms of macro F1 (a) and Accuracy (b).
+
+6.5 Chunks
+We now move on to RQ5, and analyse the influence of the number of items per chunk. Fig. 9 plots the performance curves for C-SSVM, LTC-SSVM and GTC-SSVM with varying numbers of items per chunk. While not statistically significant, for both metrics and all three methods, the performance peaks when the number of items equals 6, i.e., higher than our default value of 4.
+7. CONCLUSION AND FUTURE WORK
+We considered the task of hierarchical multi-label classification of social text streams. We identified three main challenges: the shortness of text, concept drift, and hierarchical labels as classification targets. The first of these was tackled using an entity-based document expansion strategy. To alleviate the phenomenon of concept drift we presented a dynamic extension to topic models. This extension tracks topics with concept drift over time, based on both local and global topic distributions. We combine this with an innovative chunk-based structural learning framework to tackle the hierarchical multi-label classification problem. We verified the effectiveness of our proposed method in hierarchical multi-label classification of social text streams, showing significant improvements over various baselines tested with a manually annotated dataset of tweets.
+As to future work, parallel processing may enhance the efficiency of our method on hierarchical multi-label classification of social text streams. Meanwhile, both the transfer of our approach to a larger social documents dataset and new baselines for document expansion and topic modeling should give new insights. Adaptive learning or semi-supervised learning can be used to optimize the chunk size in our task. Finally, we have evaluated our approaches on fixed time intervals. This might not accurately reflect exact concept drift on social streams. A novel incremental classification method focussing on dynamic time bins opens another direction of future research.
+Acknowledgments. This research was supported by the China Scholarship Council, the European Community's Seventh Framework Programme (FP7/2007-2013) under grant agreement nrs 288024 and 312827, the Netherlands Organisation for Scientific Research (NWO) under project nrs 727.011.005, 612.001.116, HOR-11-10, 640.006.013, the Center for Creation, Content and Technology (CCCT), the QuaMerdes project funded by the CLARIN-nl program, the TROVe project funded by the CLARIAH program, the Dutch national program COMMIT, the ESF Research Network Program ELIAS, the Elite Network Shifts project funded by the Royal Dutch Academy of Sciences (KNAW), the Netherlands eScience Center under project number 027.012.105, the Yahoo! Faculty Research and Engagement Program, the Microsoft Research PhD program, and the HPC Fund.
+
+221
+
+Table 6: RQ4: Performance of all methods on all subsets for all time periods; macro F1 is abbreviated to m-F1, average accuracy is written as Acc. We use and to denote significant improvements over CSHC. Best performance per subset is indicated in boldface.
+
+C-SSVM
+
+NDC-SSVM
+
+GTC-SSVM
+
+LTC-SSVM
+
+CSHC
+
+H-SVM
+
+NBC
+
+Subset
+Communication Recommendation Offline source Type of traveler Performance Product Innovation Workplace Governance Company related Leadership
+
+m-F1 Acc.
+
+47.21 48.16 41.28 42.52 40.69 41.61
+
+43.73 49.52 44.88 46.89 43.81 47.71 47.20 44.15
+
+44.61 50.81 45.24 47.68 44.42 48.44 48.52 45.88
+
+m-F1
+44.24 040.44 039.52 044.02
+47.62 043.16
+45.58 043.11 047.19 046.52
+43.67
+
+Acc.
+45.42 041.52 040.42 044.96 48.45 044.09
+46.64 044.32 048.46 047.38
+44.59
+
+m-F1
+046.44 039.88 039.62 043.12 48.86 044.26
+45.97 042.21 046.42 046.12
+41.75
+
+Acc.
+047.68 040.24 041.15 044.25 49.63 045.02
+46.81 043.15 047.35 047.51
+42.82
+
+m-F1
+046.25 040.52 040.33 043.45 48.93 044.01 046.52 042.63 047.22 046.54
+42.34
+
+Acc.
+047.82 041.47 041.72 044.49 50.02 045.22 047.51 043.41 048.19 047.43
+43.21
+
+m-F1 Acc.
+44.12 45.31 38.53 39.42 36.98 37.43 38.83 40.01 48.74 49.26 41.92 42.85 45.44 46.56 36.94 37.22 45.61 46.21 43.31 44.99 42.51 43.44
+
+m-F1 Acc.
+45.22 46.62 38.22 39.71 37.41 38.42 41.07 41.92 48.84 49.52 41.55 42.34 44.52 45.63 36.24 37.01 46.25 47.36 43.06 44.12 42.15 43.51
+
+m-F1 Acc.
+44.02 45.18 34.31 35.26 33.21 34.51 38.62 39.38 46.42 47.32 39.21 40.42 43.41 44.21 36.59 37.41 43.48 44.51 40.91 41.75 40.35 41.27
+
+8. REFERENCES
+[1] B. Albert, G. Joao, P. Mykola, and Z. Indre. Handling concept drift: importance challenges and solutions. In PAKDD, 2011.
+[2] E. Amigó, A. Corujo, J. Gonzalo, E. Meij, and M. de Rijke. Overview of RepLab 2012: Evaluating online reputation management systems. In CLEF, 2012.
+[3] Z. Barutcuoglu, R. Schapire, and O. Troyanskaya. Hierarchical multi-label prediction of gene function. Bioinformatics, 2006.
+[4] W. Bi and J. T. Kwok. Multi-label classification on tree-and dag-structured hierarchies. In ICML, 2011.
+[5] D. Blei and J. Lafferty. Dynamic topic models. In ICML, 2006. [6] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation.
+JMLR, 2003. [7] H. Blockeel, L. Schietgat, and J. Struyf. Decision trees for
+hierarchical multilabel classification. In ECML, 2006. [8] D. Bollegala, Y. Matsuo, and M. Ishizuka. Measuring semantic
+similarity between words using web search engines. WWW, 2007. [9] S. Carter, W. Weerkamp, and M. Tsagkias. Microblog language
+identification: Overcoming the limitations of short, unedited and idiomatic text. LREC, 2013. [10] N. Cesa-Bianchi, C. Gentile, and L. Zaniboni. Incremental algorithms for hierarchical classification. JMLR, 2006. [11] W. Chan, W. Yang, J. Tang, J. Du, X. Zhou, and W. Wang. Community question topic categorization via hierarchical kernelized classification. In CIKM, 2013. [12] J. Chen and D. Warren. Cost-sensitive learning for large-scale hierarchical classification of commercial products. In CIKM, 2013. [13] M. Chen, X. Jin, and D. Shen. Short text classification improved by learning multi-granularity topics. In IJCAI, 2011. [14] A. Clare. Machine Learning and Data Mining for Yeast Functional Genomics. PhD thesis, University of Wales, 2003. [15] G. Erkan and D. R. Radev. Lexrank: Graph-based lexical centrality as salience in text summarization. J. Artif. Intell., 2004. [16] T. Finley and T. Joachims. Training structural svms when exact inference is intractable. In ICML, 2008. [17] G. P. C. Fung, J. X. Yu, and H. Lu. Classifying text streams in the presence of concept drifting. In PAKDD, 2004. [18] Y. Guo and S. Gu. Multi-label classification using conditional dependency networks. In IJCAI, 2011. [19] D. Koller and M. Sahami. Hierarchically classifying documents using very few words. In ICML, 1997. [20] X. Kong, B. Cao, and P. S. Yu. Multi-label classification by mining label and instance correlations from heterogeneous information networks. In KDD, 2013. [21] G. Lebanon and Y. Zhao. Local likelihood modeling of temporal text streams. In ICML, 2008. [22] L. Li, K. Zhou, G.-R. Xue, H. Zha, and Y. Yu. Enhancing diversity, coverage and balance for summarization through structure learning. In WWW, 2009. [23] L. Li, K. Zhou, G.-R. Xue, H. Zha, and Y. Yu. Video summarization via transferrable structured learning. In WWW, 2011. [24] J. S. Liu. The collapsed Gibbs sampler in Bayesian computations with applications to a gene regulation problem. JASA, 1994.
+
+[25] S. Liu, S. Wang, F. Zhu, J. Zhang, and R. Krishnan. Hydra: Large-scale social identity linkage via heterogeneous behavior modeling. In SIGMOD, 2014.
+[26] G. Long, L. Chen, X. Zhu, and C. Zhang. Tcsst: transfer classification of short & sparse text using external data. In CIKM, 2012.
+[27] E. Meij, W. Weerkamp, and M. de Rijke. Adding semantics to microblog posts. In WSDM 2012, 2012.
+[28] K. Nishida, R. Banno, K. Fujimura, and T. Hoshide. Tweet classification by data compression. In DETECT, 2011.
+[29] K. Nishida, T. Hoshide, and K. Fujimura. Improving tweet stream classification by detecting changes in word probability. In SIGIR, 2012.
+[30] D. Odijk, E. Meij, and M. de Rijke. Feeding the second screen: Semantic linking based on subtitles. In OAIR, 2013.
+[31] J. Petterson and T. S. Caetano. Submodular multi-label learning. In NIPS, 2011.
+[32] X.-H. Phan, L.-M. Nguyen, and S. Horiguchi. Learning to classify short and sparse text & web with hidden topics from large-scale data collections. In WWW, 2008.
+[33] Z. Ren, S. Liang, E. Meij, and M. de Rijke. Personalized time-aware tweets summarization. In SIGIR, 2013.
+[34] J. Rousu, S. Saunders, S. Szedmak, and J. Shawe-Taylor. Kernel-based learning of hierarchical multilabel classification models. Mach. Learn., 2006.
+[35] S. Sarawagi and R. Gupta. Accurate max-margin training for structured output spaces. In ICML, 2008.
+[36] S. Shalev-Shwartz and Y. Singer. Efficient learning of label ranking by soft projections onto polyhedra. JMLR, 2006.
+[37] B. Sriram, D. Fuhry, E. Demir, H. Ferhatosmanoglu, and M. Demirbas. Short text classification in twitter to improve information filtering. In SIGIR, 2010.
+[38] A. Sun. Short text classification using very few words. In SIGIR, 2012.
+[39] N. A. Syed, H. Liu, and K. K. Sung. Handling concept drifts in incremental learning with support vector machines. In KDD, 1999.
+[40] L. Tang, S. Rajan, and V. K. Narayanan. Large-scale mutli-label classification via metalabeler. In WWW, 2009.
+[41] I. Tsochantaridis, T. Joachims, T. Hofmann, and Y. Altun. Large margin methods for structured and interdependent output variables. JMLR, 2005.
+[42] C. Vens, J. Struyf, L. Schietgat, S. Dzeroski, and H. Blockeel. Decision trees for hierarchical multi-label classification. JMLR, 2008.
+[43] X. Wan and J. Yang. Multi-document summarization using cluster-based link analysis. In SIGIR, 2008.
+[44] W.-T. Yih and C. Meek. Improving similarity measures for short segments of text. In AAAI, 2007.
+[45] Y. Yue and T. Joachims. Predicting diverse subsets using structural SVMs. In ICML, 2008.
+[46] S. Zhang, X. Jin, D. Shen, B. Cao, X. Ding, and X. Zhang. Short text classification by detecting information path. In CIKM, 2013.
+
+222
+
+

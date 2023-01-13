@@ -1,0 +1,952 @@
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+End-to-End Neural Ad-hoc Ranking with Kernel Pooling
+
+Chenyan Xiong
+Carnegie Mellon University cx@cs.cmu.edu
+
+Zhuyun Dai
+Carnegie Mellon University zhuyund@cs.cmu.edu
+
+Jamie Callan
+Carnegie Mellon University callan@cs.cmu.edu
+
+Zhiyuan Liu
+Tsinghua University liuzy@tsinghua.edu.cn
+
+Russell Power
+Allen Institute for AI russellp@allenai.org
+
+ABSTRACT
+is paper proposes K-NRM, a kernel based neural model for document ranking. Given a query and a set of documents, K-NRM uses a translation matrix that models word-level similarities via word embeddings, a new kernel-pooling technique that uses kernels to extract multi-level so match features, and a learning-to-rank layer that combines those features into the nal ranking score.
+e whole model is trained end-to-end. e ranking layer learns desired feature pa erns from the pairwise ranking loss. e kernels transfer the feature pa erns into so -match targets at each similarity level and enforce them on the translation matrix. e word embeddings are tuned accordingly so that they can produce the desired so matches. Experiments on a commercial search engine's query log demonstrate the improvements of K-NRM over prior feature-based and neural-based states-of-the-art, and explain the source of K-NRM's advantage: Its kernel-guided embedding encodes a similarity metric tailored for matching query words to document words, and provides e ective multi-level so matches.
+KEYWORDS
+Ranking, Neural IR, Kernel Pooling, Relevance Model, Embedding
+1 INTRODUCTION
+In traditional information retrieval, queries and documents are typically represented by discrete bags-of-words, the ranking is based on exact matches between query and document words, and trained ranking models rely heavily on feature engineering. In comparison, newer neural information retrieval (neural IR) methods use continuous text embeddings, model the query-document relevance via so matches, and aim to learn feature representations automatically. With the successes of deep learning in many related areas, neural IR has the potential to rede ne the boundaries of information retrieval; however, achieving that potential has been di cult so far.
+ e rst two authors contributed equally.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan © 2017 ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3080809
+
+Many neural approaches use distributed representations (e.g., word2vec [17]), but in spite of many e orts, distributed representations have a limited history of success for document ranking. Exact match of query words to document words is a strong signal of relevance [8], whereas so -match is a weaker signal that must be used carefully. Word2vec may consider `pi sburgh' to be similar to `boston', and `hotel' to be similar to `motel'. However, a person searching for `pi sburgh hotel' may accept a document about `pi sburgh motel', but probably will reject a document about `boston hotel'. How to use these so -match signals e ectively and reliably is an open problem.
+is work addresses these challenges with a kernel based neural ranking model (K-NRM). K-NRM uses distributed representations to represent query and document words. eir similarities are used to construct a translation model. Word pair similarities are combined by a new kernel-pooling layer that uses kernels to so ly count the frequencies of word pairs at di erent similarity levels (so TF). e so -TF signals are used as features in a ranking layer, which produces the nal ranking score. All of these layers are di erentiable and allow K-NRM to be optimized end-to-end.
+e kernels are the key to K-NRM's capability. During learning, the kernels convert the learning-to-rank loss to requirements on so -TF pa erns, and adjust the word embeddings to produce a so match that can be er separate the relevant and irrelevant documents. is kernel-guided embedding learning encodes a similarity metric tailored for matching query and document. e tailored similarity metric is conveyed by the learned embeddings, which produces e ective multi-level so -matches for ad-hoc ranking.
+Extensive experiments on a commercial search engine's query log demonstrate the signi cant and robust advantage of K-NRM. On di erent evaluation scenarios (in-domain, cross-domain and raw user clicks), and on di erent parts of the query log (head, torso, and tail), K-NRM outperforms both feature-based ranking and neural ranking states-of-the-art by as much as 65%. K-NRM's advantage is not from an unexplainable `deep learning magic', but the long-desired so match achieved by its kernel-guided embedding learning. In our analysis, if used without the multi-level so match or the embedding learning, the advantage of K-NRM quickly diminishes; while with the kernel-guided embedding learning, K-NRM successfully learns relevance-focused so matches using its embedding and ranking layers, and the memorized ranking preferences generalize well to di erent testing scenarios.
+e next section discusses related work. Section 3 presents the kernel-based neural ranking model. Experimental methodology is discussed in Section 4 and evaluation results are presented in Section 5. Section 6 concludes.
+
+55
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+2 RELATED WORK
+Retrieval models such as query likelihood and BM25 are based on exact matching of query and document words, which limits the information available to the ranking model and may lead to problems such vocabulary mismatch [4]. Statistical translation models were an a empt to overcome this limitation. ey model query-document relevance using a pre-computed translation matrix that describes the similarities between word pairs [1]. At query time, the ranking function considers the similarities of all query and document word pairs, allowing query words to be so -matched to document words.
+e translation matrix can be calculated via mutual information in a corpus [12] or using user clicks [6].
+Word pair interactions have also been modeled by word embeddings. Word embeddings trained from surrounding contexts, for example, word2vec [17], are considered to be the factorization of word pairs' PMI matrix [14]. Compared to word pair similarities which are hard to learn, word embeddings provide a smooth low-level approximation of word similarities that may improve translation models [8, 24].
+Some research has questioned whether word embeddings based on surrounding context, such as word2vec, are suitable for ad hoc ranking. Instead, it customizes word embeddings for search tasks. Nalisnick et al. propose to match query and documents using both the input and output of the embedding model, instead of only using one side of them [19]. Diaz et al. nd that word embeddings trained locally on pseudo relevance feedback documents are more related to the query's information needs, and can provide be er query expansion terms [5].
+Current neural ranking models fall into two groups: representation based and interaction based [8]. e earlier focus of neural IR was mainly on representation based models, in which the query and documents are rst embedded into continuous vectors, and the ranking is calculated from their embeddings' similarity. For example, DSSM [11] and its convolutional version CDSSM [22] map words to le er-tri-grams, embed query and documents using neural networks built upon the le er-tri-grams, and rank documents using their embedding similarity with the query.
+e interaction based neural models, on the other hand, learn query-document matching pa erns from word-level interactions. For example, ARC-II [10] and MatchPyramid [20] build hierarchical Convolutional Neural Networks (CNN) on the interactions of two texts' word embeddings; they are e ective in matching tweetretweet and question-answers [10]. e Deep Relevance Matching Model (DRMM) uses pyramid pooling (histogram) [7] to summarize the word-level similarities into ranking signals [9]. e word level similarities are calculated from pre-trained word2vec embeddings, and the histogram counts the number of word pairs at di erent similarity levels. e counts are combined by a feed forward network to produce nal ranking scores. Interaction based models and representation based models address the ranking task from di erent perspectives, and can be combined for further improvements [18].
+is work builds upon the ideas of customizing word embeddings and the interaction based neural models: K-NRM ranks documents using so matches from query-document word interactions, and learns to encode the relevance preferences using customized word embeddings at the same time, which is achieved by the kernels.
+
+Query Translation Matrix Kernels
+
+(! words)
+
+001322
+
+300 300
+
+...
+
+M!×#
+
+0(2
+
+300
+
+...
+
+...
+
+Document
+
+(# words)
+
+014
+
+300
+
+034 064
+
+300 300
+
+...
+
+...
+
+...
+
+...
+
+...
+
+054
+
+300
+
+...
+
+Soft-TF
+
+Ranking Features
+
+012
+
+Final
+
+Ranking
+
+...
+
+Score
+
+7 ... 0(2
+
+... W,b
+
+...
+
+Embedding Translation
+
+Layer
+
+Layer
+
+Kernel Pooling
+
+Learning-To-Rank
+
+Figure 1: e Architecture of K-NRM. Given input query words and document words, the embedding layer maps them into distributed representations, the translation layer calculates the word-word similarities and forms the translation matrix, the kernel pooling layer generate so -TF counts as ranking features, and the learning to rank layer combines the so -TF to the nal ranking score.
+
+3 KERNEL BASED NEURAL RANKING
+is section presents K-NRM, our kernel based neural ranking model. We rst discuss how K-NRM produces the ranking score for a querydocument pair with their words as the sole input (ranking from scratch). en we derive how the ranking parameters and word embeddings in K-NRM are trained from ranking labels (learning end-to-end).
+
+3.1 Ranking from Scratch
+
+Given a query q and a document d, K-NRM aims to generate a ranking score f (q, d) only using query words q = {t1q , ...tiq ..., tnq } and document words d = {t1d , ...tjd ..., tmd }. As shown in Figure 1, K-NRM achieves this goal via three components: translation model, kernel-
+pooling, and learning to rank.
+Translation Model: K-NRM rst uses an embedding layer to
+map each word t to an L-dimension embedding ìt :
+
+t  ìt .
+
+en a translation layer constructs a translation matrix M. Each element in M is the embedding similarity between a query word and a document word:
+
+Mi j
+
+=
+
+cos( ìtiq ,
+
+ìt
+
+d j
+
+).
+
+e translation model in K-NRM uses word embeddings to recover
+
+the word similarities instead of trying to learn one for each word
+
+pair. Doing so requires much fewer parameters to learn. For a
+
+vocabulary of size |V | and the embedding dimension L, K-NRM's
+
+translation model includes |V | × L embedding parameters, much fewer than learning all pairwise similarities (|V |2).
+
+56
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+SoftTF SoftTF
+
+K1
+
+K2
+
+K3
+
+gradient
+!(#$(%&))
+
+K1
+
+K2
+
+K3
+
+Word Pair Similarity (a) Ranking
+
+gradient
+
+!(%&()
+
+Word Pair Similarity
+
+(b) Learning
+
+Figure 2: Illustration of kernels in the ranking (forward) process and learning (backward) process.
+
+Kernel-Pooling: K-NRM then uses kernels to convert wordword interactions in the translation matrix M to query-document ranking features (M):
+n
+(M) = log Kì(Mi )
+i =1
+Kì(Mi ) = {K1(Mi ), ..., KK (Mi )}
+
+Kì(Mi ) applies K kernels to the i-th query word's row of the translation matrix, summarizing (pooling) it into a K-dimensional feature vector. e log-sum of each query word's feature vector forms the query-document ranking feature vector .
+e e ect of Kì depends on the kernel used. is work uses the RBF kernel:
+
+Kk (Mi ) =
+
+j
+
+exp(-
+
+(Mi
+
+j - µk 2k2
+
+)2
+
+).
+
+As illustrated in Figure 2a, the RBF kernel Kk calculates how word pair similarities are distributed around it: the more word pairs with similarities closer to its mean µk , the higher its value. Kernel pooling with RBF kernels is a generalization of existing pooling techniques. As   , the kernel pooling function devolves to the mean pooling. µ = 1 and   0 results in a kernel that only responds to exact matches, equivalent to the TF value from sparse models. Otherwise, the kernel functions as `so -TF'1. µ de nes the similarity level that `so -TF' focuses on; for example, a kernel with µ = 0.5 calculates the number of document words whose similarities to the query word are close to 0.5.  de nes the kernel width, or the range of its `so -TF' count.
+Learning to Rank: e ranking features (M) are combined by a ranking layer to produce the nal ranking score:
+
+f (q, d) = tanh(wT (M) + b).
+
+w and b are the ranking parameters to learn. tanh() is the activation function. It controls the range of ranking score to facilitate the learning process. It is rank-equivalent to a typical linear learning to rank model.
+
+1 e RBF kernel is one of the most popular choices. Other kernels with similar density estimation e ects can also be used, as long as they are di erentiable. For example, polynomial kernel can be used, but histograms [9] cannot as they are not di erentiable.
+
+Pu ing every together, K-NRM is de ned as:
+
+f (q, d) = tanh(wT (M) + b)
+
+Learning to Rank (1)
+
+n
+(M) = log Kì(Mi )
+i =1
+
+So -TF Features (2)
+
+Kì(Mi ) = {K1(Mi ), ..., KK (Mi )}
+
+Kernel Pooling (3)
+
+Kk (Mi ) =
+
+j
+
+exp(-
+
+(Mi
+
+j - µk 2k2
+
+)2
+
+)
+
+RBF Kernel (4)
+
+Mi j
+
+=
+
+cos( ìtiq ,
+
+ìt
+
+d j
+
+)
+
+Translation Matrix (5)
+
+t  ìt .
+
+Word Embedding (6)
+
+Eq. 5-6 embed query words and document words, and calculate the translation matrix. e kernels (Eq. 4) count the so matches between query and document's word pairs at multiple levels, and generate K so -TF ranking features (Eq. 2-3). Eq. 1 is the learning to rank model. e ranking of K-NRM requires no manual features.
+e only input used is the query and document words. e kernels extract so -TF ranking features from word-word interactions automatically.
+
+3.2 Learning End-to-End
+
+e training of K-NRM uses the pairwise learning to rank loss:
+
+l(w, b, V) =
+
+max(0, 1 - f (q, d+) + f (q, d-)). (7)
+
+q d +,d - Dq+,-
+
+Dq+,- are the pairwise preferences from the ground truth: d+ ranks higher than d-. e parameters to learn include the ranking parameters w, b, and the word embeddings V.
+e parameters are optimized using back propagation (BP) through the neural network. Starting from the ranking loss, the gradients are rst propagated to the learning-to-rank part (Eq. 1) and update the ranking parameters (w, b), the kernels pass the gradients to the word similarities (Eq. 2-4), and then to the embeddings (Eq. 5).
+Back propagations through the kernels: e embeddings contain millions of parameters V and are the main capacity of the model. e learning of the embeddings is guided by the kernels.
+e back propagation rst applies gradients from the loss function (Eq. 7) to the ranking score f (q, d), to increase it (for d+) or decrease it (for d-); the gradients are propagated through Eq. 1 to the feature vector (M), and then through Eq. 2 to the the kernel scores Kì(Mi ). e resulted (Kì(Mi )) is a K dimensional vector:
+
+(Kì(Mi )) = { (K1(Mi )), ..., (KK (Mi )}.
+
+Its each dimension (Kk (Mi )) is jointly de ned by the ranking score's gradients and the ranking parameters. It adjusts the corre-
+sponding kernel's score up or down to be er separate the relevant document (d+) from the irrelevant one (d-).
+e kernels spread the gradient to word similarities in the trans-
+lation matrix Mij , through Eq. 4:
+
+(Mi j )
+
+=
+
+K k =1
+
+(µk
+
+-
+
+(Kk (Mi )) Mi j ) exp(
+
+× k2
+(Mij -µk -2k2
+
+)2
+
+)
+
+.
+
+(8)
+
+e kernel-guided embedding learning process is illustrated in
+
+Figure 2b. A kernel pulls the word similarities closer to its µ to
+
+57
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 1: Training and testing dataset characteristics.
+
+Training Testing
+
+eries
+
+95,229
+
+1,000
+
+Documents Per ery
+
+12.17
+
+30.50
+
+Search Sessions
+
+31,201,876 4,103,230
+
+Vocabulary Size
+
+165,877 19,079
+
+increase its so -TF count, or pushes the word pairs away to reduce it, based on the gradients received in the back-propagation. e strength of the force also depends on the the kernel's width k and the word pair's distance to µk : approximately, the wider the kernel is (bigger k ), and the closer the word pair's similarity to µk , the stronger the force is (Eq. 8). e gradient a word pair's similarity received, (Mij ), is the combination of the forces from all K kernels.
+e word embedding model receives (Mij ) and updates the embeddings accordingly. Intuitively, the learned word embeddings are aligned to form multi-level so -TF pa erns that can separate the relevant documents from the irrelevant ones in training, and the learned embedding parameters V memorize this information. When testing, K-NRM extracts so -TF features from the learned word embeddings using the kernels and produces the nal ranking score using the ranking layer.
+4 EXPERIMENTAL METHODOLOGY
+is section describes our experimental methods and materials.
+4.1 Dataset
+Our experiments use a query log sampled from search logs of Sogou.com, a major Chinese commercial search engine. e sample contains 35 million search sessions with 96, 229 distinct queries.
+e query log includes queries, displayed documents, user clicks, and dwell times. Each query has an average of 12 documents displayed. As the results come from a commercial search engine, the returned documents tend to be of very high quality.
+e primary testing queries were 1, 000 queries sampled from head queries that appeared more than 1, 000 times in the query log. Most of our evaluation focuses on the head queries; we use tail query performance to evaluate model robustness. e remaining queries were used to train the neural models. Table 1 provides summary statistics for the training and testing portions of the search log.
+e query log contains only document titles and URLs. e full texts of testing documents were crawled and parsed using Boilerpipe [13] for our word-based baselines (described in Section 4.3). Chinese text was segmented using the open source so ware ICTCLAS [23]. A er segmentation, documents are treated as sequences of words (as with English documents).
+4.2 Relevance Labels and Evaluation Scenarios
+Neural models like K-NRM and CDSSM require a large amount of training data. Acquiring a su cient number of manual training labels outside of a large organization would be cost-prohibitive. User click data, on the other hand, is easy to acquire and prior research has shown that it can accurately predict manual labels. For our experiments training labels were generated based on user clicks from the training sessions.
+
+Table 2: Testing Scenarios. DCTR Scores are inferred by DCTR click model [3]. TACM Scores are inferred by TACM click model [15]. Raw Clicks use the sole click in a session as the positive label. e label distribution is the number of relevance labels from 0-4 from le to right, if applicable.
+
+Condition Testing-SAME Testing-DIFF Testing-RAW
+
+Label DCTR Scores TACM Scores Raw Clicks
+
+Label Distribution 70%, 19.6%, 9.8%, 1.3%, 1.1% 79%, 14.7%, 4.6%, 0.9%, 0.9% 2,349,280 clicks
+
+ere is a large amount of prior research on building click models to model user behavior and to infer reliable relevance signals from clicks [3]. is work uses one of the simplest click models, DCTR, to generate relevance scores from user clicks [3]. DCTR calculates the relevance scores of a query-document pair based on their click through rates. Despite being extremely simple, it performs rather well and is a widely used baseline [3]. Relevance scores from DCTR are then used to generate preference pairs to train our models.
+e testing labels were also estimated from the click log, as manual relevance judgments were not made available to us. Note
+that there was no overlap between training queries and testing queries. Testing-SAME infers relevance labels using DCTR, the same
+click model used for training. is se ing evaluates the ranking model's ability to t user preferences (click through rates).
+Testing-DIFF infers relevance scores using TACM [15], a stateof-the-art click model. TACM is a more sophisticated model and uses both clicks and dwell times. On an earlier sample of Sogou's query log, the TACM labels aligned extremely well with expert annotations: when evaluated against manual labels, TACM achieved an NDCG@5 of up to 0.97 [15]. is is substantially higher than the agreement between the manual labels generated by the authors for a sample of queries. is precision makes TACM's inferred scores a good approximation of expert labels, and Testing-DIFF is expected to produce evaluation results similar to expert labels.
+Testing-RAW is the simplest click model. Following the cascade assumption [3], we treat the clicked document in each single-click session as a relevant document, and test whether the model can put it at the top of the ranking. Testing-Raw only uses singleclick sessions ( 57% of the testing sessions are single-click sessions). Testing-RAW is a conservative se ing that uses raw user feedback. It eliminates the in uence of click models in testing, and evaluates the ranking model's ability to overcome possible disturbances from the click models.
+e three testing scenarios are listed in Table 2. Following TREC methodology, the Testing-SAME and Testing-DIFF's inferred relevance scores were mapped to 5 relevance grades. resholds were chosen so that our relevance grades have the same distribution as TREC Web Track 2009-2012 qrels.
+Search quality was measured using NDCG at depths {1, 3, 10} for Testing-SAME and Testing-DIFF. We focused on early ranking positions that are more important for commercial search engines. Testing-RAW was evaluated by mean reciprocal rank (MRR) as there is only one relevant document per query. Statistical signi cance was tested using the permutation test with p < 0.05.
+
+58
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 3: e number of parameters and the word embeddings used by baselines and K-NRM. `­' indicates not applicable, e.g. unsupervised methods have no parameters, and word-based methods do not use embeddings.
+
+Method Lm, BM25 RankSVM Coor-Ascent Trans DRMM CDSSM K-NRM
+
+Number of Parameters ­ 21 21 ­ 161
+10,877,657 49,763,110
+
+Embedding ­ ­ ­
+word2vec word2vec
+­ end-to-end
+
+4.3 Baselines
+Our baselines include both traditional word-based ranking models as well as more recent neural ranking models.
+Word-based baselines include BM25 and language models with Dirichlet smoothing (Lm). ese unsupervised retrieval methods were applied on the full text of candidate documents, and used to re-rank them. We found that these methods performed be er on full text than on titles. Full text default parameters were used.
+Feature-based learning to rank baselines include RankSVM2, a state-of-the-art pairwise ranker, and coordinate ascent [16] (CoorAscent3), a state-of-the-art listwise ranker. ey use typical wordbased features: Boolean AND; Boolean OR; Coordinate match; TFIDF; BM25; language models with no smoothing, Dirichlet smoothing, JM smoothing and two-way smoothing; and bias. All features were applied to the document title and body. e parameters of the retrieval models used in feature extraction are kept default.
+Neural ranking baselines include DRMM [9], CDSSM [21], and a simple embedding-based translation model, Trans.
+DRMM is the state-of-the-art interaction based neural ranking model [9]. It performs histogram pooling on the embedding based translation matrix and uses the binned so -TF as the input to a ranking neural network. e embeddings used are pre-trained via word2vec [17] because the histograms are not di erentiable and prohibit end-to-end learning. We implemented the best variant, DRMMLCH×IDF. e pre-trained embeddings were obtained by applying the skip-gram method from word2vec on our training corpus (document titles displayed in training sessions).
+CDSSM [22] is the convolutional version of DSSM [11]. CDSSM maps English words to le er-tri-grams using a word-hashing technique, and uses Convolutional Neural Networks to build representations of the query and document upon the le er-tri-grams. It is a state-of-the-art representation based neural ranking model. We implemented CDSSM in Chinese by convolving over Chinese characters. (Chinese characters can be considered as similar to English le er-tri-grams with respect to word meaning). CDSSM is also an end-to-end model, but uses discrete le er-tri-grams/Chinese characters instead of word embeddings.
+Trans is an unsupervised embedding based translation model. Its translation matrix is calculated by the cosine similarity of word
+2h ps://www.cs.cornell.edu/people/tj/svm light/svm rank.html 3h ps://sourceforge.net/p/lemur/wiki/RankLib/
+
+embeddings from the same word2vec used in DRMM, and then averaged to the query-document ranking score.
+Baseline Settings: RankSVM uses a linear kernel and the hyperparameter C was selected in the development fold of the cross validation from the range [0.0001, 10].
+Recommended se ings from RankLib were used for Coor-Ascent. We obtained the body texts of testing documents from the new Sogou-T corpus [2] or crawled them directly. e body texts were used by all word-based baselines. Neural ranking baselines and K-NRM used only titles for training and testing, as the coverage of Sogou-T on the training documents is low and the training documents could not be crawled given resource constraints. For all baselines, the most optimistic choices were made: featurebased methods (RankSVM and Coor-Ascent) were trained using 10fold cross-validation on the testing set and use both document title and body texts. e neural models were trained on the training set with the same se ings as K-NRM, and only use document titles (they still perform be er than only using the testing data). eoretically, this gives the sparse models a slight performance advantage as their training and testing data were drawn from the same distribution.
+4.4 Implementation Details
+is section describes the con gurations of our K-NRM model. Model training was done on the full training data as in Table 1, with training labels inferred by DCTR, as described in Section 4.2.
+e embedding layer used 300 dimensions. e vocabulary size of our training data was 165, 877. e embedding layer was initialized with the word2vec trained on our training corpus.
+e kernel pooling layer had K = 11 kernels. One kernel harvests exact matches, using µ0 = 1.0 and  = 10-3. µ of the other 10 kernels is spaced evenly in the range of [-1, 1], that is µ1 = 0.9, µ2 = 0.7, ..., µ10 = -0.9. ese kernels can be viewed as 10 so -TF bins.  is set to 0.1. e e ects of varying  are studied in Section 5.6.
+Model optimization used the Adam optimizer, with batch size 16, learning rate = 0.001 and  = 1e - 5. Early stopping was used with a patience of 5 epochs. We implemented our model using TensorFlow. e model training took about 50 milliseconds per batch, and converged in 12 hours on an AWS GPU machine.
+Table 3 summarizes the number of parameters used by the baselines and K-NRM. Word2vec refers to pre-trained word embeddings using skip-gram on the training corpus. End-to-end means that the embeddings were trained together with the ranking model.
+CDSSM learns hundreds of convolution lters on Chinese characters, thus has millions of parameters. K-NRM's parameter space is even larger as it learns an embedding for every Chinese word. Models with more parameters in general are expected to t be er but may also require more training data to avoid over ing.
+5 EVALUATION RESULTS
+Our experiments investigated K-NRM's e ectiveness, as well as its behavior on tail queries, with less training data, and with di erent kernel widths.
+
+59
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 4: Ranking accuracy of K-NRM and baseline methods. Relative performances compared with Coor-Ascent are in percent-
+ages. Win/Tie/Loss are the number of queries improved, unchanged, or hurt, compared to Coor-Ascent on NDCG@10. , , §, ¶ indicate statistically signi cant improvements over Coor-Ascent, Trans, DRMM§ and CDSSM¶, respectively.
+
+(a) Testing-SAME. Testing labels are inferred by the same click model (DCTR) as the training labels used by neural models.
+
+Method Lm BM25 RankSVM Coor-Ascent Trans DRMM CDSSM K-NRM
+
+NDCG@1
+
+0.1261
+
+-20.89%
+
+0.1422
+
+-10.79%
+
+0.1457 0.1594§ ¶
+
+-8.59% ­
+
+0.1347
+
+-15.50%
+
+0.1366
+
+-14.30%
+
+0.1441
+
+-9.59%
+
+0.2642§¶ +65.75%
+
+NDCG@3
+
+0.1648
+
+-26.46%
+
+0.1757
+
+-21.60%
+
+0.1905
+
+-14.99%
+
+0.2241§ ¶
+
+­
+
+0.1852
+
+-17.36%
+
+0.1902
+
+-15.13%
+
+0.2014
+
+-10.13%
+
+0.3210§¶ +43.25%
+
+NDCG@10
+
+0.2821
+
+-20.45%
+
+0.2868
+
+-10.14%
+
+0.3087
+
+-12.97%
+
+0.3547§ ¶
+
+­
+
+0.3147
+
+-11.28%
+
+0.3150
+
+-11.20%
+
+0.3329§
+
+-6.14%
+
+0.4277§¶ +20.58%
+
+W/T/L 293/116/498 299/125/483 371/151/385
+­/­/­ 318/140/449 318/132/457 341/149/417 447/153/307
+
+(b) Testing-DIFF. Testing labels are inferred by a di erent click model, TACM, which approximates expert labels very well [15].
+
+Method Lm BM25 RankSVM Coor-Ascent Trans DRMM CDSSM K-NRM
+
+NDCG@1
+
+0.1852
+
+-11.34%
+
+0.1631
+
+-21.92%
+
+0.1700 0.2089 ¶
+
+-18.62% ­
+
+0.1874
+
+-10.29%
+
+0.2068
+
+-1.00%
+
+0.1846
+
+-10.77%
+
+0.2984§¶ +42.84%
+
+NDCG@3
+
+0.1989
+
+-17.23%
+
+0.1894
+
+-21.18%
+
+0.2036 0.2403
+
+-15.27% ­
+
+0.2127 0.2491 0.2358
+
+-11.50% +3.67% -1.86%
+
+0.3092§¶ +28.26%
+
+NDCG@10
+
+0.3270
+
+-13.38%
+
+0.3254
+
+-13.81%
+
+0.3519 0.3775 ¶
+
+-6.78% ­
+
+0.3454 0.3809 ¶
+
+-8.51% +0.91%
+
+0.3557
+
+-5.79%
+
+0.4201§¶ +11.28%
+
+W/T/L 369/50/513 349/53/530 380/75/477
+­/­/­ 385/68/479 430/66/436 391/65/476 474/63/395
+
+Table 5: Ranking performance on Testing-RAW. MRR eval-
+uates the mean reciprocal rank of clicked documents in
+single-click sessions. Relative performance in the percent-
+ages and W(in)/T(ie)/L(oss) are compared to Coor-Ascent. , , §, ¶ indicate statistically signi cant improvements over Coor-Ascent, Trans, DRMM§ and CDSSM¶, respectively.
+
+Method Lm BM25 RankSVM Coor-Ascent Trans DRMM CDSSM K-NRM
+
+MRR
+
+0.2193
+
+-9.19%
+
+0.2280
+
+-5.57%
+
+0.2241
+
+-7.20%
+
+0.2415
+
+­
+
+0.2181
+
+-9.67%
+
+0.2335
+
+-3.29%
+
+0.2321
+
+-3.90%
+
+0.3379§¶ +39.92%
+
+W/T/L 416/09/511 456/07/473 450/78/473
+­/­/­/ 406/08/522 419/12/505 405/11/520 507/05/424
+
+5.1 Ranking Accuracy
+Tables 4a, 4b and 5 show the ranking accuracy of K-NRM and our baselines under three conditions.
+Testing-SAME (Table 4a) evaluates the model's ability to t user preferences when trained and evaluated on labels generated by the same click model (DCTR). K-NRM outperforms word-based baselines by over 65% on NDCG@1, and over 20% on NDCG@10.
+e improvements over neural ranking models are even bigger: On NDCG@1 the margin between K-NRM and the next best neural model is 83%, and on NDCG@10 it is 28%.
+
+Testing-DIFF (Table 4b) evaluates the model's relevance matching performance by testing on TACM inferred relevance labels, a good approximation of expert labels. Because the training and testing labels were generated by di erent click models, TestingDIFF challenges each model's ability to t the underlying relevance signals despite perturbations caused by di ering click model biases. Neural models with larger parameter spaces tend to be more vulnerable to this domain di erence: CDSSM actually performs worse than DRMM, despite using thousands times more parameters. However, K-NRM demonstrates its robustness and is able to outperform all baselines by more than 40% on NDCG@1 and 10% on NDCG@10.
+Testing-RAW (Table 5) evaluates each model's e ectiveness directly by user clicks. It tests how well the model ranks the most satisfying document (the only one clicked) in each session. K-NRM improves MRR from 0.2415 (Coor-Ascent) to 0.3379. is di erence is equal to moving the clicked document's from rank 4 to rank 3. e MRR and NDCG@1 improvements demonstrate K-NRM's precision oriented property--its biggest advantage is on the earliest ranking positions. is characteristic aligns with K-NRM's potential role in web search engines: as a sophisticate re-ranker, K-NRM is most possibly used at the nal ranking stage, in which the rst relevant document's ranking position is the most important.
+e two neural ranking baselines DRMM and CDSSM perform similarly in all three testing scenarios. e interaction based model, DRMM, is more robust to click model biases and performs slightly be er on Testing-DIFF, while the representation based model, CDSSM, performs slightly be er on Testing-SAME. However, the featurebased ranking model, Coor-Ascent, performs be er than all neural
+
+60
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 6: e ranking performances of several K-NRM variants. Relative performances and statistical signi cances are all
+compared with K-NRM's full model. , , §, ¶, and  indicate statistically signi cant improvements over K-NRM's variants of exact-match, word2vec, click2vec§, max-pool¶, and mean-pool, respectively.
+
+K-NRM Variant exact-match word2vec click2vec max-pool mean-pool full model
+
+Testing-SAME
+
+NDCG@1
+
+NDCG@10
+
+0.1351 0.1529
+0.1600
+
+-49% 0.2943 -42% 0.3223¶ -39% 0.3790¶
+
+-31% -24% -11%
+
+0.1413 0.2297§ ¶ 0.2642§ ¶
+
+-47% -13%
+­
+
+0.2979 0.3614§ ¶ 0.4277§ ¶
+
+-30% -16%
+­
+
+Testing-DIFF
+
+NDCG@1
+
+0.1788
+
+-40%
+
+0.2160 ¶ 0.2314 ¶
+
+-27% -23%
+
+NDCG@10
+
+0.3460 ¶
+
+-18%
+
+0.3811¶ -10%
+
+0.4002¶ -4%
+
+0.1607 0.2424 ¶ 0.2984§ ¶
+
+-46% -19%
+­
+
+0.3334 0.3787 ¶ 0.4201 ¶
+
+-21% -10%
+­
+
+Testing-RAW
+
+MRR
+
+0.2147 0.2427 ¶ 0.2667 ¶
+
+-37% -28% -21%
+
+0.2260 0.2714 ¶ 0.3379§ ¶
+
+-33% -20%
+­
+
+baselines on all three testing scenarios. e di erences can be as high as 15% and some are statistically signi cant. is holds even for Testing-SAME which is expected to favor deep models that access more in-domain training data. ese results remind that no `deep learning magic' can instantly provide signi cant gains for information retrieval tasks. e development of neural IR models also requires an understanding of the advantages of neural methods and how their advantages can be incorporated to meet the needs of information retrieval tasks.
+
+Table 7: Examples of word matches in di erent kernels. Words in bold are those whose similarities with the query word fall into the corresponding kernel's range (µ).
+µ ery: `Maserati' " 1.0 Maserati Ghibli black interior who knows 0.7 Maserati Ghibli black interior who knows 0.3 Maserati Ghibli black interior who knows -0.1 Maserati Ghibli black interior who knows
+
+5.2 Source of E ectiveness
+K-NRM di ers from previous ranking methods in several ways: multilevel so matches, word embeddings learned directly from ranking labels, and the kernel-guided embedding learning. is experiment studies these e ects by comparing the following variants of K-NRM.
+K-NRM (exact-match) only uses the exact match kernel (µ,  ) = (1, 0.001). It is equivalent to TF.
+K-NRM (word2vec) uses pre-trained word2vec, the same as DRMM. Word embedding is xed; only the ranking part is learned.
+K-NRM (click2vec) also uses pre-trained word embedding. But its word embeddings are trained on (query word, clicked title word) pairs. e embeddings are trained using skip-gram model with the same se ings used to train word2vec. ese embeddings are xed during ranking.
+K-NRM (max-pool) replaces kernel-pooling with max-pooling. Max-pooling nds the maximum similarities between document words and each query word; it is commonly used by neural network architectures. In our case, given the candidate documents' high quality, the maximum is almost always 1, thus it is similar to TF.
+K-NRM (mean-pool) replaces kernel-pooling with mean-pooling. It is similar to Trans except that the embedding is trained by learning-to-rank.
+All other se ings are kept the same as K-NRM. Table 6 shows their evaluation results, together with the full model of K-NRM.
+So match is essential. K-NRM (exact-match) performs similarly to Lm and BM25, as does K-NRM (max-pool). is is expected: without so matches, the only signal for K-NRM to work with is e ectively the TF score.
+Ad-hoc ranking prefers relevance based word embedding. Using click2vec performs about 5-10% be er than using word2vec. User clicks are expected to be a be er t as they represent user search
+
+preferences, instead of word usage in documents. e relevancebased word embedding is essential for neural models to outperform feature-based ranking. K-NRM (click2vec) consistently outperforms Coor-Ascent, but K-NRM (word2vec) does not.
+Learning-to-rank trains be er word embeddings. K-NRM with mean-pool performs much be er than Trans. ey both use average embedding similarities; the di erence is that K-NRM (mean-pool) uses the ranking labels to tune the word embeddings, while Trans keeps the embeddings xed. e trained embeddings improve the ranking accuracy, especially on top ranking positions.
+Kernel-guided embedding learning provides be er so matches. K-NRM stably outperforms all of its variants. K-NRM (click2vec) uses the same ranking model, and its embeddings are trained on click contexts. K-NRM (mean-pool) also learns the word embeddings using learning-to-rank. e main di erence is how the information from relevant labels is used when learning word embeddings. In KNRM (click2vec) and K-NRM (mean-pool), training signals from relevance labels are propagated equally to all querydocument word pairs. In comparison, K-NRM uses kernels to enforce multi-level so matches; query-document word pairs on di erent similarity levels are adjusted di erently (see Section 3.2).
+Table 7 shows an example of K-NRM's learned embeddings. e bold words in each row are those `activated' by the corresponding kernel: their embedding similarities to the query word `Maserati' fall closest to the kernel's µ. e example illustrates that the kernels recover di erent levels of relevance matching: µ = 1 is exact match; µ = 0.7 matches the car model with the brand; µ = 0.3 is about the car color; µ = -0.1 is background noise. e mean-pool and click2vec's uni-level training loss mix the matches at multiple levels, while the kernels provide more ne-grained training for the embeddings.
+
+61
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+(a) Individual kernel's performance.
+
+(b) Kernel sizes before and a er learning.
+
+(c) Word pair movements.
+
+Figure 3: Kernel guided word embedding learning in K-NRM. Fig. 3a shows the performance of K-NRM when only one kernel is used in testing. Its X-axis is the µ of the used kernel. Its Y-axis is the MRR results. Fig. 3b shows the log number of word pairs that are closest to each kernel, before K-NRM learning (Word2Vec) and a er. Its X-axis is the µ of kernels. Fig. 3c illustrates
+the word pairs' movements in K-NRM's learning. e heat map shows the fraction of word pairs from the row kernel (before learning, µ marked on the le ) to the column kernel (a er learning, µ at the bottom).
+
+5.3 Kernel-Guided Word Embedding learning
+In K-NRM, word embeddings are initialized by word2vec and trained by the kernels to provide e ective so -match pa erns. is experiment studies how training a ects the word embeddings, showing the responses of kernels in ranking, the word similarity distributions, and the word pair movements during learning.
+Figure 3a shows the performance of K-NRM when only a single kernel is used during testing. e x-axis is the µ of the kernel. e results indicate the kernels' importance. e kernels on the far le ( -0.7), the far right ( 0.7), and in the middle ({-0.1, 0.1}) contribute li le; the kernels on the middle le ({-0.3, -0.5}) contribute the most, followed by those on the middle right ({0.3, 0.5}). Higher µ does not necessarily mean higher importance or be er so matching. Each kernel focuses on a group of word pairs that fall into a certain similarity range; the importance of this similarity range is learned by the model.
+Figure 3b shows the number of word pairs activated in each kernel before training (Word2Vec) and a er (K-NRM). e X-axis is the kernel's µ. e Y-axis is the log number of word pairs activated (whose similarities are closest to corresponding kernel's µ). Most similarities fall into the range (-0.4, 0.6). ese histograms help explain why the kernels on the far right and far le do not contribute much: because there are fewer word pairs in them.
+Figure 3c shows the word movements during the embedding learning. Each cell in the matrix contains the word pairs whose similarities are moved from the kernel in the corresponding row (µ on the le ) to the kernel in the corresponding column (µ at the bo om). e color indicates the fraction of the moved word pairs in the original kernel. Darker indicates a higher fraction. Several examples of word movements are listed in Table 8. Combining Figure 3 and Table 8, the following trends can be observed in the kernel-guided embedding learning process.
+Many word pairs are decoupled. Most of the word movements are from other kernels to the `white noise' kernels µ  {-0.1, 0.1}.
+ese word pairs are considered related by word2vec but not by K-NRM. is is the most frequent e ect in K-NRM's embedding learning. Only about 10% of word pairs with similarities  0.5 are kept.
+is implies that document ranking requires a stricter measure of
+
+so match. For example, as shown in Table 8's rst row, a person searching for `China-Unicom', one of the major mobile carriers in China, is less likely interested in a document about `China-Mobile', another carrier; in the second row, `Maserati' and `car' are decoupled as `car' appears in almost all candidate documents' titles, so it does not provide much evidence for ranking.
+New so match pa erns are discovered. K-NRM moved some word pairs from near zero similarities to important kernels. As shown in the third and fourth rows of Table 8, there are word pairs that less frequently appear in the same surrounding context, but convey possible search tasks, for example, `the search for MH370 '. K-NRM also discovers word pairs that convey strong `irrelevant' signals, for example, people searching for `BMW' are not interested in the `contact us' page.
+Di erent levels of so matches are enforced. Some word pairs moved from one important kernel to another. is may re ect the di erent levels of so matches K-NRM learned. Some examples are in the last two rows in Table 8. e -0.3 kernel is the most important one, and received word pairs that encode search tasks; the 0.5 kernel received synonyms, which are useful but not the most important, as exact match is not that important in our se ing.
+5.4 Required Training Data Size
+is experiment studies K-NRM's performance with varying amounts of training data. Results are shown in Figure 4. e X-axis is the number of sessions used for training (e.g. 8K, 32K, . . .), and the coverage of testing vocabulary in the learned embedding (percentages). Sessions were randomly sampled from the training set. e Y-axis is the performance of the corresponding model. e straight and do ed lines are the performances of Coor-Ascent.
+When only 2K training sessions are available, K-NRM performs worse than Coor-Ascent. Its word embeddings are mostly unchanged from word2vec as only 16% of the testing vocabulary are covered by the training sessions. K-NRM's accuracy grows rapidly with more training sessions. With only 32K (0.1%) training sessions and 50% coverage of the testing vocabulary, K-NRM surpasses Coor-Ascent on Testing-RAW. With 128K (0.4%) training sessions and 69% coverage on the testing vocabularies, K-NRM surpasses
+
+62
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 8: Examples of moved word pairs in K-NRM. From and To are the µ of the kernels the word pairs were in before
+learning (word2vec) and a er (K-NRM). Values in parenthesis
+are the individual kernel's MRR on Testing-RAW, indicating the importance of the kernel. `+' and `-' mark the sign of the kernel weight wk in the ranking layer; `+' means word pair appearances in the corresponding kernel are positively correlated with relevance; `-' means negatively correlated.
+
+From µ = 0.9 (0.20, -) µ = 0.5 (0.26, -) µ = 0.1 (0.23, -) µ = 0.1 (0.23, -) µ = 0.5 (0.26, -) µ = -0.3 (0.30, +)
+
+To µ = 0.1 (0.23, -) µ = 0.1 (0.23, -) µ = -0.3 (0.30, +) µ = 0.3 (0.26, -) µ = -0.3 (0.30, +) µ = 0.5 (0.26, -)
+
+Word Pairs (wife, husband), (son, daughter), (China-Unicom, China-Mobile) (Maserati, car),( rst, time) (website, homepage) (MH370, search), (pdf, reader) (192.168.0.1, router) (BMW, contact-us), (Win7, Ghost-XP) (MH370, truth), (cloud, share) (HongKong, horse-racing) (oppor9, OPPOR), (6080, 6080YY), (10086, www.10086.com)
+
+0.45
+
+0.40
+
+0.35
+
+0.30
+
+0.25
+
+0.20 2K
+
+8K
+
+32K
+
+128K 512K
+
+2M
+
+8M 32M (ALL)
+
+16% 28% 49% 69% 85% 94% 98% 99%
+
+Testing-SAME, K-NRM Testing-DIFF, K-NRM Testing-RAW, K-NRM
+
+Testing-SAME, Coor-Ascent Testing-DIFF, Coor-Ascent Testing-RAW, Coor-Ascent
+
+Figure 4: K-NRM's performances with di erent amounts of training data. X-axis: Number of sessions used for training, and the percentages of testing vocabulary covered (second row). Y-axis: NDCG@10 for Testing-SAME and TestingDIFF, and MRR for Testing-RAW.
+
+Coor-Ascent on Testing-SAME and Testing-DIFF. e increasing trends against Testing-SAME and Testing-RAW have not yet plateaued even with 31M training sessions, suggesting that K-NRM can utilize more training data. e performance on Testing-DIFF plateaus a er 500K sessions, perhaps because the click models do not perfectly align with each other; more regularization of the K-NRM model might help under this condition.
+5.5 Performance on Tail eries
+is experiment studies how K-NRM performs on less frequent queries. We split the queries in the query log into Tail (less than 50 appearances), Torso (50-1000 appearances), and Head (more than 1000 appearances). For each category, 1000 queries are randomly
+
+Table 9: Ranking accuracy on Tail (frequency < 50), Torso (frequency 50 - 1K) and Head (frequency > 1K) queries.  indicates statistically signi cant improvements of K-NRM over Coor-Ascent on Testing-RAW. Frac is the fraction of the corresponding queries in the search tra c. Cov is the fraction of testing query words covered by the training data.
+
+Frac
+
+Cov
+
+Testing-RAW, MRR
+
+Coor-Ascent
+
+K-NRM
+
+Tail 52% 85%
+
+0.2977
+
+0.3230 +8.49%
+
+Torso 20% 91%
+
+0.3202
+
+0.3768 +17.68%
+
+Head 28% 99%
+
+0.2415
+
+0.3379 +39.92%
+
+1 0.8 0.6 0.4 0.2
+0 0.5
+
+=0.4 (0.1990)
+
+=0.2 (00..23944027,, ++4212%%)
+
+=0.025 (0.2347)
+
+0.6
+
+0.7
+
+Significantly Better
+
+=0.1 (00..23834779,, ++4108%%)
+
+=0.05
+
+(00..23706128,, ++2154%%)
+
+0.8
+
+0.9
+
+Not Significantly Better
+
+bin
+
+Figure 5: K-NRM's performance with di erent  . MRR and relative gains over Coor-Ascent are shown in parenthesis. Kernels drawn in solid lines indicate statistically signi cant improvements over Coor-Ascent.
+
+sampled as testing; the remaining queries are used for training. Following the same experimental se ings, the ranking accuracies of K-NRM and Coor-Ascent are evaluated.
+e results are shown in Table 9. Evaluation is only done using Testing-RAW as the tail queries do not provide enough clicks for DCTR and TACM to infer reliable relevance scores. e results show an expected decline of K-NRM's performance on rarer queries. K-NRM uses word embeddings to encode the relevance signals, and as tail queries' words appear less frequently in the training data, it is hard to generalize the embedded relevance signals through them. Nevertheless, even on queries that appear less than 50 times, K-NRM still outperforms Coor-Ascent by 8%.
+5.6 Hyper Parameter Study
+is experiment studies the in uence of the kernel width ( ). We varied the  used in K-NRM's kernels, kept everything else unchanged, and evaluated its performance. e shapes of the kernels with 5 di erent  and the corresponding ranking accuracies are shown in Figure 5. Only Testing-RAW is shown due to limited space; the observation is the same on Testing-SAME and Testing-DIFF.
+As shown in Figure 5, kernels too sharp or too at either do not cover the similarity space well, or mixed the matches at di erent levels; they cannot provide reliable improvements. With  between 0.05 and 0.2, K-NRM's improvements are stable.
+We have also experimented with several other structures for K-NRM, for example, using more learning to rank layers, and using IDF to weight query words when combining their kernel-pooling
+
+63
+
+Session 1B: Retrieval Models and Ranking 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+results. However we have only observed similar or worse performances. us, we chose to present the simplest successful model to be er illustrate the source of its e ectiveness.
+6 CONCLUSION
+is paper presents K-NRM, a kernel based neural ranking model for ad-hoc search. e model captures word-level interactions using word embeddings, and ranks documents using a learningto-rank layer. e center of the model is the new kernel-pooling technique. It uses kernels to so ly count word matches at di erent similarity levels and provide so -TF ranking features. e kernels are di erentiable and support end-to-end learning. Supervised by ranking labels, the learning of word embeddings is guided by the kernels with the goal of providing so -match signals that be er separate relevant documents from irrelevant ones. e learned embeddings encode the relevance preferences and provide e ective multi-level so matches for ad-hoc ranking.
+Our experiments on a commercial search engine's query log demonstrated K-NRM's advantages. On three testing scenarios (indomain, cross-domain, and raw user clicks), K-NRM outperforms both feature based ranking baselines and neural ranking baselines by as much as 65%, and is extremely e ective at the top ranking positions. e improvements are also robust: Stable gains are observed on head and tail queries, with fewer training data, a wide range of kernel widths, and a simple ranking layer.
+Our analysis revealed that K-NRM's advantage is not from `deep learning magic' but the long-desired so match between query and documents, which is achieved by the kernel-guided embedding learning. Without it, K-NRM's advantage quickly diminishes: its variants with only exact match, pre-trained word2vec, or uni-level embedding training all perform signi cantly worse, and sometimes fail to outperform the simple feature based baselines.
+Further analysis of the learned embeddings illustrated how K-NRM tailors them for ad-hoc ranking: More than 90% of word pairs that are mapped together in word2vec are decoupled, satisfying the stricter de nition of so match required in ad-hoc search. Word pairs that are less correlated in documents but convey frequent search tasks are discovered and mapped to certain similarity levels.
+e kernels also moved word pairs from one kernel to another based on their di erent roles in the learned so match.
+Our experiments and analysis not only demonstrated the effectiveness of K-NRM, but also provide useful intuitions about the advantages of neural methods and how they can be tailored for IR tasks. We hope our ndings will be explored in many other IR tasks and will inspire more advances of neural IR research in the near future.
+7 ACKNOWLEDGMENTS
+is research was supported by National Science Foundation (NSF) grant IIS-1422676, a Google Faculty Research Award, and a fellowship from the Allen Institute for Arti cial Intelligence. We thank Tie-Yan Liu for his insightful comments and Cheng Luo for helping us crawl the testing documents. Any opinions, ndings, and conclusions in this paper are the authors' and do not necessarily re ect those of the sponsors.
+
+REFERENCES
+[1] A. Berger and J. La erty. Information retrieval as statistical translation. In
+Proceedings of the 22nd Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR), pages 222­229. ACM, 1999. [2] L. Cheng, Z. Yukun, L. Yiqun, X. Jingfang, Z. Min, and M. Shaoping. SogouT-16: A new web corpus to embrace ir research. In Proceedings of the 40th International
+ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR), page To Appear. ACM, 2017. [3] A. Chuklin, I. Markov, and M. d. Rijke. Click models for web search. Synthesis Lectures on Information Concepts, Retrieval, and Services, 7(3):1­115, 2015. [4] W. B. Cro , D. Metzler, and T. Strohman. Search Engines: Information Retrieval in Practice. Addison-Wesley Reading, 2010. [5] F. Diaz, B. Mitra, and N. Craswell. ery expansion with locally-trained word embeddings. In Proceedings of the 54th Annual Meeting of the Association for Computational (ACL). ACL­Association for Computational Linguistics, 2016. [6] J. Gao, X. He, and J.-Y. Nie. Clickthrough-based translation models for web search: from word models to phrase models. In Proceedings of the 19th ACM international conference on Information and knowledge management (CIKM), pages 1139­1148. ACM, 2010. [7] K. Grauman and T. Darrell. e pyramid match kernel: Discriminative classi-
+cation with sets of image features. In Tenth IEEE International Conference on Computer Vision (ICCV) Volume 1, volume 2, pages 1458­1465. IEEE, 2005. [8] J. Guo, Y. Fan, Q. Ai, and W. B. Cro . Semantic matching by non-linear word transportation for information retrieval. In Proceedings of the 25th ACM International on Conference on Information and Knowledge Management (CIKM), pages 701­710. ACM, 2016. [9] J. Guo, Y. Fan, A. Qingyao, and W. B. Cro . A deep relevance matching model for ad-hoc retrieval. In Proceedings of the 25th ACM International on Conference on Information and Knowledge Management (CIKM), pages 55­64, year=2016, organization=ACM. [10] B. Hu, Z. Lu, H. Li, and Q. Chen. Convolutional neural network architectures for matching natural language sentences. In Advances in Neural Information Processing Systems (NIPS), pages 2042­2050, 2014. [11] P.-S. Huang, X. He, J. Gao, L. Deng, A. Acero, and L. Heck. Learning deep structured semantic models for web search using clickthrough data. In Proceedings of
+the 22nd ACM international conference on Conference on information & knowledge management (CIKM), pages 2333­2338. ACM, 2013. [12] M. Karimzadehgan and C. Zhai. Estimation of statistical translation models based on mutual information for ad hoc information retrieval. In Proceedings
+of the 33rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR), pages 323­330. ACM, 2010. [13] C. Kohlschu¨ er, P. Fankhauser, and W. Nejdl. Boilerplate detection using shallow text features. In Proceedings of the third ACM international conference on Web Search and Data Mining (WSDM), pages 441­450. ACM, 2010. [14] O. Levy, Y. Goldberg, and I. Dagan. Improving distributional similarity with lessons learned from word embeddings. Transactions of the Association for Computational Linguistics, 3:211­225, 2015. [15] Y. Liu, X. Xie, C. Wang, J.-Y. Nie, M. Zhang, and S. Ma. Time-aware click model. ACM Transactions on Information Systems (TOIS), 35(3):16, 2016. [16] D. Metzler and W. B. Cro . Linear feature-based models for information retrieval. Information Retrieval, 10(3):257­274, 2007. [17] T. Mikolov, I. Sutskever, K. Chen, G. S. Corrado, and J. Dean. Distributed representations of words and phrases and their compositionality. In Proceedings of the 2 h Advances in Neural Information Processing Systems 2013 (NIPS), pages 3111­3119, 2013. [18] B. Mitra, F. Diaz, and N. Craswell. Learning to match using local and distributed representations of text for web search. In Proceedings of the 25th International Conference on World Wide Web (WWW), pages 1291­1299. ACM, 2017. [19] E. Nalisnick, B. Mitra, N. Craswell, and R. Caruana. Improving document ranking with dual word embeddings. In Proceedings of the 25th International Conference on World Wide Web (WWW), pages 83­84. ACM, 2016. [20] L. Pang, Y. Lan, J. Guo, J. Xu, S. Wan, and X. Cheng. Text matching as image recognition. In Proceedings of the irtieth AAAI Conference on Arti cial Intelligence, AAAI, pages 2793­2799. AAAI Press, 2016. [21] Y. Shen, X. He, J. Gao, L. Deng, and G. Mesnil. A latent semantic model with convolutional-pooling structure for information retrieval. In Proceedings of the
+23rd ACM International Conference on Conference on Information and Knowledge Management (CIKM), pages 101­110. ACM, 2014. [22] Y. Shen, X. He, J. Gao, L. Deng, and G. Mesnil. Learning semantic representations using convolutional neural networks for web search. In Proceedings of the 23rd International Conference on World Wide Web (WWW), pages 373­374. ACM, 2014. [23] H.-P. Zhang, H.-K. Yu, D.-Y. Xiong, and Q. Liu. HHMM-based chinese lexical analyzer ICTCLAS. In Proceedings of the second SIGHAN workshop on Chinese language processing, pages 184­187. ACL, 2003. [24] G. Zuccon, B. Koopman, P. Bruza, and L. Azzopardi. Integrating and evaluating neural word embeddings in information retrieval. In Proceedings of the 20th Australasian Document Computing Symposium, page 12. ACM, 2015.
+
+64
+
+

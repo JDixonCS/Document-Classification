@@ -1,0 +1,997 @@
+Learning Search Tasks in Queries and Web Pages via Graph Regularization
+
+
+Ming Ji , Jun Yan, Siyu Gu§, Jiawei Han, Xiaofei He¶, Wei Vivian Zhang, Zheng Chen
+Department of Computer Science, University of Illinois at Urbana-Champaign, Urbana, IL, USA Microsoft Research Asia, Beijing, China
+§Department of Computer Science, Beijing Institute of Technology, Beijing, China ¶State Key Lab of CAD&CG, College of Computer Science, Zhejiang University, China
+Microsoft Corporation, Redmond, WA, USA
+{mingji1, hanj}@illinois.edu, {junyan, zhengc}@microsoft.com §gusuperstar@gmail.com, ¶xiaofeihe@cad.zju.edu.cn, wzha@microsoft.com
+
+ABSTRACT
+As the Internet grows explosively, search engines play a more and more important role for users in effectively accessing online information. Recently, it has been recognized that a query is often triggered by a search task that the user wants to accomplish. Similarly, many web pages are specifically designed to help accomplish a certain task. Therefore, learning hidden tasks behind queries and web pages can help search engines return the most useful web pages to users by task matching. For instance, the search task that triggers query "thinkpad T410 broken" is to maintain a computer, and it is desirable for a search engine to return the Lenovo troubleshooting page on the top of the list. However, existing search engine technologies mainly focus on topic detection or relevance ranking, which are not able to predict the task that triggers a query and the task a web page can accomplish.
+In this paper, we propose to simultaneously classify queries and web pages into the popular search tasks by exploiting their content together with click-through logs. Specifically, we construct a taskoriented heterogeneous graph among queries and web pages. Each pair of objects in the graph are linked together as long as they potentially share similar search tasks. A novel graph-based regularization algorithm is designed for search task prediction by leveraging the graph. Extensive experiments in real search log data demonstrate the effectiveness of our method over state-of-the-art classifiers, and the search performance can be significantly improved by using the task prediction results as additional information.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval--search process; I.2.6 [Artificial Intelligence]: Learning This work was done when the first author was visiting Microsoft Research Asia.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+Query: Thinkpad T410 broken
+trigger
+
+Web Page:
+
+http://www-
+
+click
+
+307.ibm.com/
+
+pc/support/...
+
+Search Task: maintain a computer
+
+accomplish
+
+Figure 1: The user is searching for a web page which can effectively accomplish the search task that triggers the query.
+General Terms
+Algorithms
+Keywords
+Web search task, classification, graph regularization
+1. INTRODUCTION
+Until a few years ago, most search engine technologies focus on how to ideally rank web pages according to the relevance to a given query. Although this has been very successful, merely measuring topic relevance is not precise enough to capture the actual search task that the user wants to accomplish by issuing a query. Taking the situation in Figure 1 as an example, it can be inferred that the user's search task that triggers query "thinkpad T410 broken" is to "maintain a computer". The Lenovo troubleshooting page1 might be the most useful to help accomplish this task, and the user would like to click it to obtain information. However, without search task detection, it is difficult for current search engines to return this web page or similar pages in the top few results of relevance ranking. As shown in Figure 2, Bing search and Yahoo! return some reviews about thinkpad T410, while Google finds some forum discussions and other general information. Although these web pages returned by search engines are very relevant to thinkpad T410, they cannot accomplish the right search task in the users' mind. In addition, the search task of "maintain a computer" is actually very popular. According to our analysis of the search log of a commercial search engine, about 14% of the queries related to computers are triggered
+1http://www-307.ibm.com/pc/support/site.wss/document.do? sitestyle=lenovo&lndocid=MIGR-4YRRG6
+
+55
+
+(a) Search results of Bing (b) Search results of Google
+(c) Search results of Yahoo! Figure 2: The result pages of query "thinkpad T410 broken"
+by this task. Therefore, it is crucial to learn the popular search tasks behind queries and web pages in order to return the most useful web pages to users by task matching.
+Given some queries and web pages labeled by several pre-defined popular search tasks, together with large amounts of unlabeled queries and web pages, the purpose of our study is to learn two contentbased search task predictors for queries and web pages, respectively. A natural idea for learning popular search tasks behind queries and web pages is to cast it as a semi-supervised classification problem, so as to make use of both labeled and unlabeled data. Current query or web page classification methods usually exploit the content together with click-through information [12] [16]. However, most of the algorithms work on one side of the query-page click graph [12], collecting discriminative information either centering around queries, or around web pages. And general classifiers including Support Vector Machines, Maximum Entropy [14], logistic regression, etc., only work with one type of data. Therefore, directly applying existing approaches can either classify queries and web pages separately, or treat queries and web pages as the same type of data and train one unified classifier to handle both of them. These two simple solutions are likely to be suboptimal due to the following challenges:
+1. Close interrelationship between data. Queries and web pages are two counterparts in the search scenario. As illustrated in Figure 1, the reason why a user clicks certain web pages lies in that these pages might be useful in accomplishing the search task that triggers the query. In other words, a query and a web page linked together by the click relationship are likely to share similar search tasks. So the task predictions of queries and web pages provide good knowledge in understanding each other. Classifying queries and web pages separately fails to make use of the close interrelationship between the two sets of data.
+2. Different types of data. Queries and web pages are essentially two different types of data, whose content are represented by different kinds of languages. Particularly, queries and web pages often have very different terms to describe the same search task. Taking the search task "maintain a computer" in Figure 1 as an example, not all the users can come up with the term "troubleshooting" which precisely matches the term representing the same search task in the desirable web page. Therefore, we should design two classifiers to fit queries and web pages respectively rather than building a unified classifier to handle both of them.
+
+In this paper, we propose to predict the search tasks behind queries and web pages simultaneously by designing a novel semi-supervised classification framework which addresses both challenges. Specifically, we organize the content and click-through information of both sides of the query-page click relationship into a task-oriented heterogeneous graph among queries and web pages as shown in Figure 3, where each pair of objects are linked together according to task similarity. Through constructing two content-based affinity subgraphs among queries and web pages, respectively, we fully exploit the content information of both labeled and unlabeled data. Meanwhile, the semantic gap between queries and web pages is bridged by the click-through subgraph. Then we perform graphbased regularization over the heterogeneous graph to let the intermediate task predictions of queries and web pages mutually enhance each other throughout the learning process. We further incorporate a linear regression model to directly train two content-based search task predictors for queries and web pages, respectively. By employing our method, we can return web pages to users that are not only relevant, but are also effective in accomplishing the right tasks.
+The rest of our paper is structured as follows. We go over the related work in Section 2. Then we formally define the problem of search task classification in Section 3. Section 4 introduces our construction of the graph among queries and web pages. In Section 5, we propose our novel semi-supervised classification framework to train two search task predictors for queries and web pages, respectively. Section 6 provides the experimental results on the real data set of click-through logs. Finally, we conclude this work in Section 7.
+2. RELATED WORK
+Query classification has received substantial interest in literature. Many existing approaches try to combine the click-through information centering around queries together with the query content to boost the classification performance. Shen et al. [18] enrich the feature representation of queries by using search snippets and similar queries discovered from click-through data. Li et al. [12] use content-based classification to regularize the learning process on click graphs. They essentially transform the bipartite click graph into a homogeneous graph among queries for label propagation. Different from these methods, we aim to directly exploit the content and click-through information on both sides of the bipartite click graph, so that the prediction results of queries and web pages can mutually enhance each other.
+On the other hand, extensive research has been dedicated to classifying web pages into given topics [16]. Existing methods exploit the textual content [13], hyperlinks [3] and other information of web pages to improve the classification results. Although hyperlinks are often useful when grouping web pages according to different topics, in our problem of search task classification, however, hyperlinks may be not that helpful, or even be misleading. The reason is that web pages linked by hyperlinks are very likely to aim at accomplishing different tasks. For example, web pages for search tasks like "purchase computers", "maintain hardware" and "download software" are all linked with the Lenovo homepage 2, and hyperlinks are also built among these web pages for users to jump from one task to another conveniently. Shen et al. [19] leverage the click-through information by drawing implicit links between web pages that are clicked after the same query. Moreover, recent years have witnessed a surge of interest in mining multi-typed web objects concurrently by exploiting their interrelationships, with the
+2http://www.lenovo.com
+
+56
+
+effectiveness widely recognized [22]. Xue et al. [20] design an iterative reinforcement categorization algorithm which initializes the label prediction via a content-based classifier and then propagates the category information between web pages and queries through the click graph. Ji et al. [10] perform transductive classification over heterogeneous networked data without content features. One key distinction of our work is that we unify the content and click-through information into a data-dependent regularization framework. In addition, we aim to directly build two content-based classifiers which not only give prediction for the data already seen in the training phase, but are also defined everywhere in the ambient feature space.
+Meanwhile, it is worth noticing that many research efforts are devoted to learning the user goals in web search. Broder et al. [2] divide the web queries into three main categories, namely navigational, informational and transactional. Rose et al. [17] build a search goal taxonomy with a similar top level except that the transactional category is replaced by resource. This three-class based web search taxonomy has been widely employed and triggered many follow-up studies [11, 9]. Recent works start discovering some other goals, or in other words, query intents, which are useful for commercial search engines. Proposed intents include product intent, job intent [12], vertical search intent [8], etc. These approaches make binary predictions that a query has a general intent or not. Our goal is significantly different from the previous work since we try to directly understand the search task that the user wants to accomplish. Queries and web pages with different topics (such as computers or cars) naturally have different search tasks, thus making our task definition at a finer scale than the existing binary or three-class web search taxonomy. Yin et al. [21] build a hierarchical taxonomy of the generic search intents for a class of named entities by analyzing the relationships between queries and grouping them into a tree structure, which is essentially data-driven. On the contrary, we focus on classifying queries and web pages into several pre-defined tasks that are of special interest among search engine users. To the best of our knowledge, our work is one of the first to study the search task that a web page can accomplish.
+Another group of related work is graph-based semi-supervised learning. Most of these methods construct an affinity graph over both labeled and unlabeled examples based on data features to encode the similarity between instances. They then design a learner which preserves the smoothness and consistency over the intrinsic geometry of the data, which is modeled by the affinity graph [10] [6]. Zhu et al. [24] formulate the problem using a Gaussian random field model defined with respect to the graph. Zhou et al. [23] propose to let each point iteratively spread its label information to neighbors so as to ensure both local and global consistency. Our algorithm is closely related to manifold regularization [1], which is a framework for data-dependent regularization that exploits the geometry of the probability distribution on the labeled and unlabeled data. However, traditional graph-based learning mainly works on one type of data, and thus cannot distinguish the multi-typed data. In this paper, we extend the manifold regularization framework to study queries and web pages simultaneously.
+3. PROBLEM DEFINITION
+Our study is about the search task that triggers a query, and the task a web page can accomplish. As discussed in [21], the content in a query can be divided into two parts: named entities3 and other terms. In this paper, we define the search task to be the action
+3Here we mainly work with named entity queries and related web
+
+that the user wants to perform towards the entities. For instance, the entity in query "thinkpad T410 broken" is "thinkpad T410", while the search task can be described as "maintain a computer" which is inferred from the word "broken". The search task behind a web page is defined similarly. The Lenovo troubleshooting web page can help accomplish the search task of "maintain a computer", regardless of the named entities involved such as "thinkpad" and "Lenovo". Queries only containing named entities can be filtered out from the data that we study, since their search tasks cannot be inferred even manually. We use the word "entity" and "named entity" interchangeably in this paper to refer to the same concept.
+Moreover, we focus on classifying queries with a certain category of named entities and the related web pages. A named entity category is a set of entities that are usually considered to be of the same kind, such as computers, cars, cities, etc. Instead of studying all the queries as a whole, it is more appropriate to work on queries with the same category of entities because they are likely to have the same possible tasks, while the search tasks of queries with different categories of entities can vary greatly. For example, the entity category of "computers" can have search tasks like "purchase computers", "download software", "find reviews", etc. And the popular tasks of the entity category of "cars" include "rent a car", "purchase a used car", etc. It is often easy to group entities into categories by using some state-of-the-art methods [15] or through parsing Wikipedia categories/lists.
+Now the problem we are going to address can be formally defined as follows. The input data contain a set of queries Q = {q1, . . . , q|Q|} with entities of the same category, a set of web pages P = {p1, . . . , p|P|} clicked by different users after issuing these queries, and a set of search tasks T = {t1, . . . , t|T |} that we want to predict. A subset of queries {q1, . . . , qn} and a subset of web pages {p1, . . . , pm} are labeled by the search tasks, n < |Q|, m < |P|. Given any query q and any web page p, we aim at computing a task indicator vector f(q) = [f (1)(q), . . . , f (|T |)(q)]T  R|T |, and a task indicator vector g(p) = [g(1)(p), . . . , g(|T |)(p)]T  R|T |. Each f (t)(q) measures the confidence that query q is triggered by task t, and each g(t)(p) measures the confidence that web page p can accomplish task t, 1  t  |T |. Then we can predict the most probable task behind each query and each web page by finding the maximum value in f(q) and g(p):
+
+task(q) = arg max f (t)(q) and task(p) = arg max g(t)(p)
+
+1t|T |
+
+1t|T |
+
+Non-goals. In this paper, we do not study the following problems:
+
+1. How to recognize the named entities in queries or web pages and group the entities into categories. This is a well-studied problem which can be solved effectively by employing some state-of-the-art methods, as discussed above.
+
+2. How to define the popular search tasks to be learned. In this paper, the popular search tasks we want to predict are already defined by manual study of the statistics of query logs, just like in other studies of query/web page classification. In fact, the popular search tasks related to an entity category can also be easily specified by common sense.
+
+4. TASK-ORIENTED GRAPH
+In this section, we try to unify the content and the click-through information of both sides of the query-page click relationship into
+pages, since named entity queries are the most popular which account for about 71% of all the search queries as reported in [7].
+
+57
+
+a task-oriented heterogeneous graph among queries and web pages, as illustrated in Figure 3. The principle is to link two objects if and only if they are likely to share similar search tasks. The whole graph over all the objects can be divided into three subgraphs, which are explained in detail in the following subsections.
+
+4.1 Homogeneous subgraph construction
+As discussed in Section 3.1, the search tasks can be inferred from the content of queries and web pages excluding the named entities. Similar to [21], we extract the task phrases from queries as the substring left after removing the terms corresponding to named entities. For instance, for query "thinkpad T410 broken", the named entity is "thinkpad T410", and "broken" is the task phrase. We consider a task phrase representing the same task for entities of the same category, where a category is composed of a set of entities that people usually consider them to be of the same kind. Examples include computers, cars, cities, actors, movies, etc. It is usually easy to obtain entity categories with the help of Wikipedia or by employing algorithms such as [15].
+After extracting entities and task phrases from queries, we merge queries with the same task phrases to clusters because they share the same search tasks. For example, queries "thinkpad T410 broken", "MacBook Pro broken" and " HP Pavilion dv6z broken" are grouped into a single node represented by task phrase " broken" in the graph, where we use "" to denote a named entity. As long as the search task of a query is predicted, the task of all the other queries sharing the same task phrase is known. In this way, task classification in queries is equivalent to classifying query task phrases. For convenience, we still use Q = {q1, . . . , q|Q|} to represent the set of query task phrases, and let n denote the number of labeled task phrases.
+We use the words of the task phrases as the task-oriented content features of the query side, which can be extracted as a termfrequency vector. Task phrases containing similar words are likely to share similar tasks. Then the content-based task similarity between two query clusters represented by task phrases can be computed by any distance measurement in the task-oriented feature space. We use cosine similarity here for simplicity. A k-nearest neighbor subgraph Gq over queries can be built, with Wq denoting the adjacency matrix as follows:
+
+Wq,ij =
+
+sim(qi, qj ) if qi  Nk(qj ) or qj  Nk(qi)
+
+0
+
+otherwise.
+
+where Wq,ij denotes the element at the i-th row and j-th column of matrix Wq. Nk(q) denotes the set of k nearest neighbors of query q, and sim(qi, qj ) denotes the similarity between qi and qj measured by the given distance measurement (here cosine similarity).
+Similarly, we can extract the task-oriented terms for each web page after removing the terms representing named entities in the content. But the web pages are not clustered as queries are, since the terms of web pages after removing named entities still vary drastically. Then a k-nearest neighbor subgraph Gp can be built over web pages according to the similarity between the task-oriented content features. We let Wp denote the corresponding adjacency matrix.
+Recently, the local consistency idea has received substantial interest [1]. It assumes that two nearby data points in the feature space tend to have the same label. In our problem, it is also natural to assume that two nearby web pages or queries in the content feature space have the same task. Following this idea, we construct the two nearest neighbor subgraphs for queries and web pages in order to ensure the local consistency in their feature spaces. In each subgraph, two objects are connected according to task simi-
+
+SimiTlaarsk q1 q4 Similar Task q2
+TaSsikmilar
+q3
+
+SimTialasrk
+
+Gqp
+Click
+Click Click
+Click
+
+p1
+
+TaSsikmilar
+
+p5 Similar Task p2
+
+Similar Task
+
+p4
+
+p3
+
+Gq
+
+Gp
+
+Figure 3: The heterogeneous graph among queries and web
+
+pages.
+
+larity measured by the lexical content. However, the disadvantage of using all the words is that the search tasks are likely to be overwhelmed by the entity names. For instance, the named entities like "thinkpad", "MacBook" and "HP Pavilion" are not helpful in revealing the hidden search tasks. Our method avoids the influence of named entities by simply filtering them out in the content features.
+
+4.2 Bipartite subgraph construction
+According to the click-through logs, we assume that a web page p clicked by the user after issuing query q is likely to be useful in accomplishing the search task behind q. Therefore, we build a bipartite subgraph Gqp between queries and web pages, where the task similarity between a query and a web page is measured by the click-through relationship. In this subgraph, each edge connects a query q and a web page p if and only if p is clicked by a user after issuing q, with the edge weight being the total number of clicks. Similar as before, queries containing the same task phrases are clustered with the click counts added up accordingly. Since Gqp is bipartite, there are no edges between query task phrases or between web pages. Gqp is often called the click graph in literature [12]. We let Rqp be a |Q| × |P| adjacency matrix corresponding to Gqp, and Rqp,ij denote the element at the i-th row and j-th column of matrix Rqp.
+It is worth noticing that because queries are often very short, some query task phrases only consist of a single word, such as " broken", which will not link to any other task phrase in Gq. However, by constructing Gqp, these task phrases are linked to some web pages so that we can still make inference on them.
+
+5. GRAPH-BASED REGULARIZATION
+As mentioned in the introduction, our ultimate goal is to learn two content-based search task predictors for queries and web pages, respectively. In other words, our final task predictor should be able to correctly classify a query or a web page into one of the |T | search tasks given its content-based feature representation. In this work, we consider a simple linear regression model for predicting the confidence measure of each query and web page having task t, 1  t  |T |. Let qi denote the dq-dimensional content-based feature vector of a query task phrase qi, as discussed in section 4.1. Similarly, we let pj denote the dp-dimensional task-oriented content feature of a web page pj. Then we have:
+f (t)(qi) = wq(t)T qi and g(t)(pj ) = w(pt)T pj
+where w(qt) and w(pt) are the two weight vectors to be estimated for queries and web pages, respectively. Let ui = [u(i1), . . . , u(i|T |)]T  R|T | denote the task indicator vector for a labeled query task phrase qi, and vj = [vj(1), . . . , vj(|T |)]T  R|T | denote the task indicator
+
+58
+
+vector for a labeled web page pj. Then it is natural to define:
+
+u(it) =
+
+1 if qi is labeled to have task t 0 otherwise.
+
+vj(t) =
+
+1 if pj is labeled to have task t 0 otherwise.
+
+Now our problem becomes: given {ui}ni=1, {vi}m i=1, n < |Q|, m < |P|, and the constructed heterogeneous graph G composed of Gqp, Gp and Gq, how to estimate w(qt) and w(pt), for all 1  t  |T |.
+According to the construction of the task-oriented heterogeneous
+graph in Section 4, we have the assumption that the confidence
+estimations of each query task phrase qi and web page pj having task t, denoted by f (t)(qi) and g(t)(pj), respectively, should be as consistent as possible with the graph structure. And the task
+
+prediction on labeled queries and web pages should be similar to their labels. We formulate the consistency assumption as follows:
+
+1. Within each subgraph, the confidence estimations of two objects having each task should be similar if they are linked together, with the edge weight measuring the similarity.
+
+2. The confidence estimations of the labeled query task phrases and web pages having task t should be similar to their labels encoded in {u1(t), . . . , un(t)} and {v1(t), . . . , vm (t)}.
+For the adjacency matrix Rqp corresponding to Gqp, we further define two diagonal matrices Dqp and Dpq, whose entries are the row sums and column sums of Rqp:
+
+|P |
+
+Dqp  R|Q|×|Q|, Dqp,ii =
+
+Rqp,ij
+
+j=1
+
+|Q|
+
+Dpq  R|P|×|P|, Dpq,ii =
+
+Rqp,ji
+
+j=1
+
+Since Wq and Wp are symmetric matrices whose row sums and column sums are the same, we only need to define one diagonal matrix for each of them:
+
+|Q|
+
+|Q|
+
+Dq  R|Q|×|Q|, Dq,ii =
+
+Wq,ij =
+
+Wq,ji
+
+j=1
+
+j=1
+
+|P |
+
+|P |
+
+Dp  R|P|×|P|, Dp,ii =
+
+Wp,ij =
+
+Wp,ji
+
+j=1
+
+j=1
+
+Then the consistency assumption discussed before leads to minimizing the following objective function:
+
+J (w(qt), w(pt))
+
+|Q| |P|
+
+= qp
+
+Rqp,ij
+
+i=1 j=1
+
+wq(t)T qi - w(pt)T pj
+
+2
+
+Dqp,ii
+
+Dpq,jj
+
+|Q|
+
++q
+
+Wq,ij
+
+w(qt)T qi - w(qt)T qj
+
+2
+
+i,j=1
+
+Dq,ii
+
+Dq,jj
+
+|P |
+
++p
+
+Wp,ij
+
+w(pt)T pi - w(pt)T pj
+
+2
+
+i,j=1
+
+Dp,ii
+
+Dp,jj
+
+n
+
+m
+
++q
+
+(w(qt)T qi - u(it))2 + p
+
+(w(pt)T pi - vi(t))2
+
+i=1
+
+i=1
+
++q||wq(t)||2 + p||w(pt)||2
+
+(1)
+
+t1
+
+o1
+
+0.5w
+
+t2
+
+o4
+
+10w
+
+o2
+
+w
+
+o5
+
+20w 0.2w
+
+15w
+
+t3
+
+o3
+
+Figure 4: The reason of normalization.
+
+for t  {1, . . . , |T |}. ||.|| denotes the L2 norm. The first three terms encode the consistency assumption in the three subgraphs Gqp, Gq and Gp among query task phrases and web pages. These terms are normalized by Dqp,ii, Dpq,jj , Dp,ii and Dq,ii, respectively, in order to reduce the impact of popularity of objects. For example, the subgraph in Figure 4 contains five objects denoted as {o1, . . . , o5}, each of which is either a query task phrase or a web page. Suppose o1, o2 and o3 are labeled to have tasks t1, t2 and t3, respectively. The edge between o5 and o2 weighs w, while the edge between o4 and o2 has the weight of 10w. However, this does not mean that the confidence of o4 having task t2 should be 10 times higher than that of o5. In fact, the confidence of o4 triggered by task t2 should be the lowest among all the three tasks, since the edges between o4 and objects having tasks t1 and t3 weigh more than the edge between o4 and o2 does. Similarly, the confidence of o5 having t2 should be the highest among the three tasks. Therefore, we normalize the weight of each edge by the sum of the weight on all the edges connected to the two objects at the end of the edge in order to prevent the confidence of popular objects having each task from increasing incorrectly. This normalization technique is adopted in traditional graph-based learning and its effectiveness is well proved [23]. The fourth and fifth terms ensure the consistency between the estimated results and the given labels. Finally, the last two terms are two Tikhonov regularizers imposed on w(qt) and w(pt) in order to ensure the stableness of the obtained solution [1].
+The trade-off among these terms is controlled by the parameters qp, q, p, q, p, q and p in the range of (0, 1]. Note that qp, q, p, q and p encode the relative importance of five different types of information, namely the click-through information, the content of queries and web pages, the labels of queries and web pages, respectively. The larger the corresponding parameter, the more value is placed on certain type of information. For instance, if the user believes that the click-through information is more trustworthy and influential than the content-based features, then qp can be set larger than q and p. However, we will show in Section 6 that the parameter setting will not influence the performance of our algorithm dramatically.
+We then generate the normalized form of Rqp, Wq and Wp as follows:
+Sqp = D-qp1/2RqpD-pq1/2
+
+Sq = D-q 1/2WqD-q 1/2
+
+Sp = D-p 1/2WpD-p 1/2 We further make the following notations:
+w(t) = [w(qt)T , w(pt)T ]T Q = [q1, . . . , q|Q|] , P = [p1, . . . , p|P|] QL = [q1, . . . , qn] , PL = [p1, . . . , pm]
+
+59
+
+u(t) = [u(1t), . . . , u(nt)]T  Rn , v(t) = [v1(t), . . . , vm (t)]T  Rm Lq = I|Q| - Sq , Lp = I|P| - Sp
+
+Lqp =
+
+I|Q| -Sqp -STqp I|P|
+
+where In is the identity matrix of size n × n. Note that Lq, Lp and Lqp are the normalized graph Laplacians [5] of the three subgraphs Gq, Gp and Gqp, respectively.
+Then with simple algebraic formulations, the first term of objective function (1) can be rewritten as:
+
+|Q| |P|
+
+qp
+
+Rqp,ij
+
+i=1 j=1
+
+w(qt)T qi - w(pt)T pj
+
+2
+
+Dqp,ii
+
+Dpq,jj
+
+=
+
+|Q| |P|
+
+qp
+
+Rqp,ij
+
+i=1 j=1
+
+(w(qt)T qi)2 - 2 (w(qt)T qi)(w(pt)T pj )
+
+Dqp,ii
+
+Dqp,ii Dpq,j j
+
++ (w(pt)T pj )2 Dpq,jj
+
+|Q|
+
+|P |
+
+= qp
+
+(w(qt)T qi)2 + (wp(t)T pi)2
+
+i=1
+
+i=1
+
+|Q| |P|
+-2
+i=1 j=1
+
+w(qt)T qiSqp,ij wp(t)T pj
+
+= qp w(qt)T QQT w(qt) + w(pt)T PPT w(pt)
+
+-2w(qt)T QSqpPT w(pt)
+
+= qp w(t)T
+
+Q0 0P
+
+Lqp
+
+QT 0 0 PT
+
+w(t)
+
+(2)
+
+Following similar derivations, the second and third terms can be rewritten as:
+
+|Q|
+
+q
+
+Wq,ij
+
+i,j=1
+
+w(qt)T qi - w(qt)T qj
+
+Dq,ii
+
+Dq,jj
+
+2
+= 2qw(qt)T QLq QT w(qt)
+
+|P |
+
+p
+
+Wp,ij
+
+i,j=1
+
+w(pt)T pi - w(pt)T pj
+
+Dp,ii
+
+Dp,jj
+
+2
+= 2pwp(t)T PLpPT w(pt)
+
+Then we can rewrite objective function (1) in the following matrixvector form:
+
+J (wq(t), wp(t)) = qp w(t)T
+
+Q 0
+
+0 P
+
+Lqp
+
+QT 0 0 PT
+
+w(t)
+
++2q w(qt)T QLqQT w(qt) + 2pw(pt)T PLpPT w(pt)
+
++q (QTLw(qt) - u(t))T (QTL wq(t) - u(t))
+
++p(PTL w(pt) - v(t))T (PTLw(pt) - v(t))
+
++q w(qt)T w(qt) + pw(pt)T w(pt)
+
+(3)
+
+We further define
+
+L=
+
+qpI|Q| + 2q Lq
+
+-qpSqp
+
+-qpSTqp
+
+qpI|P| + 2pLp
+
+y(t) = [u(t)T , v(t)T ]T
+
+X=
+
+Q0 0P
+
+, XL =
+
+QL 0 0 PL
+
+=
+
+q In 0 0 pIm
+
+, =
+
+q Idq
+
+0
+
+0 pIdp
+
+Finally, objective function (3) is equivalent to the following:
+
+J (w(t))
+
+=
+
+w(t)T
+
+T
+XLX
+
+w(t)
+
++(XTL w(t) - y(t))T (XTL w(t) - y(t))
+
++w(t)T  w(t)
+
+(4)
+
+5.1 Closed form solution
+It is easy to check that Lq, Lp and Lqp, which are the three normalized graph Laplacians [5] over the three subgraphs, Gq, Gp and
+Gqp, are positive semi-definite. L is the weighted summation of Lq, Lp and Lqp, which is also positive semi-definite.  and  are diagonal matrices whose entries are all positive, therefore are both positive definite. We then check the Hessian matrix of the objective function (1), which is easy to derive from equation (4):
+
+H J(w(t)) = 2XLXT + 2XLXTL + 2
+
+(5)
+
+T
+
+T
+
+Since XLX and XLXL are positive semi-definite and q, p >
+
+0, we conclude that H J(w(t)) is positive definite. Therefore, the
+
+objective function (4) is strictly convex. The unique global minimum is obtained by differentiating (4) with respect to w(t)T and
+
+letting
+
+J (w(t) )  w(t)T
+
+=
+
+0:
+
+J (w(t))  w(t)T
+
+=
+
+2XLXT w(t)
+
++ 2XL(XTL w(t)
+
+- y(t)) + 2 w(t)
+
+=
+
+0
+
+Finally, we give the closed form solution of w(t) = [w(qt)T , w(pt)T ]T as follows:
+
+w(t)
+
+=
+
+(XLXT
+
++
+
+T
+XLXL
+
++  )-1XLy(t)
+
+(6)
+
+for t  {1, . . . , |T |}.
+
+5.2 Theoretical interpretations
+Equations (4) and (6) show that our proposed algorithm has a consistent form with Laplacian Regularized Least Squares (LapRLS) [1], which is a semi-supervised manifold regularization framework on homogeneous data. If we set qp = p = p = p = 0, our algorithm reduces to LapRLS on queries only. Similarly, letting qp = q = q = q = 0 reduces to LapRLS on web pages. Under the assumption that data reside on or close to an underlying submanifold in the ambient feature space, LapRLS makes use of both labeled and unlabeled examples to learn a regression model whose prediction result is locally consistent along the geodesics of the data manifold. However, as discussed before, queries and web pages essentially have different feature spaces, therefore reside on two different pieces of submanifold in the ambient word space. We thus construct two homogeneous graphs Gq and Gp to ensure the local consistency of queries and web pages, respectively. And the bipartite graph Gqp is built to let the task prediction results on queries and web pages mutually enhance each other in the whole learning process.
+
+6. EXPERIMENTS
+In this section, we present an empirical study of the effectiveness of our Graph-based Regularization framework for Search Task Classification in queries and web pages simultaneously (denoted by GRSTC) on the click-through data over a continuous period of time from the search log of a commonly used commercial search engine. As discussed before, we try to classify each query and each web page to one of the pre-defined search tasks.
+
+60
+
+Table 1: Statistics of the data sets
+
+Entity category
+
+Computers Cars
+
+# of named entities # of distinct queries # of query task phrases
+# of web pages # of edges in the click graph
+Total click count
+
+7.5k 780k 2,268 36,890 190k 1,100k
+
+20k 7,600k 3,308 33,039 340k 2,800k
+
+6.1 Data set
+
+We use two real click-through data sets of queries containing the entity categories of computers and cars, respectively, from a commonly used commercial search engine. Some statistics of the two data sets are listed in Table 1. We ignore queries involving entities belonging to more than one category.
+For the computer category, we collect 780k distinct queries from which 2,268 task phrases are extracted. Among all the web pages clicked by these queries, we select 36,890 web pages which received totally no less than 5 clicks over all of these queries, since these web pages are the most popular and the most important to study. Then we extract the lexical features from the task phrases, which have totally 3,210 dimensions. And the content-based lexical features for web pages extracted in the same way have totally 8,532 dimensions. From the different numbers of dimensions of the content-based features, we can see that queries and web pages do have very different feature spaces. Many terms contained in web pages never appear in the query task phrases.
+For the car category, we obtain 3,308 task phrases covering totally 7,600k distinct queries. Although the number of task phrases is similar to the computer category, the number of queries covered is significantly larger. This is because the car category involves many more named entities than the computer category, as observed in the first row of Table 1. Moreover, the large number of queries leads to many more web pages clicked. Then we select totally 33,039 web pages which received no less than 20 clicks from all the queries as our experimental data, while our learned classifier can actually work on all the web pages. Similar as before, we extract the 2,997-dimensional lexical features of the query task phrases, and the 11,926-dimensional lexical features of the web pages.
+
+6.2 Algorithms for comparison
+Since we are trying to predict search tasks of queries and web pages based on the textual content and the click-through information, the problem can also be cast as a traditional classification task, as discussed above. We compare our proposed method with several state-of-the-art classification approaches as follows:
+
+· Maximum Entropy (ME): Train two maximum entropy classifiers for queries and web pages, respectively, using the contentbased features only.
+
+· LapRLS-content: Train two LapRLS classifiers for queries and web pages, respectively, using the content-based features only.
+
+· LapRLS-click: Train one LapRLS classifier by treating queries and web pages as homogeneous data. We use the click graph to play the role of the nearest-neighbor graph in the algorithm.
+
+Maximum Entropy (ME) [14] is a supervised content-based classifier widely used in web mining and information retrieval. We use the same content-based features extracted from query task phrases and web pages for all the algorithms. Since our algorithm belongs
+
+to the category of semi-supervised learning, which has been reported to perform generally better than purely supervised methods [4], we tried several supervised classifiers including Support Vector Machines, Regularized Least Squares, ME, etc., and present the best results generated by ME. LapRLS [1] is a semi-supervised manifold regularization framework preserving local consistency in the feature space of the data, which is the homogeneous reduction of our algorithm as discussed in Section 5.2. Here we try two versions of LapRLS: (1) LapRLS-content, the original version running on homogeneous data, where a nearest-neighbor graph is constructed based on local features4; and (2) LapRLS-click, which considers queries and web pages as the the same type of data. However, since queries and web pages have different feature spaces, we can no longer build a feature-based nearest-neighbor graph over all the data. Then we use the click graph to play the role of the affinity graph. The idea of LapRLS-click is similar to [20], with an out-ofsample extension performed by incorporating linear regression.
+The original LapRLS algorithm [1] works on homogeneous data, therefore has only one , one  and one . And  is fixed to be 1 since only the ratio between the three parameters matters in the model selection. In our experiments, we follow this configuration and search  and  in the grid {10-5, 2×10-5, 5×10-5, 10-4, 2× 10-4, 5×10-4, 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10}, where the best results for LapRLS are obtained by  = 0.5 and  = 10-4. It has been reported that the performance of LapRLS is generally not very sensitive to the parameter setting. In order to have a fair comparison, we treat the three subgraphs Gqp, Gq and Gp in GRSTC as equally important and use the same set of parameters as LapRLS, i.e., qp = q = p = 0.5, q = p = 10-4. This may not be the best choice for GRSTC, but it is good enough to show the effectiveness of this method. We also fix q = 1 in GRSTC. But for p, since many web pages can help accomplish more than one search task, therefore strictly labeling a web page to one most relevant search task is not very accurate. In this way, we slightly reduce p and empirically set it to 0.2. The number of nearest neighbors k is empirically set to 15 for LapRLScontent and GRSTC.
+Finally, we use the F1 measure to evaluate the classification performance of different algorithms, which is computed as follows:
+
+F1
+
+=
+
+2 × precision × recall precision + recall
+
+6.3 Prediction performance
+6.3.1 Computer category
+We try to classify the query task phrases and web pages of the computer category into 7 popular search tasks as listed in Table 2, which are discovered according to manual study of the search log summary.
+For performance evaluation, we manually labeled all the 2,268 task phrases and 1,634 web pages with the largest number of clicks. In the following sections, we randomly choose l%(= 5%, 10%, . . . , 70%) of the labeled queries and web pages and use their label information as prior knowledge. The search task prediction performance is evaluated by comparing with manually labeled results on the rest of the labeled queries and web pages. For each given l%, we average the results over 10 random splits. We show the F1 measure of
+
+4We also tried transforming the query-page bipartite graph into homogeneous graphs among queries and among web pages to play the role of the nearest-neighbor graphs, which is similar to the idea of [12]. But this implementation did not outperform LapRLS-content in our experiments and therefore we do not present the results.
+
+61
+
+Table 2: Popular search tasks to be discovered in the computer category (%)
+
+No.
+
+Search task
+
+Description
+
+Example task phrases
+
+1 Purchase computer
+
+Buy a computer
+
+ amazon, coupon ,  deal
+
+2
+
+Find review
+
+Find the reviews or general information of a computer
+
+ reviews,  desktop,  models
+
+3
+
+Compare
+
+Compare two computers on various aspects
+
+ versus ,  or 
+
+4
+
+System help
+
+Find out about how to use a system
+
+ tech support,  configuration,  recovery
+
+5 Download software
+
+Download or update software, especially drivers
+
+ driver download,  audio driver,  media
+
+6 Maintain hardware
+
+Repair or upgrade hardware
+
+ broken,  memory upgrade, upgrade  hard drive
+
+7 Purchase accessories Buy a printer/scanner/camera or other accessories
+
+ printer,  bag,  camera
+
+Table 3: F1 measure on queries of the computer category
+
+% labeled queries 5 10 20 30 40 50 60 70
+
+ME
+
+0.59 0.62 0.66 0.69 0.70 0.71 0.72 0.73
+
+LapRLS-content 0.66 0.69 0.73 0.75 0.75 0.76 0.77 0.78
+
+LapRLS-click 0.62 0.67 0.71 0.74 0.76 0.77 0.78 0.78
+
+GRSTC
+
+0.67 0.70 0.75 0.77 0.78 0.79 0.80 0.81
+
+average 0.68 0.73 0.73 0.76
+
+Table 4: F1 measure on web pages of the computer category
+
+% labeled web pages 5 10 20 30 40 50 60 70
+
+ME
+
+0.39 0.40 0.41 0.41 0.43 0.43 0.43 0.43
+
+LapRLS-content 0.45 0.46 0.48 0.46 0.50 0.50 0.51 0.52
+
+LapRLS-click 0.53 0.57 0.60 0.61 0.63 0.64 0.64 0.65
+
+GRSTC
+
+0.58 0.62 0.64 0.65 0.67 0.67 0.67 0.68
+
+average 0.42 0.49 0.61 0.65
+
+queries and web pages with different percentage of labeled data of different algorithms in Table 3 and Table 4, respectively.
+When classifying queries, LapRLS-content and LapRLS-click perform comparably to each other and better than ME, verifying the effectiveness of learning from both labeled and unlabeled data. When classifying web pages, LapRLS-content still outperforms ME. And it is interesting to note that LapRLS-click performs much better than LapRLS-content. This is because that the content-based features of web pages are noisier than those of queries, therefore merely relying on content is not very accurate, as reported in many past studies in web page classification [16]. LapRLS-click takes the advantage of learning from labeled queries by exploiting the clickthrough information, while LapRLS-content can only use the labels on web pages even if some labels on queries are also available. However, LapRLS-click fails to consider the local consistency in the content feature space of the data.
+Overall, our proposed GRSTC algorithm performs the best in both queries and web pages. Even though GRSTC uses the same set of parameters as its homogeneous reduction, LapRLS, GRSTC still outperforms the two versions of LapRLS by unifying the content and click-through information of both queries and web pages in an organized way. We also performed the two-tailed t-test over the F1 measure of the experimental results. All the p-values between the results of GRSTC and other algorithms with varying percentage of labeled data are less than 0.05. Therefore, the improvements of our GRSTC algorithm are statistically significant.
+6.3.2 Car category
+The pre-defined search tasks to be classified in the car category are listed in Table 5. Similar as the computer category, these popular search tasks discovered by manual study of the search log summary are of special interest to the search engine users. Notice that several tasks of the car category are very different from those of the computer category, such as search tasks "purchase a used car", "rent a car", etc. That is the reason why we work on queries containing named entities of the same category and related web pages.
+Similar as before, we manually labeled all the 3,308 task phrases and 1,434 web pages with the largest number of clicks. We then randomly choose l%(= 5%, 10%, . . . , 70%) of the labeled queries and web pages as prior knowledge, and evaluate the performance of
+
+search task prediction by comparing with manually labeled results on the rest of the labeled data. The results for each l% are averaged over 10 random splits. The F1 measure of queries and web pages with different portions of labeled data are shown in Table 6 and Table 7, respectively.
+As can be observed, the semi-supervised LapRLS-content and LapRLS-click still generally outperform the supervised ME method. It is interesting to note that when classifying web pages in this category, the F1 measure of LapRLS-click drops below that of LapRLS-content, although LapRLS-click uses additional labels of the queries. This indicates that we need to handle the label information on queries carefully when it is used to study web pages. After all, queries and web pages are two different types of data with different semantic meanings, therefore it is inappropriate to treat them equally as LapRLS-click does. Our proposed GRSTC consistently outperforms all the other algorithms by well respecting the semantic differences between queries and web pages through making full use of their content information, while letting their classification results mutually enhance each other at the same time.
+Finally, we performed the two-tailed t-test over the F1 measure of the experimental results. All the p-values between the results of GRSTC and other algorithms with different portions of labeled data are less than 0.05, indicating that the improvements of our GRSTC method are statistically significant.
+6.4 Task-oriented re-ranking
+In order to verify the usefulness of search task prediction in search ranking, here we test a simple task-oriented re-ranking scheme by directly incorporating our search task classification results as additional information. This may not be the optimal solution to consider search tasks in ranking, but it is good enough to show the benefit of employing our algorithm.
+The basic idea is to use search task prediction as an additional feature to re-evaluate the relevance between the query and the web pages to rank. Given a query q, the search engine can retrieve the top-k relevant web pages {p1, . . . , pk} using its original ranking function. Then we can use the query classifier trained by our GRSTC algorithm to predict the search task tq behind the query. On the other hand, the web page classifier trained by GRSTC can estimate the confidence that each web page pj could accomplish tq,
+
+62
+
+Table 5: Popular search tasks to be discovered in the car category (%)
+
+No.
+
+Search task
+
+Description
+
+Example task phrases
+
+1 Purchase a new car
+
+Buy a new car
+
+ price,  dealer,  retail
+
+2 Purchase a used car
+
+Buy a second-hand car
+
+used , pre-owned , second hand 
+
+3
+
+Find reviews
+
+Find the reviews or general information of a car
+
+ reviews,  new model,  cars
+
+4
+
+Compare
+
+Compare two cars on various aspects
+
+compare  and ,  vs , difference between  and 
+
+5
+
+Rent a car
+
+Rent a car
+
+ rental, rent a , cheap  rental
+
+6
+
+Maintain a car
+
+Repair a broken car
+
+ repair,  problems,  oil leak
+
+7 Purchase accessories Buy a wheel/headlight/diesel or other accessories
+
+wheels for ,  engine,  parts
+
+8 Troubleshooting
+
+General questions about cars
+
+ insurance,  manuals,  troubleshooting
+
+Table 6: F1 measure on queries of the car category
+
+% labeled queries 5 10 20 30 40 50 60 70
+
+ME
+
+0.50 0.55 0.60 0.62 0.63 0.64 0.65 0.66
+
+LapRLS-content 0.69 0.72 0.76 0.77 0.78 0.79 0.79 0.80
+
+LapRLS-click 0.68 0.72 0.77 0.79 0.79 0.81 0.81 0.81
+
+GRSTC
+
+0.70 0.74 0.78 0.80 0.81 0.81 0.82 0.82
+
+average 0.61 0.76 0.77 0.79
+
+Table 7: F1 measure on web pages of the car category % labeled web pages 5 10 20 30 40 50 60 70
+
+ME
+
+0.74 0.77 0.78 0.79 0.80 0.80 0.81 0.81
+
+LapRLS-content 0.74 0.76 0.79 0.81 0.81 0.81 0.82 0.82
+
+LapRLS-click 0.66 0.71 0.75 0.78 0.79 0.80 0.81 0.83
+
+GRSTC
+
+0.75 0.78 0.80 0.82 0.83 0.83 0.84 0.84
+
+average 0.79 0.79 0.77 0.81
+
+which is viewed as the task-oriented relevance score (scaled into the range [0, 1]). Then the web pages that have high confidence in accomplishing tq are promoted in the ranking list, with a parameter µ controlling the weight of the task-oriented relevance score. We summarize our task-oriented re-ranking scheme in Algorithm 1.
+To test the effectiveness of the task-oriented re-ranking scheme, we design the following experiment. For each entity category, we sample 40% of the labeled query task phrases and web pages and use GRSTC to train two classifiers for queries and web pages, respectively. Then we sample 500 of the rest of the task phrases and randomly choose one query containing each task phrase as testing data. For each of the 500 queries, we submit it to the search engine and crawl the top-50 returned web pages. Then we run Algorithm 1 to re-rank these web pages, where µ is empirically set to 0.1 in our experiments. The web pages clicked by the user are regarded as relevant (ground truth). We measure the ranking performance before and after re-ranking using the Mean Average Precision (MAP) metric. For the totally 1000 queries in the computer category and the car category, the MAP increases by 4.87% after employing the task-oriented re-ranking scheme, indicating that taking the search tasks into consideration can improve the search quality.
+
+Algorithm 1. Task-oriented re-ranking for search.
+
+Input: query q, weight parameter µ. Output: re-ranked web pages {p1, . . . , pk}. Procedure:
+1. Retrieve k relevant web pages {p1, . . . , pk} of q using the search engine's original retrieval function. The k relevant
+web pages are ranked according to their relevance scores
+{r1, . . . , rk}.
+2. Run the classifiers trained by GRSTC to predict the search task tq behind query q, and the confidence estimation g(tq)(pj) that each web page pj can accomplish task tq, 1  j  k.
+3. For each j = 1, . . . , k, do:
+
+Normalize g(tq)(pj)
+
+=
+
+. g(tq )(pj )
+max{g(tq )(p1),...,g(tq )(pk)}
+
+rj = rj + µg(tq)(pj ). 4. Re-rank p1, . . . , pk in the descending order of rj .
+
+6.5 Model selection
+Following the manifold regularization framework [1], we fix parameter q which controls the confidence of labels of queries, and let the other parameters vary to perform model selection. Therefore, the rest of the parameters q, p, qp, p, q and p are essential in our GRSTC algorithm which control the relative importance of different terms. We empirically set q = p = qp = 0.5, p = 0.2, and q = p = 10-4 in the previous experiments. In this subsection, we try to study the impact of parameters on the performance of GRSTC. Empirically, parameters q and p for the two Tikhonov regularizers [1] imposed on wq and wp are less important than other parameters, q, p, qp, p, which control the importance of the three subgraphs and the confidence of the labels of web pages. So we mainly evaluate the sensitivity of our model with parameters q, p, qp, and p by fixing all the other parameters and letting one of {q, p, qp, p} vary. We also change  and  in LapRLS-content and LapRLS-click accordingly. Figure 5 shows the average F1 measure of queries and web pages in the two categories as a function of the parameters, with 20% of the data labeled. Parameter sensitivity curves of other percentages of labeled data are similar to Figure 5 and therefore omitted due to lack of space.
+It can be observed that over a large range of parameters, GRSTC achieves significantly better performance than all the other algorithms, including two versions of its homogeneous reduction, LapRLScontent and LapRLS-click, with the parameters varying the same way. So the parameter selection will not critically affect the performance of GRSTC.
+7. CONCLUSIONS
+In this work, we propose to classify queries and web pages into the popular search tasks. One key distinction of our study is that the search tasks are defined as the specific action that the user wants to perform towards the entity in the query, which is at a finer scale than existing binary or three-class taxonomy of user goals or intents. We then organize the content and click-through information of both sides of the query-page click relationship into a heterogeneous graph, where each pair of objects are connected according to
+
+63
+
+F1 measure F1 measure F1 measure F1 measure
+
+0.74 0.72
+0.7 0.68 0.66 0.64 0.62
+10-5
+
+GRSTC LapRLS-click LapRLS-content ME
+
+10-4
+
+10-3
+
+10-2
+
+10-1
+
+100
+
+
+
+q
+
+(a) Varying q
+
+0.76 0.74 0.72
+0.7 0.68 0.66 0.64 0.62
+10-5
+
+GRSTC LapRLS-click LapRLS-content ME
+
+10-4
+
+10-3
+
+10-2
+
+10-1
+
+100
+
+
+
+p
+
+(b) Varying p
+
+0.74 0.72
+0.7 0.68 0.66 0.64 0.62
+10-5
+
+GRSTC LapRLS-click LapRLS-content ME
+
+10-4
+
+10-3
+
+10-2
+
+10-1
+
+100
+
+
+
+qp
+
+(c) Varying qp
+
+0.75 0.72 0.69 0.66 0.63
+0.160-5
+
+GRSTC LapRLS-click LapRLS-content ME
+
+10-4
+
+10-3
+
+10-2
+
+10-1
+
+100
+
+
+
+p
+
+(d) Varying p
+
+Figure 5: Model selection when 20% of queries and web pages are labeled
+
+task similarity. By designing a novel semi-supervised classification framework based on the task-oriented graph, we not only preserve the local consistency in the content feature spaces of queries and web pages, but also make full use of the close interactions between the two sets of data to let their task predictions mutually enhance each other. Through employing the content-based task classifiers trained by our algorithm, we can predict the search tasks of future queries and web pages so as to return the most useful information to users by task matching.
+In the future, we plan to study how to automatically discover what are the popular search tasks among queries instead of manual study. One possible solution is to develop some task-oriented clustering methods. Another promising direction is how to better consider search tasks in ranking. Besides directly using the search task prediction results as an additional feature, it is also interesting to design some task-oriented ranking models.
+8. ACKNOWLEDGEMENTS
+The work was supported in part by the U.S. National Science Foundation under grant IIS-09-05215, and by the U.S. Army Research Laboratory under Cooperative Agreement No. W911NF-092-0053 (NS-CTA). The views and conclusions contained in this document are those of the authors and should not be interpreted as representing the official policies, either expressed or implied, of the Army Research Laboratory or the U.S. Government. The U.S. Government is authorized to reproduce and distribute reprints for Government purposes notwithstanding any copyright notation here on.
+9. REFERENCES
+[1] M. Belkin, P. Niyogi, and V. Sindhwani. Manifold regularization: A geometric framework for learning from examples. Journal of Machine Learning Research, 7:2399­2434, 2006.
+[2] A. Broder. A taxonomy of web search. SIGIR Forum, 36(2):3­10, 2002.
+[3] S. Chakrabarti, B. Dom, and P. Indyk. Enhanced hypertext categorization using hyperlinks. In SIGMOD Conference, pages 307­318, 1998.
+[4] O. Chapelle, B. Schölkopf, and A. Zien, editors. Semi-Supervised Learning. MIT Press, 2006.
+[5] F. R. K. Chung. Spectral Graph Theory, volume 92 of Regional Conference Series in Mathematics. AMS, 1997.
+
+[6] Q. Gu and J. Zhou. Transductive classification via dual regularization. In ECML/PKDD (1), pages 439­454, 2009.
+[7] J. Guo, G. Xu, X. Cheng, and H. Li. Named entity recognition in query. In SIGIR, pages 267­274, 2009.
+[8] J. Hu, G. Wang, F. H. Lochovsky, J.-T. Sun, and Z. Chen. Understanding user's query intent with wikipedia. In WWW, pages 471­480, 2009.
+[9] B. J. Jansen, D. L. Booth, and A. Spink. Determining the informational, navigational, and transactional intent of web queries. Information Processing and Management, 44(3):1251­1266, 2008.
+[10] M. Ji, Y. Sun, M. Danilevsky, J. Han, and J. Gao. Graph regularized transductive classification on heterogeneous information networks. In ECML/PKDD (1), pages 570­586, 2010.
+[11] U. Lee, Z. Liu, and J. Cho. Automatic identification of user goals in web search. In WWW, pages 391­400, 2005.
+[12] X. Li, Y.-Y. Wang, and A. Acero. Learning query intent from regularized click graphs. In SIGIR, pages 339­346, 2008.
+[13] D. Mladenic. Turning yahoo to automatic web-page classifier. In European Conference on Artificial Intelligence, pages 473­474, 1998.
+[14] K. Nigam, J. Lafferty, and A. McCallum. Using maximum entropy for text classification. In IJCAI Workshop on Machine Learning for Information Filtering, pages 61­67, 1999.
+[15] M. Pas¸ca. Organizing and searching the world wide web of facts ­ step two: harnessing the wisdom of the crowds. In WWW, pages 101­110, 2007.
+[16] X. Qi and B. D. Davison. Web page classification: Features and algorithms. ACM Computing Surveys, 41(2):1­31, 2009.
+[17] D. E. Rose and D. Levinson. Understanding user goals in web search. In WWW, pages 13­19, 2004.
+[18] D. Shen, Y. Li, X. Li, and D. Zhou. Product query classification. In CIKM, pages 741­750, 2009.
+[19] D. Shen, J.-T. Sun, Q. Yang, and Z. Chen. A comparison of implicit and explicit links for web page classification. In WWW, pages 643­650, 2006.
+[20] G.-R. Xue, D. Shen, Q. Yang, H.-J. Zeng, Z. Chen, Y. Yu, W. Xi, and W.-Y. Ma. Irc: An iterative reinforcement categorization algorithm for interrelated web objects. In ICDM, pages 273­280, 2004.
+[21] X. Yin and S. Shah. Building taxonomy of web search intents for name entity queries. In WWW, pages 1001­1010, 2010.
+[22] Z. Yin, R. Li, Q. Mei, and J. Han. Exploring social tagging graph for web object classification. In KDD, pages 957­966, 2009.
+[23] D. Zhou, O. Bousquet, T. N. Lal, J. Weston, and B. Schölkopf. Learning with local and global consistency. In NIPS, 2003.
+[24] X. Zhu, Z. Ghahramani, and J. D. Lafferty. Semi-supervised learning using gaussian fields and harmonic functions. In ICML, pages 912­919, 2003.
+
+64
+
+

@@ -1,0 +1,1024 @@
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+ReAct: Online Multimodal Embedding for Recency-Aware Spatiotemporal Activity Modeling
+
+Chao Zhang1, Keyang Zhang1, an Yuan1, Fangbo Tao1, Luming Zhang2, Tim Hanra y3, and Jiawei Han1
+1Computer Science Department, University of Illinois at Urbana-Champaign, Urbana, IL, USA 2Department of CSIE, Hefei University of Technology, China 3U.S. Army Research Laboratory, Adelphi, MD, USA 1{czhang82, kzhang53, qyuan, ao2, hanj}@illinois.edu 2zglumg@gmail.com 3timothy.p.hanra y@mail.mil
+
+ABSTRACT
+Spatiotemporal activity modeling is an important task for applications like tour recommendation and place search. e recently developed geographical topic models have demonstrated compelling results in using geo-tagged social media (GTSM) for spatiotemporal activity modeling. Nevertheless, they all operate in batch and cannot dynamically accommodate the latest information in the GTSM stream to reveal up-to-date spatiotemporal activities. We propose R A , a method that processes continuous GTSM streams and obtains recency-aware spatiotemporal activity models on the y. Distinguished from existing topic-based methods, R A embeds all the regions, hours, and keywords into the same latent space to capture their correlations. To generate high-quality embeddings, it adopts a novel semi-supervised multimodal embedding paradigm that leverages the activity category information to guide the embedding process. Furthermore, as new records arrive continuously, it employs strategies to e ectively incorporate the new information while preserving the knowledge encoded in previous embeddings. Our experiments on the geo-tagged tweet streams in two major cities have shown that R A signi cantly outperforms existing methods for location and activity retrieval tasks.
+ACM Reference format: Chao Zhang1, Keyang Zhang1, an Yuan1, Fangbo Tao1, Luming Zhang2, Tim Hanra y3, and Jiawei Han1 . 2017. ReAct: Online Multimodal Embedding for Recency-Aware Spatiotemporal Activity Modeling. In Proceedings of SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan, , 10 pages. DOI: 10.1145/3077136.3080814
+1 INTRODUCTION
+Today's big cities pose big challenges when people try to nd desired resources like places and activities. Consider a tourist in a metropolis like New York City. What are the popular activities in her neighborhood at the time being? Which regions should she stay if she cares much about quality food and accessible transportation around her hotel? With hundreds of thousands places in the
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan © 2017 ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: 10.1145/3077136.3080814
+
+city and the complex spatiotemporal dynamics, answering such questions is challenging not only for tourists, but even for local citizens who have lived in New York City for many years.
+Years ago, developing data-driven approaches to model people's activities in the physical world was almost impossible due to the lack of reliable sources. Traditional approaches have resorted to human surveys to unveil land uses [31, 32], yet such knowledge is still too limited to support downstream activity retrieval applications.
+e recent proliferation of geo-tagged social media (abbreviated as GTSM onwards), however, sheds light on this problem. As every GTSM record (e.g., geo-tagged tweet, Foursquare checkin) contains a location, a timestamp, and a text message, the massive GTSM data generated from various platforms serve as a result of crowd sensing -- they contain rich information about spatiotemporal dynamics as people probe di erent regions as human sensors. With tens of millions of GTSM records being collected every day, it becomes possible to perform data-driven spatiotemporal activity modeling to address people's information needs.
+e recent studies [13, 16, 24, 28, 34, 35] have demonstrated the potential of GTSM for modeling spatiotemporal activities. By incorporating the spatial information into classical topic models like LDA [5], their proposed geographical topic models can detect the activities in di erent regions, and vice versa. While compelling results have been obtained by those geographical topic models, they all assume the GTSM data is given as static. In practice, however, people's activities in the physical world are dynamically evolving in nature, and the end users o en demand the latest knowledge. For example, consider the user who queries for popular activities around her. What she needs are the activities popular in recent months or even weeks, rather than the ones that were popular years ago but no longer popular now. As another example, when users seek for places for outdoor activities in summer time, beach-area a ractions could be good answers to such queries. But when it comes to the fall time, beach-related activities become too chilly for most people, while other places like parks with hiking trails are more appropriate. Such information is readily available in GTSM streams. Unfortunately, existing geographical topic models all operate in batch and cannot capture the latest information about spatiotemporal activities.
+In this paper, we learn recency-aware spatiotemporal activity models from dynamic GTSM streams. is task is challenging on account of the following issues. First, integrating diverse data types is nontrivial. GTSM involves three di erent data types: location, time, and text. Considering the totally di erent representations
+
+245
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+of these data types and their complicated inter-type interactions, e ectively fusing them into a uni ed model is a challenge. Second, it is hard to capture activity semantics from short text. In GTSM, the semantics of people's activities are expressed through short text messages instead of long documents. To build high-quality spatiotemporal activity models, it is important yet di cult to capture the semantics of such short text messages. ird, recency-aware processing of massive streaming data is required. We have to handle the online GTSM stream to build recency-aware spatiotemporal activity models. Nevertheless, it is challenging to e ectively accommodate the new records without over ing them. In addition, it is key to build an update-e cient model to process massive GTSM streams.
+We propose a recency-aware spatiotemporal activity model named R A . e main technical contributions of R A are highlighted as follows:
+(1) In R A , we directly embed all the regions, hours, and keywords into the same latent space to preserve their intertype interactions. If two elements are highly correlated (e.g., the JFK airport region and the keyword ` ight'), their representations in the latent space tend be close. Compared with geographical topic modeling methods, the multimodal embedding does not impose any distributional assumptions on people's activities, and incurs much lower computational cost in the learning process.
+(2) We employ a novel semi-supervised paradigm in R A to generate high-quality embeddings. In a considerable number of records, the users explicitly specify the pointof-interest (POI) to indicate their activity categories (e.g., outdoor, shop). e category information can serve as clean and well-structured knowledge, which allows us to be er separate the elements with di erent semantics in the latent space. Hence, we adopt a semi-supervised paradigm that leverages the clean category information to guide the embedding process and generates be er-quality embeddings.
+(3) As new GTSM records arrive continuously, we design two strategies to update the embeddings and obtain recencyaware spatiotemporal activity models. e rst imposes life-decaying weights on the records such that recent records are emphasized. e second treats previous embeddings as prior knowledge, and employs a constrained optimization procedure to obtain updated embeddings. With either strategy, R A e ectively incorporates the information in the new records, while largely preserving the knowledge encoded in the previous embeddings to avoid over ing.
+To the best of our knowledge, R A represents the rst work that can learn recency-aware spatiotemporal activity models from dynamic GTSM streams on the y. We have performed extensive experiments on two million-scale geo-tagged tweet data sets collected from Los Angeles and New York City. We nd that R A can generate spatiotemporal activity models in which the latest pa erns of spatiotemporal activities are well captured. Across a variety of activity retrieval tasks, R A outperforms state-of-the-art methods signi cantly.
+
+2 OVERVIEW
+Problem Description. Let R = {r1, r2, . . . , rN , . . .} be a stream of geo-tagged social media (GTSM) records. Each record r  R is de ned by a tuple tr , lr , mr where: (1) lr is a two-dimensional vector that represents the user's location when r is created; (2) tr is the creating timestamp; and (3) mr is a bag of keywords that represent the text message of r .
+Our goal is to use the stream R to learn recency-aware spatiotemporal activity models. As there are three di erent a ributes (i.e., location, time, and text) that are intertwined, an e ective spatiotemporal activity model should carefully capture their inter-type correlations. Further, to continuously incorporate the latest information in R, the model should keep updating as new records arrive. At any time, the learnt model should be able to answer two types of queries: 1) Spatial query. Given a spatial location, what are the popular activities around it? and 2) Textual query. Given an activity query represented by a bunch of keywords, what are the suitable regions or places for such an activity? For both queries, the users can also specify a timestamp in their query. As such, the model can return time-speci c results in response, e.g., returning brunch places for the query `food' issued in the morning and dining places for the same query issued in the a ernoon.
+Overview of R A . To model people's spatiotemporal activities, R A embeds all the spatial, temporal, and textual elements into the same latent space. While the keywords can serve as natural embedding elements for the textual part, it is infeasible to embed every location and timestamp as the space and time are continuous. We thus map each timestamp to some hour in a day and use the mapped hour as a basic temporal element, and hence have 24 possible temporal elements in total. Similarly, we partition the geographical space into equal-size regions and consider each region as a basic spatial element.
+Meanwhile, we observe that a considerable number of records explicitly specify the points-of-interests (POIs), e.g., many Foursquare users link their accounts with Twi er to checkin at di erent venues.
+e category information (e.g., outdoor, shop) of those records, which is clean and well-structured, can serve as useful signals to understand people's activities. We thus regard those categories as labels, and design a semi-supervised paradigm to guide the learning of quality embeddings. At a high level, R A aims to learn the embeddings L, T , W , and C where: (1) L is the embeddings for regions; (2) T is the embeddings for hours; (3) W is the embeddings for keywords; and (4) C is the embeddings for categories. Take L as an example. Each element vl  L is a D-dimensional (D > 0) vector, which represents the embedding for region l.
+Figure 1 shows the framework of R A . As shown, it adopts a semi-supervised paradigm for multimodal embedding. 1) For an unlabeled record ru , we optimize the embeddings L, T , W for the task of recovering the a ributes in ru ; and 2) For a labeled record rl , we optimize the embeddings L, T , W , C for not only a ribute recovery but also activity classi cation. In such a process, the embeddings of the regions, hours, and keywords are shared across the two tasks, while the category embeddings are speci c to the activity classi cation task. In this way, the semantics of activity categories are propagated from labeled records to unlabeled ones,
+
+246
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+thereby be er separating the elements with di erent semantics in the latent space.
+
+Attribute Recovery
+
+Activity Classification
+
+Regions
+
+Hours
+
+Keywords
+
+Embeddings
+
+Categories
+
+Unlabeled Records
+
+Labeled Records
+
+Figure 1: e semi-supervised multimodal embedding
+framework of R A .
+e entire learning proceeds in an online manner. When a collection R of new records arrive, our goal is to update the embeddings (L,T ,W , C) to accommodate the information contained in R. While it is tempting to use R to learn the embeddings from scratch, such an idea not only incurs unnecessary computational overhead, but also leads to over ing of the new data. To address this issue, we propose an online learning procedure in Section 3, which e ectively incorporates the new records while largely preserving the information encoded in the previous embeddings.
+3 LEARNING THE REACT MODEL
+In this section, we describe the learning procedures for R A . As aforementioned, given a collection of records R, for any record r  R, either labeled or unlabeled, R A rst takes the a ribute recovery task, and updates the embeddings L, T , and W to correctly recover the a ributes of r . If r is labeled, R A further leverages the category information as supervision, and updates L, T , W , and C such that r can be classi ed into the correct category.
+e key problem in the above online learning framework is, how to update the embeddings with the goal of e ectively incorporating the information in R without over ing it? We develop two di erent strategies for this problem: one is life-decaying learning, and the other is constraint-based learning. In what follows, we rst describe the details of those two strategies in Section 3.1 and 3.2.
+en we analyze their space and time complexities in Section 3.3.
+3.1 Life-Decaying Learning
+Our rst strategy, called life-decaying learning, assigns di erent weights to the records in the GTSM stream such that more recent records receive higher weights. Speci cally, for any record r that has appeared in the stream, we set its weight as:
+wr = e- ar ,
+where  > 0 is a decaying parameter, and ar is r 's age with regard to the current time. e general philosophy of such a weighing scheme is to emphasize the recent records and highlight the upto-date observations of urban activities. On the other hand, the old records in the stream are not completely ignored, they have smaller weights but are still involved in model training to prevent over ing.
+Practically, it is infeasible to store all the records seen so far on account of the massive size of the GTSM stream. For tackling this
+
+issue, we maintain a continuously updating bu er B, as shown
+in Figure 2. e bu er B consists of m buckets B0, B1, . . . , Bm-1, where all the buckets have the same time span T . For each bucket Bi (0  i < m), we assign an exponentially decaying weight e- i to it, where the weight represents the percentage of samples that
+we preserve for the respective time span. In other words, the most
+recent bucket B0 holds the complete set of records within its time span, the next bucket B1 holds e- of the corresponding records, and so on. When a new collection of records R arrive, the bu er B is updated to accommodate R. e new records R are fully stored in the most recent bucket B0. For each other bucket Bi (i > 0), the records in its predecessor Bi-1 are downsampled with rate e- and then moved into Bi .
+
+new buffer
+
+B4
+
+B3
+
+B2
+
+B1
+
+B0
+
+......
+
+......
+
+R
+
+old buffer
+
+T
+
+Figure 2: Maintaining a bu er B for life-decaying learning. For any bucket Bi , e- i of the records falling in Bi 's time span are preserved for model updating. When new records arrive,
+B is updated based on downsampling and shi ing.
+
+Algorithm 1 sketches the learning procedure of R A with the life-decaying strategy. As shown, when a collection R of new records arrive, we rst shi the records from Bi-1 to Bi by downsampling (lines 1-2), and store R into B0 in full (lines 3). Once the bu er B is updated, we randomly sample records from B (line 4-7) to update the embeddings. First, for any record r , we consider the a ribute recovery task and update the embeddings L, T , and W such that the a ributes of r can be correctly recovered. Second, if r is labeled, we further update L, T , W , and C such that r can be classi ed into the correct activity category. Such a process is repeated over R for a number of epochs before the updated embeddings of L, T , W , and C are output. In the following, we detail the updating rules for a ribute recovery (line 8) and activity classi cation (line 9), respectively.
+3.1.1 The A ribute Recovery Task. For a ribute recovery, we optimize the embeddings L, T , W such that each a ribute of a record r can be maximally recovered, assuming the other a ributes of r are already observed. Given a record r , for any a ribute i  r with type X (region, hour, or keyword), we model the likelihood of observing i as
+p(i |r-i ) = exp(s (i, r-i ))/ exp(s (j, r-i )),
+j X
+where r-i is the set of all the a ributes in r except i, and s (i, r-i ) is the similarity score between i and r-i .
+In the above, the key is how to de ne s (i, r-i ). A natural idea is to average the embeddings of the a ributes in r-i , and compute s (i, r-i ) as s (i, r-i ) = viT j r-i vj /|r-i |, where vi is the embedding for a ribute i. Nevertheless, such a simple de nition fails to consider the continuities of the space and time. Take the spatial continuity as an example. Because of spatial locality, two regions
+
+247
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Algorithm 1: Life-decaying learning of R A .
+
+Input: e previous embeddings L, T , W , and C.
+A bu er of m buckets B = {B0, B1, . . . , Bm-1}. A collection R of new records. Output: e updated bu er B and embeddings L, T , W , and C. // Downsampling with rate e- .
+
+1 for i from 1 to n do 2 Bi  e- -downsampled records from Bi-1;
+
+3 B0  R ;
+
+4 R  Bm-1  Bm-2 . . .  B0;
+
+5 for epoch from 1 to N do
+
+6 for i from 1 to |R | do
+
+7
+
+r  Randomly sample a record from R;
+
+// for labeled and unlabeled records
+
+8
+
+Update L, T , and W for recovering r 's a ributes;
+
+// for only labeled records
+
+9
+
+if r is labeled then
+
+10
+
+Update L, T , W , and C for classifying r 's activity;
+
+11 Return B, L, T , W , and C;
+
+that are close to each other should be considered correlated instead
+of independent. We thus introduce spatial smoothing and temporal
+smoothing to capture the spatiotemporal continuities. With the
+smoothing technique, R A not only maintains local consistency
+of neighboring regions and hours, but also alleviates data sparsity.
+Figure 3 illustrates the spatial and temporal smoothing processes. As shown, for each region l, we introduce a pseudo region l^. e embedding of l^ is the weighted average of the embeddings of l and
+l's neighboring regions, namely
+
+vl^ = (vl + 
+
+vln )/(1 +  |Nl |),
+
+ln Nl
+
+where Nl is the set of l's neighboring regions, and  is a constant for spatial smoothing. Similarly, for each hour t, we introduce a pseudo hour t^, whose embedding is the weighted average of the
+
+embeddings of t and t's neighboring hours:
+
+vt^ = (vt + 
+
+vtn )/(1 +  |Nt |),
+
+tn Nt
+
+where Nt is the set of t's neighboring hours, and  is a temporal smoothing constant. In practice, we nd that se ing  = 0.1 and
+
+ = 0.1 usually leads to satisfactory performance of the model.
+
+Spatial Smoothing
+
+center region l pseudo region vector
+
+P
+
+vl + 
+
+vln
+
+l
+
+v^l =
+
+ln 2Nl
+1 + |Nl|
+
+neighbor region ln
+
+Temporal Smoothing
+
+center hour t pseudo hour vector
+
+P
+
+vt +
+
+vtn
+
+t
+
+vt^ =
+
+tn 2Nt
+1 + |Nt|
+
+neighbor hour tn
+
+Figure 3: Spatial and temporal smoothing. For each region (hour), we combine it with its neighboring regions (hours) to generate a pseudo region (hour).
+
+In addition to the above pseudo region and hour embeddings, we also introduce pseudo keyword embeddings for notational ease. Given r-i , its pseudo keyword embedding is de ned as:
+
+vw^ =
+
+vw /|Nw |,
+
+w Nw
+
+where Nw is the set of keywords in r-i . With these pseudo embeddings, we de ne a smoothed version of s (i, r-i ) as s (i, r-i ) = viThi , where
+
+hi
+
+=
+
+ 
+
+(vl^ + vt^ + vw^ )/3, (vt^ + vw^ )/2,
+
+ (vl^ + vw^ )/2,
+
+
+
+if i is a keyword, if i is a region, if i is an hour.
+
+Finally, the loss function for the a ribute recovery task is simply
+
+the negative log-likelihood of observing all the a ributes of the
+
+records in R:
+
+R = -
+
+log p(i |r-i ).
+
+(1)
+
+r R i r
+
+To e ciently optimize the above objective, we use stochastic gradient descent (SGD) and negative sampling [22]. At each time, we use SGD to sample a record r and an a ribute i  r . With negative sampling, we randomly select K negative a ributes that have the same type with i but do not appear in r , then the loss function for the selected samples becomes:
+
+K
+r = - log  (s (i, r-i )) - log  (-s (k, r-i )),
+k =1
+
+where  (·) is the sigmoid function. e updating rules for vi , vk and hi can be obtained by taking the derivatives of r :
+
+r vi
+
+= ( (s (i, r-i )) - 1)hi ,
+
+r vk
+
+=  (s (i, r-i ))hi ,
+
+r hi
+
+K
+= ( (s (i, r-i )) - 1)vi +  (s (k, r-i ))vk .
+k =1
+
+For any a ribute j in hi , we have L/vj = L/hi · hi /vj , as hi is linear in j, the term hi /vj is convenient to calculate.
+
+3.1.2 The Activity Classification Task. e objective of the activity classi cation task is to learn the embeddings such that the activity categories of those labeled records in R can be correctly predicted. Let r be a labeled record with category c. e basic intuition is to make c's embedding close to the constituent a ributes in r . Based on this intuition, we model the probability of classifying r into category c as:
+
+p(c |r ) = exp(s (c, r ))/ exp(s (c , r )).
+c C
+For the similarity score s (c, r ), we de ne it in a smoothed way similar to the a ribute recovery task. at is, s (c, r ) = vcThr , where hr = (vl^ + vt^ + vw^ )/3.
+e objective function of the activity classi cation task is then the negative log-likelihood of predicting the activities categories
+
+248
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Algorithm 2: Constraint-based learning of R A .
+
+Input: e previous embeddings L, T , W , and C.
+A collection R of new records. Output: e updated embeddings L, T , W , and C.
+
+1 for epoch from 1 to N do
+
+2 Randomly shu e the records in R;
+
+3 foreach r  R do
+
+4
+
+Update L, T , and W for constrained a ribute recovery;
+
+5
+
+if r is labeled then
+
+6
+
+Update L, T , W , and C for constrained activity
+
+classi cation;
+
+7 Return L, T , W , and C;
+
+for the new records in R:
+
+R = -
+
+log p(c |r ).
+
+(2)
+
+r R
+
+We again use SGD and negative sampling to optimize the objective
+
+e ciently. In speci c, given the labeled record r with the positive
+
+category c, we randomly pick a negative category c satisfying
+
+c c. en the loss function for r in the activity classi cation task
+
+becomes:
+
+r = - log  (s (c, r )) - log  (-s (c , r )).
+
+Similar to the derivation in the a ribute recovery task, the updating rules of the a ributes and categories can be easily obtained by taking the derivatives of r and then applying SGD.
+
+3.2 Constraint-Based Learning
+
+e life-decaying strategy relies on the bu er B to keep old records besides R, thereby incorporating the information in R without over ing. However, maintaining B could incur additional space and time overhead. To avoid such overhead, we propose our second strategy named constraint-based learning. e key is to to accommodate the new records R by ne-tuning the previous embeddings. During the ne-turning process, we impose the constraint that the updated embeddings do not deviate much from the previous ones. In this way, R A generates embeddings that are optimized for R while respecting the prior knowledge encoded in previous embeddings. Algorithm 2 sketches the constraint-based learning procedure of R A . As shown, when a collection R of new records arrive, we directly use them to update the embeddings for a number of epochs, where the updating for both a ribute recovery and activity classi cation is performed under constraints.
+Let us rst examine the constraint-based a ribute recovery task. Given the new records R and their a ributes, our goal is still to recover the a ributes of R, but now we add a regularization term in the objective to ensure the result embeddings can retain the previous embeddings. In formal, we design the objective function for a ribute recovery as:
+
+R = -
+
+log p(i |r-i ) + 
+
+vi - vi 2,
+
+r R i r
+
+i L,T ,W ,C
+
+where vi is the updated embedding of a ribute i, and vi is i's previous embedding learnt before the arrival of R. In the above
+
+objective function, it is important to note the regularization term i L,T,W ,C vi - vi 2. It prevents the updated embeddings from
+deviating drastically from the previous embeddings. e value of
+
+ (  0) plays an important role in controlling the regularization
+
+strength. When  = 0, the embeddings are purely optimized for
+
+ing R; when  = , the learning process completely ignore the new records and all the embeddings remain unchanged.
+
+We still combine SGD and negative sampling to optimize the
+
+above objective function. Consider a record r and an a ribute i  r .
+
+With negative sampling, we randomly select a set of K negative a ributes Ni-, then the objective for the selected samples is:
+
+r = - log  (s (i, r-i ))- log  (-s (k, r-i ))+
+
+vi -vi 2.
+
+k Ni-
+
+i  {r }Ni-
+
+e updating rules for di erent a ributes can be easily obtained
+
+by taking the derivatives of r . Taking a ribute i as an example, the corresponding derivative and updating rule are given by
+
+r vi
+
+= ( (s (i, r-i )) - 1)hi + 2(vi - vi ),
+
+vi  vi + (1 -  (s (i, r-i )))hi - 2(vi - vi ),
+
+where  is the learning rate for SGD. By examining the updating rule for i, we can see the constraint-
+based strategy enjoys two a ractive properties: 1) It tries to make i's embedding close to the average embedding (i.e., hi ) of the other a ributes in r . Especially when the current embeddings do not produce high similarity score between i and ri , i.e., s (i, r-i ) is small, the updating takes an aggressive step to push vi close to hi ; and 2) With the term -2(vi -vi ), the learnt embeddings are constrained to preserve the information encoded in the previous embeddings. In speci c, if the learnt embedding vi deviates from the previous embedding vi too much, the updating rule would subtract the di erence to some extent and drag vi towards vi .
+We proceed to examine the activity classi cation task under the constraint-based strategy. e overall objective is to maximize the log-likelihood of predicting the activities categories for R while minimizing the deviation from the previous embeddings. Using SGD, for any record r with activity category c, we generate a negative category c , and then de ne the objective as
+
+r = - log  (s (c, r )) - log  (-s (c , r )) + 
+
+vc - vc 2.
+
+c {c,c }
+
+Again, the updating rules for the di erent variables in the above
+objective can be easily obtained by taking the derivatives of r , we omit the details here to save space.
+
+3.3 Complexity Analysis
+Space complexity. With either life-decaying learning or constraintbased learning, we need to maintain the embeddings of all the regions, hours, keywords, and categories. Let D be the dimension of the latent space. en the space cost for maintaining those embeddings is O (D (|L| + |T | + |W | + |C |)), where |L|, |T |, |W |, and |C | are the numbers of regions, hours, keywords, and categories, respectively. In addition, both strategies need to keep a collection of training records. For the constraint-based learning, the space cost of this part is O (|Rmax |) where |Rmax | is the maximum number of new records that arrive at one time. e life-decaying learning
+
+249
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+strategy needs to keep the new records as well as some old ones. As it imposes exponentially decaying sampling rates on the buckets, the space cost for maintaining those records is
+
+O (|Rmax |(1
+
++ e-
+
++
+
+...
+
++ e-(m-1)
+
+))
+
+=
+
+O
+
+(
+
+|Rmax
+
+|
+
+1 - e-m 1 - e-
+
+).
+
+Time complexity. We rst analyze the time complexity of the constraint-based learning strategy. Examining Algorithm 2, one
+
+can see that the constraint-based strategy needs to go over R for N epochs and process every record in R exactly once in each epoch. Hence, the time complexity is O (N DM2|Rmax |), where M is the maximum number of a ributes in any record. Since N and
+D are xed beforehand, and M is usually su ciently small, R A
+scales roughly linearly with R. Similarly, the time complexity of the life-decaying strategy is derived as O (N DM2|Rmax | + |R|), where |R | = |Rmax |(1 - e-m )/(1 - e- ).
+
+4 EXPERIMENTS
+
+4.1 Experimental Setup
+4.1.1 Data Sets. Our experiments are based on two real-life geotagged tweet data sets: LA and NY. e LA data set contains 1.10 million geo-tagged tweets published in Los Angeles. We crawled the LA data set by monitoring the Twi er Streaming API1 during 2014.08.01 ­ 2014.11.30 and continuously gathering the geo-tagged tweets in the bounding box of LA. In addition, we crawled all the POIs in LA through Foursquare's public API2. We are able to link 0.11 million of the crawled tweets to the POI database and assign them to one of the following categories: Food, Shop & Service, Travel & Transport, College & University, Nightlife Spot, Residence, Outdoors & Recreation, Arts & Entertainment, Professional & Other Places. We preprocessed the raw data as follows. For the text part, we removed user mentions, URLs, stopwords, and the words that appear less than 100 times in the corpus. For the space and time, we partitioned the LA area into small grids with size 300m*300m, and broke the one-day period into 24 one-hour windows. e NY data set is also collected from Twi er and then linked with Foursquare. It consists of 1.20 million geo-tagged tweets in New York City during 2014.08.01 - 2014.11.30, and we are able to link 0.10 million of them with Foursquare POIs. e preprocessing steps are the same as LA.
+
+4.1.2 Baselines. We compare our proposed R A model with the following baseline methods:
+
+· LGTA [34] is a geographical topic model that assumes
+
+a number of latent spatial regions -- each described by
+
+a Gaussian. Meanwhile, each region has a multinomial
+
+distribution over the latent topics that generate keywords.
+
+· MGTM [16] is a state-of-the-art geographical topic model
+
+based on the multi-Dirichlet process. It is capable of nding
+
+geographical topics with non-Gaussian distributions, and
+
+does not require a pre-speci ed number of topics.
+
+·T
+
+[9] builds a 4-D tensor to encode the co-occurrences
+
+among location, time, text, and category. It then factorizes
+
+the tensor to obtain low-dimensional representations of all
+
+the elements.
+
+1h ps://dev.twi er.com/streaming/overview 2h ps://developer.foursquare.com/
+
+· SVD rst constructs the co-occurrence matrices between each pair of location, time, text, and category, and then performs Singular Value Decomposition on the matrices.
+· TF-IDF constructs the co-occurrence matrices between each pair of location, time, text, and category. It then computes the tf-idf weight for each entry in the matrix by treating rows as documents and columns as words.
+Similar to our R A method, T , SVD, and TF-IDF also rely on space and time partitioning to obtain regions and time periods. We use the same partitioning granularity for those methods to ensure fair comparison. For the two di erent learning strategies of R A , we refer to the life-decaying one as RA D , and the constraint-based one as RA C . Besides them, we also implement two weakened variants of R A to validate the e ectiveness of recency-ware learning and the semi-supervised paradigm: 1) RA B is a variant of R A that neither adopts recency-aware training, nor leverages the category information as supervision; and 2) RA S is another variant, which uses the category information as supervision, but does not perform recency-aware training. Note that both RA B and RA S perform training in batch instead of online, treating all the seen instances equally.
+
+4.1.3 Parameter Se ings. ere are ve common parameters
+
+for the life-decaying and constraint-based strategies: 1) the latent
+
+embedding dimension D; 2) the number of epochs N ; 3) the SGD
+
+learning rate ; 4) the spatial smoothing constant ; and 5) the
+
+temporal smoothing constant . By default, we set D = 300, N = 50,
+
+ = 0.01, and  =  = 0.1. Meanwhile, the life-decaying strategy
+
+has its speci c parameters, the decaying rate  and the number
+
+of buckets m; and the constraint-based strategy also has its own
+
+parameter, the regularization strength . We set their default values
+
+to  = 0.01, m = 500, and  = 0.3.
+
+In LGTA, there are two major parameters, the number of regions
+
+R, and the number of latent topics Z . A er careful tuning, we set
+
+R = 300 and Z = 10. MGTM is a non-parametric method that
+
+involves several hyper-parameters. We set the hyper-parameters
+
+following the original paper [16]. For T
+
+and SVD, we set the
+
+latent dimension as D = 300 to compare with R A fairly.
+
+4.1.4 Evaluation Tasks and Metrics. We use two types of activity retrieval tasks to evaluate the e ectiveness of di erent models. e
+rst is to retrieve locations for a given activity. Speci cally, recall that each GTSM record re ects a user's activity with three a ributes: a location lr , a timestamp tr , and a bag of keywords mr . In the location retrieval task, the input is the timestamp tr and the keywords mr , and the goal is to accurately pinpoint the ground-truth location from a pool of candidates. We retrieve the location at two di erent granularities: 1) coarse-grained region retrieval is to retrieve the ground-truth region that r falls in; and 2) ne-grained POI retrieval is to retrieve the ground-truth POI that r corresponds to. Note that ne-grained POI retrieval is only evaluated on the tweets that have been linked with Foursquare. e second task is to retrieve activities for a given location. In this task, the input is the timestamp tr and the location lr , and the goal is to pinpoint the ground-truth activities at two di erent granularities: 1) coarse-grained category retrieval is to retrieve the ground-truth activity category of r . Again, such a coarse-grained activity retrieval is performed only on the
+
+250
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+tweets that have been linked with Foursquare; and 2) ne-grained
+
+keyword retrieval is to retrieve the ground-truth message mr from a candidate pool of messages.
+
+To summarize, we study four sub-tasks in total: 1) region re-
+
+trieval; 2) POI retrieval; 3) category retrieval; and 4) keyword re-
+
+trieval. For each retrieval task, we generate a candidate pool by
+
+mixing the ground truth with a set of M negative samples. Take
+
+region retrieval as an example. Given the ground-truth region lr , we mix lr with M randomly chosen regions. en we try to pinpoint the ground truth from the size-(M + 1) candidate pool by
+
+ranking all the candidates. Intuitively, the be er a model captures
+
+the pa erns underlying people's activities, the more likely it ranks
+
+the ground truth to top positions. We thus use Mean Reciprocal
+
+Rank (MRR) to quantify the e ectiveness of a model. Given a set
+
+Q of queries, the MRR is de ned as: MRR = (
+
+|Q | i =1
+
+1/ranki
+
+)/|Q
+
+|,
+
+where ranki is the ranking of the ground truth for the i-th query.
+
+We describe the ranking procedures of di erent methods as fol-
+
+lows. Again consider region retrieval as an example. For R A , we
+
+compute the average cosine similarity of each candidate region to
+
+the observed elements (hour and keywords), and rank them in the
+
+descending order of the similarity; for LGTA and MGTM, we com-
+
+pute the likelihood of observing each candidate given the keywords,
+
+and rank the candidates by likelihood; for T
+
+and SVD, we use
+
+the decompositions to reconstruct densi ed co-occurrence tensor
+
+and matrices, and then retrieve the tensor/matrix entries to rank
+
+the candidates; for TF-IDF, we rank the candidates by computing
+
+average tf-idf similarities.
+
+On each data set, we randomly generate 20 one-hour query
+
+windows in 2014.08.01 ­ 2014.11.30, and use all the tweets in those
+
+windows as test instances. Within those query windows, there
+
+are 11 thousand test tweets in LA, and 12 thousand test tweets
+
+in NY. We set the number of candidates to M = 10 for di erent
+
+retrieval tasks except for category retrieval (there are only nine
+
+categories in total). For each query window, we use the tweets that
+
+have arrived before the window start to train di erent models. All
+
+the methods except for R A work in a batch manner, hence we
+
+have to train them repeatedly for 20 times, with di erent training
+
+data for di erent query windows. As R A works online, we use
+
+a one-hour window to hold new records and update R A hourly.
+
+We ensure R A uses the same training data as other methods
+
+during the one-pass training process.
+
+4.2 E ectiveness Comparison
+4.2.1 alitative Results. We rst use several examples to examine whether R A can capture the dynamic evolutions of spatiotemporal activities, as well as how well it models the correlations between location, time, and text. Speci cally, we perform one-pass training of RA D on LA and NY, and launch a bunch of queries at di erent stages. For each query, we retrieve the top-10 most similar elements with di erent types from the entire search space.
+Textual eries. Figure 4(a) shows the results when we query with the keyword `beach' on LA. We nd the results quite meaningful: the top regions fall along the coastline; the top POIs are famous beach a ractions; and the top keywords well re ect people's activities on the beach (e.g., `sand', `boardwalk'). Figure 4(b) and 4(c) show the results for the query `outdoor + weekend' issued
+
+Table 1: e MRRs of di erent methods for location retrieval. For
+each test tweet, we assume its timestamp and keywords are observed, and perform location retrieval at two granularities: 1) region retrieval retrieves the ground-truth region; and 2) POI retrieval retrieves the ground-truth POI (for Foursquare-linked tweets).
+
+Method
+LGTA MGTM T SVD TF-IDF
+RA B RA S RA C RA D
+
+Region Retrieval
+
+LA 0.3583 0.4007 0.3592 0.3699 0.4114
+
+NY 0.3544 0.391 0.3641 0.3604 0.4605
+
+0.5373 0.5586 0.5714
+0.5802
+
+0.5597 0.5632 0.5864
+0.5898
+
+POI Retrieval
+
+LA 0.5889 0.5811 0.6672 0.6705 0.719
+
+NY 0.5674 0.553 0.7399 0.7443 0.776
+
+0.7845 0.8155 0.8311
+0.8473
+
+0.8508 0.8712 0.8896 0.885
+
+Table 2: e MRRs of di erent methods for activity retrieval. For each test tweet, we assume its location and timestamp are observed, and retrieve activities at two granularities: 1) category retrieval retrieves the ground-truth category (for Foursquare-linked tweets); and 2) keyword retrieval retrieves the ground-truth message.
+
+Method
+LGTA MGTM T SVD TF-IDF
+RA B RA S RA C RA D
+
+Category Retrieval
+
+LA 0.4409 0.4587 0.8635 0.8556 0.9137
+
+NY 0.4527 0.464 0.7988 0.7826 0.8259
+
+0.6225 0.9056 0.92
+0.9272
+
+0.5874 0.8993 0.8964
+0.9026
+
+Keyword Retrieval
+
+LA 0.3392 0.3501 0.4004 0.4098 0.5236
+
+NY 0.3425 0.343 0.3744 0.3728 0.4864
+
+0.5693 0.5832 0.6097
+0.6174
+
+0.5538 0.5793 0.5887
+0.5928
+
+on NY for two di erent days. Interestingly, the results obtained for the two days both relate to `outdoor', but exhibit clear evolutions. While the results for 2014.08.30 contain many swimming-related activities, those for 2014.10.30 are mostly tness venues. Based on such phenomena, one can clearly see that R A captures not only the inter-type correlations between di erent a ributes but also the temporal evolutions underlying spatiotemporal activities.
+Spatial eries. Figure 4(d) and 4(e) illustrate the evolutions of two spatial queries: 1) the Metlife Stadium; and 2) the Universal Studio. Again, we can see the results well match the query location and meanwhile re ect urban dynamics clearly. For the Metlife Stadium query, the top keywords evolve from concert-related ones to football-related ones. It is because the NFL season opens in early September, and people start visiting the stadium to watch the games of the Giants and the Jets. For the Universal Studio query, we intentionally include Halloween and anksgiving in the query days. In such a se ing, we nd the la er two lists contain holidayspeci c keywords, verifying the capability of R A for capturing the most recent activity pa erns.
+
+251
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+!e Big Vee on Venice Pacific Ocean
+Hermosa Beach Westin on !e Long Beach
+Port of Long Beach
+It Yoga
+L@P Pool Manha#an Beach Volleyball Venice Coffee and Creamery
+Muscle Beach Juice Bar
+
+beach beachlife
+sand boardwalk
+long venice breeze ocean cruiser wave
+
+Union Street Bridge
+Hancock & Malcolm X
+Mccarren Pool Lap Swim !e Pool
+!e Roo"op at Rockrose !e Wave Pool
+William Playground
+Astoria Park
+Shorefront
+Teardrop Park
+
+weekend outdoor sunday saturday lovely enjoy sundayfunday swimming nofilter
+pool
+
+388 Greenwich St. Courtyard weekend
+
+King's Bay Basketball
+
+outdoor
+
+Yoga Vida
+
+arrive
+
+Ya Moms
+
+urbanspacenyc
+
+Elite Performance Training
+
+visit
+
+!e Fi"ing Room
+
+spooky
+
+Downing St. Playground
+
+rainy
+
+Disco Teadance at Howl
+
+winter
+
+Temperance Fountain
+
+workout
+
+Tompkins Outdoor Gym
+
+fabulous
+
+Region
+
+POI
+
+Keyword
+
+Region
+
+POI
+
+Keyword
+
+Region
+
+POI
+
+Keyword
+
+(a) ery = `beach' + 3pm (2014.08.30@LA) (b) ery = `outdoor + weekend' (2014.08.30@NY) (c) ery = `outdoor + weekend' (2014.10.30@NY)
+
+sideline tour
+concert shady malice monster vick eminem a"ractive rooting
+
+nyjets touchdown
+jet giant hamstring football nygiants jetsnation bigblue score
+
+49ers touchdown
+jet steelers giant nyjets nygiants
+nfl fan niner
+
+!ery Location
+
+2014.08.30
+
+2014.09.30
+
+2014.11.30
+
+(d) ery = `(40.8128, -74.0764)' (Metlife Stadium@NY)
+
+universal studio minion mummy
+despicable unistudios hollywood thesimpsons
+globe jurassic
+
+universal studio
+horrornights bates
+halloween photo night minion horror suvived
+
+universal studio
+sheraton thanksgiving hollywood
+tour holiday dinner transformer hackthon
+
+!ery Location
+
+2014.08.30
+
+2014.10.30
+
+2014.11.27
+
+(e) ery = `(34.1381, -118.3534)' (Universal Studio@LA)
+
+Figure 4: Illustrative cases. Figure 4(a), 4(b), and 4(c) are textual queries issued on di erent days (i.e., the dates in bracket). For each query, we use the trained model on the issuing day to retrieve ten most similar regions (the markers in the map denote the region centers), POIs, and keywords, based on cosine similarities of the embeddings. Figure 4(d) shows two spatial queries at the Metlife Stadium and Universal Studio. For each query, we retrieve ten most similar keywords on di erent days.
+
+4.2.2 antitative Results. Table 1 and 2 report the quantitative
+
+results of di erent methods for location and activity retrievals,
+
+respectively. As shown, on all of the four sub-tasks, R A and
+
+its variants achieve much higher MRRs than the baseline methods.
+
+Compared with the two geographical topic models (LGTA and
+
+MGTM), R A yields as much as 62% performance improvement
+
+for location retrieval, and 83% for activity retrieval. ere are three
+
+factors for explaining the performance gap: (1) Neither LGTA nor
+
+MGTM models the time factor, and thus fails to leverage the time
+
+information for prediction; (2) R A emphasizes recent records
+
+to capture up-to-date spatiotemporal activities, while LGTA and
+
+MGTM work in batch and treat all training instances equally; and (3)
+
+Instead of using generative models, R A directly maps di erent
+
+data types into a common space to capture their correlations more
+
+directly.
+
+T , SVD, and TF-IDF have be er performance than LGTA
+
+and MGTM by modeling time and category, yet R A still outper-
+
+forms them by large margins. Interestingly, TF-IDF turns out to
+
+be a strong baseline, demonstrating the e ectiveness of the tf-idf
+
+similarity for the retrieval tasks. SVD and T
+
+can e ectively
+
+recover the co-occurrence matrices and tensor by lling in the miss-
+
+ing values. However, the raw co-occurrence seems a less e ective
+
+relatedness measure for location and activity retrieval.
+
+Comparing the variants of R A , we see clear performance gaps
+
+between RA B and RA S , particularly for the category re-
+
+trieval task. e major di erence between RA B and RA S is
+
+that, RA B just treats category descriptions as keywords, while
+
+RA S uses activity categories as labels to guide embedding. is
+
+phenomenon shows the semi-supervised paradigm indeed helps
+
+propagate structured category information into the embedding
+
+process to generate high-quality embeddings.
+
+RA S is inferior to RA D and RA C considerably. Al-
+
+though the three variants all use semi-supervised training, RA S
+
+treats all the training instances equally whereas the other two work online and emphasize recent instances more. is fact veri es that there are notable evolutions underlying people's activities in the four-month time period, and the recency-aware nature of R A e ectively captures such evolutions to be er suit users' retrieval needs. Finally, examining the performance of RA D and RA C , we nd that the life-decaying learning strategy performs slightly be er than the constraint-based one in practice, but at the cost of extra space and time overhead.
+4.3 E ects of Parameters
+Lastly, we study the e ects of di erent parameters on the performance of R A . Figure 5(a) and 5(b) show the e ects of the latent dimension D and the number of epochs N . Since the trends are very similar for ne-grained and coarse-grained retrieval tasks, we omit the results for POI retrieval and category retrieval for clarity. As shown in Figure 5(a), the MRRs of both methods keep increasing with D and gradually converge. is phenomenon is expected because a larger D leads to a more expressive model that can capture latent semantics more accurately. From Figure 5(b), one can see as N increases, the performance of R A also increases rst and
+nally becomes stable: when N is small, the updated embeddings do not incorporate the new information su ciently; when N is large, both the life-decaying and constraint-based strategies can e ectively prevent R A from over ing the new records.
+Figure 5(c) and 5(d) depict the e ects of  and  on the performance of the two learning strategies, respectively. As shown, for life-decaying learning, its performance rst increases with  , then becomes stable, and nally deteriorates. e reason is two-fold: 1) a too small  makes the bu er contain too many old records in the history, thus diluting the most recent information; and 2) a too large  leads to a bu er that contains only recent records,
+
+252
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Mean Reciprocal Rank
+
+0.64
+
+0.56
+
+0.48 0.40
+0
+
+Region-Decay Keyword-Decay Region-Cons Keyword-Cons
+100 200 300 400 500 Latent Dimension D
+(a) E ect of D.
+
+Mean Reciprocal Rank
+
+0.65 0.60 0.55 0.50 0.45 0.40
+0
+
+Region-Decay Keyword-Decay Region-Cons Keyword-Cons
+10 20 30 40 50 Number of epochs N
+(b) E ect of N .
+
+0.62
+
+0.60
+
+0.58
+
+0.56
+
+Region Keyword
+
+10-6 10-5 10-4 10-3 10-2 10-1 100 101 Decay Rate ¿
+
+(c) E ect of  .
+
+Mean Reciprocal Rank
+
+0.65
+
+0.60
+
+0.55
+
+0.50
+
+0.45
+
+Region
+
+Keyword
+
+0.40
+
+10-2
+
+10-1
+
+100
+
+101
+
+102
+
+Regularization Strength ¸
+
+(d) E ect of .
+
+Mean Reciprocal Rank
+
+Figure 5: Parameter study on LA. Figure 5(a) and 5(b) show
+the e ects of the latent dimension D and the number of epochs N on RA D and RA C . Figure 5(c) shows the e ect of the decaying rate  on RA D . Figure 5(d) shows the e ect of the regularization strength  on RA C .
+
+making the result model su er from over ing. e e ect of  on the constraint-based learning is similar. A too large  causes under ing of the new records, while a too small  causes over ing. Besides the above parameters, we have also studied the e ects of the smoothing parameters  and , and found that the performance of R A varied no more than 3% when  and  are set to the range [0.05, 0.5], thus we omit the results to save space.
+5 RELATED WORK
+Spatiotemporal Activity Modeling. Previous approaches to spatiotemporal activity modeling mostly rely on geographical topic modeling, which extends classical topic models to discover representative topics for di erent regions. Speci cally, Sizov et al. [28] extend LDA [5] by assuming that each latent topic has a multinomial distribution over text, and two Gaussians over latitudes and longitudes. ey later upgrade the model to nd topics that have complex and non-Gaussian distributions [16]. Yin et al. [34] extend PLSA [12] by assuming that each region has a normal distribution that generates locations, as well as a multinomial distribution over the latent topics that generate text. While the above models are designed to detect crowd-level geographical topics, Hong et al. [13] and Yuan et al. [35] introduce the user factor in the modeling process to infer individual-level user preferences. Our work resembles the studies [16, 28, 34] more because we also model crowd-level activities instead of individual-level preferences. at said, R A di ers from these methods notably. Instead of using latent states to indirectly bridge di erent data modalities, it jointly maps location, time, and text into the same space, which not only frees us from
+
+imposing distribution assumptions for di erent modalities, but also makes it scalable.
+Representation learning techniques have been proposed for learning distributed representations for words [22], graph nodes [25, 29, 30], user-item interactions [10], multimedia data [23], etc.. Recently, Zhang et al. [38] propose C M , a cross-modal representation learning method for spatiotemporal activity modeling. It rst detects the hotspot regions and time periods underlying people's activities, and then jointly maps di erent regions, periods, and keywords into the same latent space. e key di erence between R A and C M is two-fold: (1) Instead of handling static data, R A processes continuous GTSM streams and learns recency-aware models online; and (2) while C M learns cross-modal embeddings in an unsupervised way, R A adopts a semi-supervised framework, which is capable of leveraging activity category information to learn be er-quality embeddings.
+Spatiotemporal event detection. Several studies [1, 8, 15, 19, 20, 27, 40] use GTSM for spatiotemporal event detection. Sakaki et al. [27] train a classi er to judge whether an incoming tweet is related to an earthquake or not, and release an alarm when the number of earthquake-related tweets is large. Krumm et al. [19] monitor the spatiotemporal distributions of tweet streams, and detect spikes in the signal as interesting events. Zhang et al. [40] propose a method that achieves real-time local event detection from geo-tagged tweet streams. ere is a clear di erence between spatiotemporal event detection and spatiotemporal activity modeling. e former attempts to extract unusual activities bursted in local areas, whereas the la er aims at summarizing the typical activities at di erent locations and time.
+Human mobility modeling. ere have also been studies that leverage GTSM data to extract mobility pa erns underlying people's activities. Cho et al. [7] collect large-scale checkin data and
+nd that people's activities are usually centered around a few xed locations, and exhibit strong periodicity. Yuan et al. [36] propose a Bayesian non-parametric model to automatically extract the regions that a user visits periodically. Zhang et al. [37] apply sequential pa ern mining techniques to extract frequent movement sequences from check-in data. Later, Zhang et al. [39] apply the Hidden Markov Model to GTSM data, observing that there are latent states underlying people's daily activities and people move between them with strong regularity. Although these mobility modeling methods also models the time factor, they aim to understand the temporal transitions of human movements in the physical world, whereas we focus on the temporal evolution of global-level activities.
+Temporal evolution modeling. A handful of studies [17, 26, 41] have investigated the temporal evolutions of spatiotemporal activities. Noulas et al. [24] analyze user activities with Foursquare checkins and nd that the checkin data reveal meaningful spatiotemporal pa erns. Zhang et al. [41] nd people's activities exhibit temporal dynamics via analyzing the number of Foursquare checkins in di erent areas. Kling et al. [17] apply LDA to checkin data by treating hourly-aggregated checkins as documents. ey show notable topical evolutions across di erent hours. Pozdnoukhov et al. [26] rst apply online LDA to the streaming tweet data, and then analyze the spatiotemporal distributions of the extracted topics in a post-processing step. While these pioneering studies have clearly
+
+253
+
+Session 2C: Other Applications and Specialized Domains
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+demonstrated that dynamic evolutions exist in urban activities, they do not address our problem of designing a uni ed model that dynamically captures the inter-type correlations among location, time, and text from GTSM streams.
+Modeling the temporal evolutions in data streams has also been studied for classical tasks like classi cation [33], clustering [2, 6], topic modeling [3, 4, 14, 21], and recommendation [11, 18]. For instance, Blei et al. [4] propose the Dynamic Topic Model, which uses the Markovian assumption and state space models to capture dynamic topical evolutions. Distinguished from these studies, our problem is new in that we aim to capture the dynamic evolutions for spatiotemporal activity modeling. From the technical standpoint, we model the dynamic evolutions in a novel framework of semi-supervised embedding, rendering our method fundamentally di erent from existing techniques.
+6 CONCLUSION
+We proposed a recency-aware spatiotemporal activity model that learns from geo-tagged social media streams online. Our proposed model, R A , embeds all the regions, hours, and keywords into the same latent space with a novel semi-supervised multimodal embedding paradigm. R A employs two strategies to emphasize the information contained in newly arrive records without over ing. Our empirical evaluations have shown that R A outperforms the existing spatiotemporal activity modeling methods signi cantly in location and activity retrieval tasks.
+7 ACKNOWLEDGEMENTS
+We would like to thank the reviewers for their insightful comments. is work was sponsored in part by the U.S. Army Research Lab. un-
+der Cooperative Agreement No. W911NF-09-2-0053 (NSCTA), National Science Foundation IIS-1017362, IIS-1320617, and IIS-1354329, HDTRA1-10-1-0120, and Grant 1U54GM114838 awarded by NIGMS through funds provided by the trans-NIH Big Data to Knowledge (BD2K) initiative (www.bd2k.nih.gov), and MIAS, a DHS-IDS Center for Multimodal Information Access and Synthesis at UIUC. Luming Zhang was supported in part by the National Natural Science Foundation of China (Grant no. 61572169, 61472266), the National University of Singapore (Suzhou) Research Institute, and the Fundamental Research Funds for the Central Universities. e views and conclusions contained in this document are those of the authors and should not be interpreted as representing any funding agencies.
+REFERENCES
+[1] H. Abdelhaq, C. Sengstock, and M. Gertz. Eventweet: Online localized event detection from twi er. PVLDB, 6(12):1326­1329, 2013.
+[2] C. C. Aggarwal, J. Han, J. Wang, and P. S. Yu. A framework for clustering evolving data streams. In VLDB, pages 81­92, 2003.
+[3] L. AlSumait, D. Barbara´, and C. Domeniconi. On-line LDA: adaptive topic models for mining text streams with applications to topic detection and tracking. In ICDM, pages 3­12, 2008.
+[4] D. M. Blei and J. D. La erty. Dynamic topic models. In ICML, pages 113­120, 2006.
+[5] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation. Journal of Machine Learning Research, 3(1):993­1022, 2003.
+[6] D. Chakrabarti, R. Kumar, and A. Tomkins. Evolutionary clustering. In KDD, pages 554­560, 2006.
+[7] E. Cho, S. A. Myers, and J. Leskovec. Friendship and mobility: User movement in location-based social networks. In KDD, pages 1082­1090, 2011.
+
+[8] W. Feng, C. Zhang, W. Zhang, J. Han, J. Wang, C. Aggarwal, and J. Huang. Streamcube: hierarchical spatio-temporal hashtag clustering for event exploration over the twi er stream. In ICDE, pages 1561­1572, 2015.
+[9] R. A. Harshman. Foundations of the PARAFAC procedure: Models and conditions for an "explanatory" multi-modal factor analysis. UCLA Working Papers in Phonetics, 16(1):84, 1970.
+[10] X. He, L. Liao, H. Zhang, L. Nie, X. Hu, and T. Chua. Neural collaborative ltering. In WWW, pages 173­182, 2017.
+[11] X. He, H. Zhang, M. Kan, and T. Chua. Fast matrix factorization for online recommendation with implicit feedback. In SIGIR, pages 549­558, 2016.
+[12] T. Hofmann. Probabilistic latent semantic indexing. In SIGIR, pages 50­57, 1999. [13] L. Hong, A. Ahmed, S. Gurumurthy, A. J. Smola, and K. Tsioutsiouliklis. Dis-
+covering geographical topics in the twi er stream. In WWW, pages 769­778, 2012. [14] L. Hong, D. Yin, J. Guo, and B. D. Davison. Tracking trends: incorporating term volume into temporal topic models. In KDD, pages 484­492, 2011. [15] W. Kang, A. K. H. Tung, W. Chen, X. Li, Q. Song, C. Zhang, F. Zhao, and X. Zhou. Trendspedia: An internet observatory for analyzing and visualizing the evolving web. In ICDE, pages 1206­1209, 2014. [16] C. C. Kling, J. Kunegis, S. Sizov, and S. Staab. Detecting non-gaussian geographical topics in tagged photo collections. In WSDM, pages 603­612, 2014. [17] F. Kling and A. Pozdnoukhov. When a city tells a story: urban topic analysis. In SIGSPATIAL, pages 482­485, 2012. [18] Y. Koren. Collaborative ltering with temporal dynamics. In KDD, pages 447­456, 2009. [19] J. Krumm and E. Horvitz. Eyewitness: Identifying local events via space-time signals in twi er feeds. In SIGSPATIAL, 2015. [20] R. Lee, S. Wakamiya, and K. Sumiya. Discovery of unusual regional social activities using geo-tagged microblogs. World Wide Web, 14(4):321­349, 2011. [21] Q. Mei and C. Zhai. Discovering evolutionary theme pa erns from text: an exploration of temporal text mining. In KDD, pages 198­207, 2005. [22] T. Mikolov, I. Sutskever, K. Chen, G. S. Corrado, and J. Dean. Distributed representations of words and phrases and their compositionality. In NIPS, pages 3111­3119, 2013. [23] J. Ngiam, A. Khosla, M. Kim, J. Nam, H. Lee, and A. Y. Ng. Multimodal deep learning. In ICML, pages 689­696, 2011. [24] A. Noulas, S. Scellato, C. Mascolo, and M. Pontil. An empirical study of geographic user activity pa erns in foursquare. In ICWSM, pages 570­573, 2011. [25] B. Perozzi, R. Al-Rfou, and S. Skiena. Deepwalk: Online learning of social representations. In KDD, pages 701­710, 2014. [26] A. Pozdnoukhov and C. Kaiser. Space-time dynamics of topics in streaming text. In LBSN, pages 1­8, 2011. [27] T. Sakaki, M. Okazaki, and Y. Matsuo. Earthquake shakes twi er users: real-time event detection by social sensors. In WWW, pages 851­860, 2010. [28] S. Sizov. Geofolk: latent spatial semantics in web 2.0 social media. In WSDM, pages 281­290, 2010. [29] J. Tang, M. , and Q. Mei. Pte: Predictive text embedding through large-scale heterogeneous text networks. In KDD, pages 1165­1174, 2015. [30] J. Tang, M. , M. Wang, M. Zhang, J. Yan, and Q. Mei. Line: Large-scale information network embedding. In WWW, pages 1067­1077, 2015. [31] P. H. Verburg, P. P. Schot, M. J. Dijst, and A. Veldkamp. Land use change modelling: current practice and research priorities. GeoJournal, 61(4):309­324, 2004. [32] P. Waddell. Urbansim: Modeling urban development for land use, transportation, and environmental planning. Journal of the American Planning Association, 68(3):297­314, 2002. [33] H. Wang, W. Fan, P. S. Yu, and J. Han. Mining concept-dri ing data streams using ensemble classi ers. In KDD, pages 226­235, 2003. [34] Z. Yin, L. Cao, J. Han, C. Zhai, and T. S. Huang. Geographical topic discovery and comparison. In WWW, pages 247­256, 2011. [35] Q. Yuan, G. Cong, Z. Ma, A. Sun, and N. M. almann. Who, where, when and what: discover spatio-temporal topics for twi er users. In KDD, pages 605­613, 2013. [36] Q. Yuan, W. Zhang, C. Zhang, X. Geng, G. Cong, and J. Han. Pred: Periodic region detection for mobility modeling of social media users. In WSDM, 2017. [37] C. Zhang, J. Han, L. Shou, J. Lu, and T. F. L. Porta. Spli er: Mining ne-grained sequential pa erns in semantic trajectories. PVLDB, 7(9):769­780, 2014. [38] C. Zhang, K. Zhang, Q. Yuan, H. Peng, Y. Zheng, T. Hanra y, S. Wang, and J. Han. Regions, periods, activities: Uncovering urban dynamics via cross-modal representation learning. In WWW, pages 361­370, 2017. [39] C. Zhang, K. Zhang, Q. Yuan, L. Zhang, T. Hanra y, and J. Han. Gmove: Grouplevel mobility modeling using geo-tagged social media. In KDD, pages 1305­1314, 2016. [40] C. Zhang, G. Zhou, Q. Yuan, H. Zhuang, Y. Zheng, L. Kaplan, S. Wang, and J. Han. Geoburst: Real-time local event detection in geo-tagged tweet streams. In SIGIR, pages 513­522, 2016. [41] K. Zhang, Q. Jin, K. Pelechrinis, and T. Lappas. On the importance of temporal dynamics in modeling urban activity. In UrbComp, 2013.
+
+254
+
+

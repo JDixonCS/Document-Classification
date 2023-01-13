@@ -1,0 +1,2482 @@
+arXiv:2106.00026v1 [cs.LG] 31 May 2021
+
+Machine-Learning Non-Conservative Dynamics for New-Physics Detection
+Ziming Liu,1, 2, 3,  Bohan Wang,1 Qi Meng,1 Wei Chen,1,  Max Tegmark,2, 3,  and Tie-Yan Liu1, § 1Microsoft Research Asia, Beijing, China
+2Department of Physics, Massachusetts Institute of Technology, Cambridge, USA 3AI Institute for Artificial Intelligence and Fundamental Interactions (IAIFI) (Dated: June 2, 2021)
+Energy conservation is a basic physics principle, the breakdown of which often implies new physics. This paper presents a method for data-driven "new physics" discovery. Specifically, given a trajectory governed by unknown forces, our Neural New-Physics Detector (NNPhD) aims to detect new physics by decomposing the force field into conservative and non-conservative components, which are represented by a Lagrangian Neural Network (LNN) and a universal approximator network (UAN), respectively, trained to minimize the force recovery error plus a constant  times the magnitude of the predicted non-conservative force. We show that a phase transition occurs at  = 1, universally for arbitrary forces. We demonstrate that NNPhD successfully discovers new physics in toy numerical experiments, rediscovering friction (1493) from damped double pendulum, Neptune from Uranus' orbit (1846) and gravitational waves (2017) from an inspiraling orbit. We also show how NNPhD coupled with an integrator outperforms previous methods for predicting the future of a damped double pendulum.
+
+I. INTRODUCTION
+Energy conservation is a fundamental physical law, so when non-conservation is observed, physicists often consider it evidence of an unseen body or novel external forces rather than questioning the conservation law itself. In this paper, we will therefore refer to energy nonconservation as simply new physics and strive to autodetect it1. Many experimental new physics discoveries have manifested as apparent violation of energy conservation, for example friction [2], Neptune [3], neutrinos [4], dark matter [5, 6], extra-solar planets [7] and gravitational waves [8]. We focus on classical mechanics in this paper, but the idea extends to all fields of physics including quantum mechanics. We illustrate several classic examples in FIG. 1. In these cases, the new physics was historically identified from the residual force after fitting data to a conservative force of a known functional
+
+form. The key novel contribution in this paper is that our proposed model, dubbed the Neural New Physics Detector (NNPhD), can discover the new physics even when the form of the conservative "old physics" is not known.
+Data-driven discovery has proven extremely useful in physics, yet also non-trivial. For example, Kepler spent 25 years analyzing astronomical data before formulating his eponymous three laws. In this paper, we aim to automate and accelerate data-driven new physics discovery using machine learning tools. More concretely, given the trajectory of one or several objects governed by some force, we aim to decompose the force into conservative and non-conservative parts, followed by a symbolic regression module for explanation. As a trivial example, we aim to decompose the force f = -kq -q of a damped harmonic oscillator into conservative part fc = -kq and a non-conservative part fn = -q.
+
+Damped Double Pendulum
+
+Neptune
+Neptune
+
+Gravitational Radiation
+
+1 2
+
+Sun
+Uranus
+
+Da Vinci (1493)
+
+Le Verrier (1846)
+
+LIGO (2017)
+
+FIG. 1: NNPhD can auto-rediscover several classic examples.
+
+ zmliu@mit.edu  wche@microsoft.com  tegmark@mit.edu § tyliu@microsoft.com
+
+1 In contrast, "new physics" in high energy physics specifically refers to "new fundamental particles" or "new fundamental interactions" beyond the Standard Model [1].
+
+2
+
+
+
+
+
+
+
+
+
+1
+
+
+
+2
+
+
+
+
+
+ = (1, 2)
+
+Lagrangian Neural Network (LNN)
+Eq. (3):  =    -1( -    )
+
+
+
+(,  )
+
++ (,  , )
+
+conservative Lagrangian
+
+whole dynamics
+
+Integrator
+Trajectory Prediction (Section III B)
+
+Universal Approximator Network (UAN)
+
+(,  , ) non-conservative ("new physics")
+
+Symbolic Explainer
+
+Detecting and Explaining New Physics (Section III A)
+
+FIG. 2: NNPhD predicts dynamics by decomposing the force into conservative and non-conservative components, which can reveal new physics and improve trajectory extrapolation.
+
+Conservation laws have been introduced into neural networks as strong inductive biases, such as in the Lagrangian Neural Network (LNN) [9], the Hamiltonian Neural Network (HNN) [10] and variants [11­14]. The limitation of these models lies in their inability to model non-conservative dynamics, where the non-conservation can be caused by dissipation, external driving forces, etc. Our proposed NNPhD can resolve this limitation by augmenting LNN with a universal approximation network (UAN), illustrated in FIG. 2. Although prior works [9­ 35] attempt to learn the general or conservative force from data, most of these methods are unable to perform force decomposition, except for [32, 35] which assume (partial) knowledge of physics thus lose generality. Moreover, while the current literature mostly focuses on model predictability, we pay extra attention to explainability made possible by symbolic regression.
+The rest of this paper is organized as follows: In Section II, we review the problem framing and useful results, define force decomposition with minimal nonconservation and propose NNPhD to learn this force decomposition. In Section III, we carry out numerical experiments to verify our theoretical analysis of the presented algorithm, as well as to demonstrate the potential of NNPhD for new-physics discovery.
+
+II. METHOD
+
+A. Notation
+
+We consider the general classical physical system described by an n-dimensional vector q of generalized coordinates whose time-evolution q(t) is governed by a second-order ordinary differential equation
+
+q¨ = f (q, q , t),
+
+(1)
+
+where f : R2n+1  Rn. The acceleration q¨ is intimately related to force according to Newton's second law. In the following, we for simplicity refer to f (q, q , t) as a force field (dynamics perspective) or acceleration field (kine-
+
+matics perspective) interchangeably. The dynamical systems in our numerical examples consist of k particles in d dimensions, so n = kd and q  [q1, · · · , qk]  Rn, but our NNPhD method is fully general and makes no such assumptions.
+An important subset of dynamical systems are known as conservative because they conserve energy, which can be described by Euler-Lagrange Equation:
+
+d
+
+dt q L = qL,
+
+(2)
+
+where L(q, q ) is the Lagrangian and  is the gradient operator. As reviewed in Appendix A and [9], the Lagrangian mechanics formalism implies that such systems allows equation (1) to be re-expressed as
+
+q¨ = (q Tq L)-1 qL - (qTq L)q
+
+(3)
+
+For readers whose background is primarily in machine learning rather than physics, Appendix D provides a brief review of the Lagrangian mechanics formalism that we use in this paper.
+
+B. Lagrangian neural networks
+To guarantee energy conservation, inductive biases have recently been embedded into neural networks, including Lagrangian Neural Network [9], Hamiltonian Neural Network [10] and variants [11­14]. As shown in FIG. 2, a LNN uses a neural network to parametrize the Lagrangian L(q, q ) and output fcNN (q, q ) through evaluating Eq. (3). For a given loss function defined between model output fcNN (q, q ) and ground truth q¨, the LNN parameters can be learned using standard optimization algorithms. A trained LNN therefore contains a Lagrangian that determines conservative dynamics. Since not all physical systems conserve energy, the Lagrangian mechanics is insufficient for describing non-conservative dynamics, motivating the NNPhD framework.
+
+3
+
+C. The force decomposition minimizing non-conservation
+
+Following the problem setting of LNN, we focus on the
+simple setting where the acceleration q¨ is a known func-
+tion i.e., q¨  f (q, q , t). Our goal is therefore not to learn
+the force field, but to decompose the force field. In practice, where only discrete points on trajectory {(q(i), t(i))} are known, q (i) and q¨(i) can be extracted using a Neural
+ODE module [16].
+The main goal is to decompose the force field f (q, q , t) : R2n+1  Rn into a (time-independent) conservative component fc(q, q ) : R2n  Rn and a nonconservative component fn(q, q , t) : R2n+1  Rn such that
+
+f (q, q , t) = fc(q, q ) + fn(q, q , t).
+
+(4)
+
+In general, the decomposition is not unique. We desire the decomposition that minimizes the non-conservative component fn(q, q , t). To define the distance between two functions, we embed all functions f (q, q , t) in a normed vector space (F, · ) and define its conservative subspace Fc  F as
+
+Fc =
+
+f F
+
+L(q,q ):R2nR, s.t.
+( ) f (q,q )=(q Tq L)-1 qL-(qTq L)q
+
+.
+
+We formally define the force decomposition as follows:
+
+Definition II.1. (force decomposition with minimal non-conservation) The conservative component of f (q, q , t) is defined as
+
+fc(q, q )  arg min f (q, q , t) - g(q, q ) . (5)
+gFc
+We denote fn(q, q , t)  f (q, q , t) - fc(q, q ) the nonconservative component of f and denote the decomposition f (q, q ) = fc(q, q ) + fn(q, q , t) the force decomposition minimizing non-conservation.
+
+D. Neural New-Physics Detector (NNPhD) framework
+To learn the force decomposition minimizing nonconservation, we define a learning framework dubbed the Neural New-Physics Detector (NNPhD). Specifically, NNPhD learns fc and fn jointly. As illustrated in FIG. 2, NNPhD consists of two parallel modules, a Lagrangian Neural Network (LNN) and a Universal Approximator Network (UAN). The LNN takes in (q, q ) to predict a Lagrangian L(q, q ; wc) in the intermediate layer and outputs fcNN (q, q ; wc) calculated from Eq. (3), where wc are LNN parameters. The UAN is a pure black box (a fully connected neural network) that takes in (q, q , t) and outputs fnNN (q, q , t; wn) where wn are parameters of the black box. The two outputs are summed to predict the full force field
+f NN (q, q , t; wc, wn) = fcNN (q, q ; wc) + fnNN (q, q , t; wn). (6)
+
+We take both recovery error and minimal nonconservation into considerations to design our loss function: (1) f NN should recover ground truth f ; (2) we make maximal use of fcNN and reduce fnNN as much as possible (e.g. when f is conservative, we hope that fnNN vanishes). Guided by these two principles, we define our loss function as follows (denoting the ith sample
+x(i)  (q(i), q (i))):
+
+LNNP hD(wc, wn) = Le(wc, wn) + Lb(wn),
+
+Lb(wn) 
+
+1
+
+1 Nn
+
+N
+
+||fnNN (x(i), t(i); wn)||p
+
+p
+,
+
+i=1
+
+Le(wc, wn) 
+
+1
+
+1 Nn
+
+N
+
+||fcNN (x(i); wc) + fnNN (x(i), t(i); wn) - f (x(i), t(i))||p
+
+p
+,
+
+i=1
+
+(7)
+
+where p  1 and the regularization coefficient  > 0.
+
+The
+
+factors
+
+1 N
+
+and
+
+1 n
+
+average over
+
+samples
+
+and
+
+degrees
+
+of freedom, respectively. Here we use Lp function norms,
+
+i.e. f  ( |f |pdµ)1/p, where the integral is replaced
+
+by averaging over finite training samples. Le is the re-
+
+covery error and Lb penalizes the black box module to
+
+discourage it from learning conservative dynamics.
+
+E. The regularization phase transition
+Does minimizing Eq. (7) yield the force decomposition of Eq. (5)? We offer an affirmative answer to this question by presenting Theorem 1 informally here. Appendix F provides a rigorous formulation and proof of this theorem.
+Theorem 1. (Informal) Suppose fcNN and fnNN can represent any conservative force field and any (continuous) force field, and (fc, fn) denotes the pair that minimizes NNPhD loss from Eq. (7). Then we have a phase transition at  = 1 such that (fc, fn) = (fc, fn) when 0 <  < 1, and (fc, fn) = (fc, 0) when  > 1.
+Theorem 1 has two interesting and useful implications: (1) sharp phase transition: The recovery error Le = 0 when  < 1 and Le = fn > 0 when  > 1. As a result, non-conservative dynamics predicts an error jump of Le at  = 1, while conservative dynamics does not. This phenomenon justifies the term "detector" in our model name, in the sense that non-conservative dynamics is detected by the sharp phase transition at  = 1. (2) effortless  tuning: Any   (0, 1) would achieve the force decomposition. Below we report numerical experiments showing that in practice, too small  do not regularize UAN effectively, and force decomposition results are robust for 0.05  < 1 independent of dynamical systems at study.
+As we will see in Appendix F, the proof is more complicated than one might naively expect. If conservative
+
+4
+
+force fields formed a linear subspace, then the conservative component fc from equation (5) would simply be the orthogonal projection onto that space, and the nonconservative residual fn would be orthogonal to that subspace. But conservative force fields as we have defined them generally do not form a linear subspace, i.e., the sum of two energy-conserving force fields may not conserve energy, which is related to the nonlinear nature of equation (3).
+III. RESULTS FROM NUMERICAL EXPERIMENTS
+In this section, we test our NNPhD algorithm with a series of numerical examples defined in Table I. In Section III A, we quantify its ability to rediscover symbolic expressions for "new physics" such as friction, Neptune and gravitational waves. In Section III B, we show that, although NNPhD is designed for new physics detection, it can also outperform baseline trajectory prediction for the damped double pendulum example. In Section III C, we use toy examples to verify and quantify the aforementioned -dependent phase transition, and explore how the choices of p and  in Eq. (7) influence algorithm behavior. Finally we discuss how data quality affects identifiability of new physics in Section III D. Further technical details on model parameters, simulations and neural network architecture are provided in Appendix A.
+A. Discovery of New Physics
+We now test NNPhD on three numerical examples defined in Table I, to see if it can rediscover friction (1493), Neptune (1846) and gravitational wave emission (2017). In all three cases, the force fields defined by the right hand side are the sum of a conservative part (the first term) and a non-conservative "new physics" part (the second term) that we hope to discover. Before delving into our numerical experiments, let us briefly comment on how we model these three dynamical systems.
+
+presence of a force of unknown cause, later identified
+
+as Neptune. Neptune was invisible at the time in the
+
+sense that contemporary astronomers could not observe
+
+its position or velocity, but Le Verrier (and NNPhD)
+
+were able to identify the existence of a third body by
+
+identifying a non-conservative contribution to the force
+
+field of the two-body system. For our numerical experi-
+
+ments, we make the simplifying assumptions that (1) the
+
+Sun remains fixed at the origin, (2) the elliptical orbits
+
+of Uranus and Neptune are circular (have eccentricity
+
+e = 0) and lie in the same plane, (3) Neptune's orbit is
+
+unaffected by Uranus, and (4) the effects of other plan-
+
+ets are negligible. Here x and y denote the coordinates of
+
+Uranus, and time t is measured in units such that Uranus' orbital period is 2 23. We choose G = 1, mass of Sun
+
+M = 1. Neptune's mass, orbital radius and angular
+
+velocity
+
+are
+
+Mn
+
+=
+
+0.005,
+
+rn
+
+=
+
+3
+
+and
+
+n
+
+=
+
+3-
+
+3 2
+
+
+
+0.192.
+
+Gravitational Radiation As predicted by Einstein,
+
+the gravitational two-body problem is non-conservative,
+
+since the system radiates gravitational radiation that car-
+
+ries away energy and causes orbital decay. Experimen-
+
+tal confirmation of this garnered Nobel Prizes both in
+
+1993 (for the Hulse-Taylor pulsar) and in 2017 (for the
+
+LIGO discovery of gravitational waveforms from black
+
+hole mergers), and there is great current interest in
+
+exploiting such signals both for gravitational wave as-
+
+tronomy and for precision tests of general relativity.
+
+To test whether NNPhD can auto-discover the non-
+
+conservative force caused by gravitational wave back-
+
+reaction solely from black hole trajectories, we simu-
+
+late a binary black hole inspiral using the approxima-
+
+tion from [36] that the radiated gravitational wave power
+
+P
+
+=
+
+32 5
+
+G c5
+
+µ2r46
+
+=
+
+32 5
+
+G c5
+
+µ2
+
+v6 r2
+
+in
+
+a
+
+slowly
+
+decaying circu-
+
+lar orbit (of radius r, angular frequency  and reduced
+
+mass µ  (M1-1 + M2-1)-1) equals the energy loss rate
+
+-dE/dt = vf from a dissipative back-reaction force f .
+
+Using   r-3/2 and v  r-1/2 from Kepler's 3rd law
+
+gives P  v10, with a total force
+
+f
+
+=
+
+µr¨
+
+=
+
+-
+
+GM1M2 r3
+
+r
+
+-
+
+32M12M22(M12 5Gc5(M1 +
+
++ M22 M2)6
+
+)
+
+v8
+
+v,
+
+(8)
+
+corresponding to an acceleration
+
+1. Physical systems tested
+Friction Italian polymath Leonardo da Vinci first recorded the basic laws of friction in 1493. We add friction to the double pendulum system and to test if NNPhD can automatically discover the friction force solely from data. The damped double pendulum example can be described by two angles and their derivatives i.e., q = (1, 2) and q = (1, 2). In our numerical experiment, we choose the physical parameters m1 = m2 = g = l1 = l2 = 1,  = 0.02.
+Neptune Le Verrier postulated the existence of Neptune in 1846: astronomers had found that Uranus' orbit around the Sun precessed in a way suggesting the
+
+r¨
+
+=
+
+-
+
+G(M1 + r3
+
+M2) r
+
+-
+
+32M1M2(M12 5Gc5(M1 +
+
++ M22 M2)5
+
+)
+
+v8v,
+
+(9)
+
+where r = r2 - r1 and v = v2 - v1. We choose these physical parameters to be G = M1 = M2 = 1, c = 3.
+
+2. Detection of new physics
+These three physical systems have d = 2 degrees of freedom, obeying the second-order coupled differential equations in Table I. Including the corresponding conjugate momenta, a system's state is thus a point moving along some trajectory in a 2d-dimensional phase space,
+
+5
+
+Model Damped Double Pendulum
+Neptune
+Gravitational Radiation
+
+Equation
+
+¨1 ¨2
+
+  m2l112sin(2-1)cos(2-1)+m2gsin2+m2l222sin(2-1)-(m1+m2)gsin1 (m1 +m2 )l1 -m2 l1 cos2 (2 -1 )
+=   -  -m2l222sin(2-1)+(m1+m2)(gsin1cos(2-1)-l122sin(2-1)-gsin2) (m1 +m2 )l1 -m2 l1 cos2 (2 -1 )
+
+1 2
+
+x¨ y¨
+
+-
+
+GM
+
+x
+3
+
+
+
+GMn (-x+rn cos(n t))
+
+
+3
+
+=
+
+(x2+y2) 2
+
+ -
+
+GM
+
+y 3
+
+
+
++
+
+[(x-rncos(nt))2+(y-rnsin(nt))2] 2
+
+
+
+GMn (-y+rn sin(n t))
+
+3
+
+
+
+(x2+y2) 2
+
+[(x-rncos(nt))2+(y-rnsin(nt))2] 2
+
+x¨ y¨
+
+=
+
+-
+
+G(M1
+
++M2 )x 3
+
+
+
+ -
+
+(x2+y2) 2
+G(M1 +M2 )y 3
+
+
+
++
+
+32M1 M2 (M12 +M22 ) 5Gc5 (M1 +M2 )5
+
+-(x 2i + yi2)4x i -(x 2i + yi2)4yi
+
+(x2+y2) 2
+
+TABLE I: We test if NNPhD can automatically decompose these three force fields into a conservative part (first term) and a non-conservative part (second term) corresponding to the "new physics".
+
+satisfying a 2d coupled first-order coupled differential equations. We solve these equations and compute the trajectories numerically using a 4th-order Runge-Kutta integrator at Nstep = {300, 1000, 300} timesteps of size  = {0.1, 0.1, 0.05} for the three physical systems, using the following initial conditions:
+
+(1, 2, 1, 2) = (1, 0, 0, 0)
+
+1
+
+(x, y, x , y) = (3, 0, 0,  )
+
+(10)
+
+3
+
+(x, y, x , y) = (0, 2, -1, 0)
+
+Once trajectory points are calculated, the ground truth forces f at those points are evaluated using the formula in TABLE I 2. We do not hold back any testing data in this section, since many insights can be gained solely from training data. We will hold back testing data and verify NNPhD's generalization ability in Section III B.
+We then train NNPhD on the aforementioned trajectory data as detailed in Appendix B. FIG. 3 shows the resulting NNPhD prediction loss Le as a function of , revealing a striking phase transition at  = 1: for  < 1, Le is almost zero, while for  > 1, Le is an approximately constant positive number, indicating the magnitude of non-conservative components.
+As we showed above, such a phase transition is a smoking-gun signature of new physics manifesting as non-conservative dynamics. The observed phase transitions thus justify the NNPhD name.
+
+3. Modeling of New Physics with Symbolic Expressions
+After detecting the existence of new physics, physicists are interested in understanding and explaining this new
+
+2 In more realistic settings, one would first extract q¨ from trajectory data, e.g. with Neural ODE [16] or AI Physicist [27], and then use q¨ as labels to train NNPhD. We treat q¨ = f (q, q , t) as an oracle in this paper since we focus on the force field decomposition aspect.
+
+Prediction error Le
+
+0.020
+
+0.015
+
+0.010 0.005 0.000
+10 2 10 1
+
+Double pendulum Neptune Gravitational radiation
+100 101 102
+
+FIG. 3: In all our three examples, clear phase transitions at  = 1 indicate the existence of new
+physics.
+
+physics by describing it with via symbolic expressions. We found that if we did not impose any inductive biases on the LNN, we unfortunately did not auto-discover ant meaningful symbolic expressions. We therefore drew inspiration from the history of physics, where inductive biases have routinely been used. For example, physicists often knew and used analytic formulas for the old physics when quantifying new physics. In this spirit, we constrain the form of LNN Lagrangian so that only a set of coefficients are learnable, while the UAN remains to a fully general feedforward neural network with two hidden layers containing 200 neurons each. Specifically, we parametrize the Lagrangians for our three examples as follows:
+
+Lfric = c1cos1 + c2cos2 + c312 + c422 + c512cos(1 - 2)
+
+Lneptune = c1x 2 + c2y2 +
+
+c3 x2 + y2
+
+(11)
+
+Lgrav = c1x 2 + c2y2 +
+
+c3 x2 + y2
+
+This is implemented by inputting hand-crafted features (cos, x2, etc.) into a learnable linear layer which outputs the predicted Lagrangian. We adopt a train-and-explain strategy:
+
+1. Training: Like before, we train the whole NNPhD (LNN and UAN are updated simultaneously) with  = 0.2 using the ADAM optimizer with annealing learning rate {10-2, 10-3, 10-4, 10-5} for 2000
+
+6
+
+TABLE II: Symbolic Formulas Discovered by NNPhD
+
+Physics Example Double Pendulum
+Neptune
+
+Target ¨1 ¨2
+x¨ y¨
+
+Gravitational Radiation
+
+x¨1 y¨1
+
+Ground Truth "New Physics"
+
+-0.021 - 0.002 -0.001 - 0.022
+
+
+
+0.005(-x+3cos(0.192t))
+
+
+
+3 [(x-3cos(0.192t))2+(y-3sin(0.192t))2] 2
+
+
+
+0.005(-y+3sin(0.192t))
+
+
+
+3 [(y-3sin(0.192t))2+(y-3sin(0.192t))2] 2
+
+-0.00165(x 21 + y12)4x 1
+
+-0.00165(x 21 + y12)4y1
+
+NNPhD+Symbolic
+
+-0.0181 - 0.0012 -0.0011 - 0.0182
+
+
+
+0.0052(-x+3.004cos(0.192t))
+
+
+
+3 [(x-3.004cos(0.192t))2+(y-3.004sin(0.192t))2] 2
+
+
+
+0.0052(-y+3.004sin(0.192t))
+
+
+
+3 [(y-3.004sin(0.192t))2+(y-3.004sin(0.192t))2] 2
+
+-0.00170(x 21 + y12)3.94x 1
+
+-0.00170(x 21 + y12)3.94y1
+
+steps.
+2. Explaining: After training, we aim to extract more interpretable physics from the UAN via constrained nonlinear optimization of free parameters (displayed as bold in Table II) to explain the output of the black-box, since ground truth symbolic forms are available.
+In Table II, we show ground truth "new physics" and NNPhD discovered symbolic expressions. Fitted coefficients are seen to match ground truth quite well: (1) damping coefficient; (2) orbital radius and angular velocity of Neptune around the Sun; (3) magnitude and velocity dependence of gravitational wave emission.
+B. Prediction of Trajectories
+In addition to discovering new physics, as we saw above, NNPhD can also compete with other methods on simple trajectory prediction, and we will now test its performance for out-of-distribution generalization. Specifically, we test how accurately it can extrapolate the trajectory of the damped double pendulum from Section III A 2, whose state is specified by two angles (1, 2) and corresponding angular velocities (1, 2). We compute a trajectory with a 4th-order Runge-Kutta integrator at Nstep = 2000 timesteps of size  = 0.1 using the initial conditions (1, 2, 1, 2) = (1, 0, 0, 0). Our test task is to extrapolate beyond t = 30, so we split the trajectory into a training dataset (0  t  30) and a test dataset (30  t  200).
+We train NNPhD with  = 0.2 and feed its prediction f into a 4th-order Runge-Kutta integrator to produce the predicted trajectory. Figure 4 compares the performance with that from a LNN and a pure black box neural network. The left panel shows that both NNPhD and the black box can fit 1 well on training samples and extrapolate for a short period, but fail at larger times due to accumulated errors and sensitive phases. In contrast, we see that the LNN cannot even fit the training data, because it has the invalid energy-conservation assumption built in. The right panel shows that ground-truth energy is decaying exponential over time due to friction, while the LNN stubbornly predicts constant energy. NNPhD is seen to predict the energy decay best of the three methods, while the black-box slightly overpredicts the the en-
+
+ergy for a while and then incorrectly transitions to predicting approximate energy conservation.
+C. Theory Verification and Algorithm Benchmarking
+In this section, to better understand its algorithmic behavior, we test NNPhD on the six simple dynamical systems in physics in Table III: conservative examples involve a harmonic oscillator (HO), a magnetic field (MF)3 and constant gravity (CG) and non-conservative examples include linear damping (LD), constant damping (CD) and a periodic force (PF). We combine these into five examples to obtain two conservative systems (HO+MF, HO+CG) and three non-conservative systems (HO+LD, HO+CD, HO+PF), whose dynamical equations are summarized in Appendix A. For each system, we train NNPhD with the ADAM optimizer for 2,000 iterations, using batch size 32, learning rate schedule {0.01, 0.001, 0.0001, 0.00001} and 500 iterations for each learning rate.
+We now explore how the performance of the NNPhD depends on the regularization coefficient  and norm index p by testing  = {0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100} and p = 1, 2, 3. Instead of simulating trajectories to generate data as in previous sections, we compute q = f (q, q , t) at N random points (q(i), q (i), ti). We first generate all positions, velocities and times as independent Gaussian random variables with zero mean and unit standard deviation, then explore more complicated coverage in Section III D. We generate 103 training samples and 103 testing samples (q, q , t).
+How performance depends on p: In Figure 5(a), we plot the dependence of the prediction error Le on  (p = 1), again verifying the phase transition prediction from Section II E: The non-conservative systems (HO+LD, HO+CD, HO+PF) are seen to have a large error jump at  = 1 while, in contrast, Le does not increase at  = 1 for the conservative systems (HO+MF, HO+CG). In fact, HO+MF has even lower prediction
+3 Note that we refer to the magnetic force as conservative because it conserves energy, even though physicists customarily limit that term to velocity-independent forces that can be written as the gradient of a potential function.
+
+7
+
+1.00
+
+Training Testing
+
+0.75
+
+100
+LNN
+
+0.50
+
+Blackbox
+
+1
+energy
+
+0.25
+
+Training Testing
+
+0.00 0.25 0.50
+
+10 1
+Ground truth
+
+GroundNtNrPuhthD
+
+0.75
+
+LNN Blackbox
+
+1.00
+
+NNPhD
+
+10 2
+
+0
+
+10
+
+20
+
+30
+
+40 time 50 170
+
+180
+
+190
+
+200
+
+0 25 50 75 ti1m00e 125 150 175 200
+
+(a)
+
+(b)
+
+FIG. 4: Double Pendulum example: (a) Both NNPhD and the black-box can accurately fit the angle 1 of training
+
+samples, and can successfully extrapolate for a brief period, while LNN fails to model the non-conservative
+
+dynamics; (b) NNPhD correctly predicts the exponential energy decay on testing samples, while the black-box
+
+generalizes worse, and LNN incorrectly conserves energy.
+
+Prediction error Le
+
+|| ||1
+
+100
+
+10 1
+
+HO+MF(c) HO+CG(c)
+
+10 2
+
+HO+LD(n) HO+CD(n)
+
+HO+PF(n)
+
+10 3
+
+10 4 10 2 10 1 100 101 102
+
+Prediction error Le
+
+|| ||2
+10 1 10 2 10 3 10 4 10 5
+10 2 10 1 100 101 102
+
+Prediction error Le
+
+|| ||3
+10 1 10 2 10 3 10 4 10 5
+10 2 10 1 100 101 102
+
+Prediction error Le
+
+|| ||22
+100 10 2 10 4 10 6 10 8
+10 2 10 1 100 101 102
+
+(a)
+
+3 2
+
+= 0.01
+
+|| ||1
+= 0.05
+
+= 0.1
+
+1
+
+0
+
+1
+
+2
+
+3 2
+
+= 0.5
+
+=1
+
+=5
+
+1
+
+0 1
+
+(fcPHY, fcNN)
+
+2
+
+(fnPHY, fnNN)
+
+3 2 1 0G1ro2und2 t1r0u1th2 for2ce1 0 1 2
+
+Predicted force
+
+(b)
+
+3 2
+
+= 0.01
+
+|| ||2
+= 0.05
+
+= 0.1
+
+1
+
+0
+
+1
+
+2
+
+3 2
+
+= 0.5
+
+=1
+
+=5
+
+1
+
+0
+
+1
+
+2
+
+3 2 1 0G1ro2und2 t1r0u1th2 for2ce1 0 1 2
+
+Predicted force
+
+(c)
+
+3 2
+
+= 0.01
+
+|| ||3
+= 0.05
+
+= 0.1
+
+1
+
+0
+
+1
+
+2
+
+3 2
+
+= 0.5
+
+=1
+
+=5
+
+1
+
+0
+
+1
+
+2
+
+3 2 1 0G1ro2und2 t1r0u1th2 for2ce1 0 1 2
+
+Predicted force
+
+(d)
+
+3 2
+
+= 0.01
+
+|| ||22
+= 0.05
+
+= 0.1
+
+1
+
+0
+
+1
+
+2
+
+3 2
+
+= 0.5
+
+=1
+
+=5
+
+1
+
+0
+
+1
+
+2
+
+3 2 1 0G1ro2und2 t1r0u1th2 for2ce1 0 1 2
+
+(e)
+
+(f )
+
+(g)
+
+(h)
+
+FIG. 5: NNPhD is seen to behave robustly for 0.05  < 1 and p  1. We test NNPhD on five examples (the first
+
+two are conservative, and last three are non-conservative). (a)-(d) prediction error Le as a function of  with
+
+different norms as loss function: for (a)-(c) · p(p = 1, 2, 3), non-conservative dynamics has an error jump at  = 1,
+
+while conservative dynamics does not. In (d), mean squared loss leads to a smooth phase transition for
+
+non-conservative
+
+dynamics;
+
+(e)-(h)
+
+for
+
+the
+
+linear
+
+damping
+
+case
+
+q¨ =
+
+-q -
+
+1 2
+
+q,
+
+we
+
+show
+
+how
+
+fcN N
+
+and
+
+fnN N
+
+are
+
+aligned
+
+with fcP HY and fnP HY for different loss functions and different .
+
+Predicted force
+
+error at larger , showing the advantage of employing a Lagrangian Neural Network as opposed to a black box for conservative systems. Figure 5(a) shows that NNPhD has the ability to distinguish between conservative and non-conservative dynamics by looking at prediction loss around  = 1, i.e., a sharp phase transition indicates non-conservative dynamics. The above observations also
+
+apply to Figure 5(b)(c) when p = 2 and p = 3. However Figure 5(d) shows that mean-squared-error loss (where the L2-norm is squared) leads to a smooth transition, known as second-order phase transition in physics.
+How performance depends on : We then quantify how accurately the conservative and non-conservative components are modeled for different -values. Figure
+
+8 TABLE III: Examples of Conservative and Non-conservative Dynamics
+
+Classes
+
+Model
+
+Equation Lagrangian
+
+Conservative (fcP HY )
+
+Harmonic Oscillator (HO) Magnetic Field (MF)
+Constant Gravity (CG)
+
+q¨ = -q q¨1 = q2 q¨2 = -q1 q¨ = -1
+
+L = q2/2 - q2/2
+L = (q1 - q2)2/2 +(q2 + q1)2/2 L = q2/2 - q
+
+Non-Conservative (fnP HY )
+
+Linear Damping (LD) Constant Damping (CD)
+Periodic Force (PF)
+
+q¨ = -q q¨ = -sgn(q)
+q¨ = sin(t)
+
+NA
+
+(a)
+
+Data Coverage
+
+
+
+(b)
+
+Data Bias
+
+2 
+
+
+1 -  = 0.8
+
+ = 0.2
+
+
+sample
+
+FIG. 6: Dependence on data distribution parameters  and . Low quality data might prevent new physics discovery via (a) incomplete data coverage and (b) biased data distribution.
+
+5(e) shows our results for the damped oscillator exam-
+
+ple
+
+q¨
+
+=
+
+-q -
+
+1 2
+
+q,
+
+comparing
+
+fcN N
+
+with fcP HY
+
+= -q
+
+and fnNN
+
+with fnP HY
+
+=
+
+-
+
+1 2
+
+q.
+
+As Theorem 1 suggests,
+
+we observe that (1) when  > 1, fnNN predicts 0 while
+
+fcNN  fcP HY ; (2) when 0.05  < 1, fcNN  fcP HY
+
+and fnNN  fnP HY ; (3) when  0.05, although in the-
+
+ory it behaves similarly to (2), a small  does not have
+
+much incentive to penalize the black box, which there-
+
+fore absorbs part of the conservative component. Figure
+
+5(f)(g)(h) show that the alignments between the ground
+
+truth components and the the predictions from NNPhD
+
+are quite robust for different choices of loss function.
+
+no samples are generated in the lower half plane (where
+
+q < 0), then the prediction error Le is nearly zero, re-
+
+vealing no sign of non-conservation. For  > 0.5, on the
+
+other hand, NNPhD has a large Le, revealing the nonconservative nature of the damping force. This observa-
+
+tion makes physical sense since, if only q > 0 samples are
+
+observed, the damping force acts as a constant conserva-
+
+tive
+
+force
+
+(like
+
+gravity)
+
+which
+
+can
+
+be
+
+included
+
+as
+
+a
+
+(-
+
+1 2
+
+q)
+
+term
+
+in
+
+a
+
+Lagrangian
+
+L
+
+=
+
+1 2
+
+q2
+
+-
+
+1 2
+
+q2
+
+-
+
+1 2
+
+q,
+
+making
+
+the
+
+dynamics appear energy conserving.
+
+D. Physics Discovery Requires High-Quality Data
+
+Although NNPhD does not assume any data distribu-
+
+tion to achieve the decomposition, we will now see that
+
+NNPhD can only learn to accurately decompose the force
+
+into conservative and non-conservative parts if the data
+
+has high quality, specifically, if the data distribution has
+
+(1) adequate coverage of the state space x = (q, q ) and
+
+(2) is unbiased.
+
+Incomplete data coverage: We now explore the sit-
+
+uation where data points are only accessible in a pie-
+
+shaped subset of space covering an angular fraction of
+
+  [0, 1], as illustrated in Figure 6(a). We consider
+
+the
+
+1D
+
+constant
+
+damped
+
+oscillator
+
+q¨
+
+=
+
+-q
+
+-
+
+1 2
+
+sgn(q),
+
+train NNPhD with  = 10 on datasets with different
+
+fractions  and calculate the prediction loss Le. Recall that when  = 10, a high prediction error Le is a sign of non-conservation. Figure 6(a) shows that when   0.5,
+
+Imbalanced data distribution Even in the case
+
+when data is available everywhere in all relevant parts of
+
+phase space, the data set can still be imbalanced, e.g.,
+
+contain more q > 0 samples than q < 0 ones. Fig-
+
+ure 6(a) show that this is not a sever problem in the
+
+sense that it does not preclude us from identifying the
+
+existence of non-conservative dynamics, since the pres-
+
+ence of since merely a few samples with q < 0 suf-
+
+fices to give a clear signal of non-conservation. How-
+
+ever, such imbalance may harm the accuracy of our de-
+
+composition. We consider the linear damped oscillator
+
+q¨ =
+
+-q
+
+-
+
+1 2
+
+q
+
+where
+
+a
+
+fraction
+
+
+
+of
+
+the
+
+data
+
+is
+
+in
+
+the
+
+up-
+
+per half plane while the remaining fraction 1 -  is in the
+
+lower half-plane. We set  = 0.5, train on datasets with
+
+different  and compare learned conservative and non-
+
+conservative force fields with ground truth. We found
+
+the learned functions fcNN and fnNN are not necessarily aligned with the ground truth decomposition fcP HY = -q
+
+9
+
+and
+
+fnP HY
+
+=
+
+-
+
+1 2
+
+q.
+
+We
+
+define misalignment
+
+as
+
+1
+
+mc
+
+=
+
+( nN
+
+N
+
+||fcN
+
+N
+
+(x(i))
+
+-
+
+fcP
+
+HY
+
+(x(i))||2)
+
+1 2
+
+,
+
+i=1
+
+1
+
+mn
+
+=
+
+( nN
+
+N
+
+||fnN
+
+N
+
+(x(i),
+
+t(i))
+
+-
+
+fnP
+
+HY
+
+(x(i),
+
+t(i))||2)
+
+1 2
+
+.
+
+i=1
+
+(12)
+
+Figure 6(b) shows this misalignment as a function of ,
+
+revealing a minimum with nearly zero misalignment for
+
+the  = 0.5 case when the data is balanced. In summary,
+
+these last numerical experiments show that high-quality
+
+data is important for new physics discovery, regardless of
+
+whether the data is analyzed by intelligent human scien-
+
+tists or machine learning.
+
+IV. CONCLUSION
+We have presented the Neural New-physics Detector (NNPhD), a method for decomposing a general force field
+
+into components that do and do not conserve energy. We showed that NNPhD was able to do this robustly for a series of physical examples without access to symbolic equations, providing clear evidence of the existence of conservation-violating new physics. We also found that NNPhD could extrapolate time series more accurately than both LNN and black-box neural networks. As everlarger science and engineering datasets become available for dynamical systems, we hope that NNPhD will help enable more accurate prediction as well as aid discovery of interesting new phenomena.
+Acknowledgements We thank Yuanqi Du and Jieyu Zhang for helpful discussions, and the Center for Brains, Minds, and Machines (CBMM) for hospitality. This work was supported by the Casey and Family Foundation, the Foundational Questions Institute, the Rothberg Family Fund for Cognitive Science, and AI Institute for Artificial Intelligence and Fundamental Interactions (IAIFI) through NSF Grant No. PHY-2019786.
+
+[1] C. Burgess and G. Moore, The standard model: A primer (Cambridge University Press, 2007).
+[2] I. M. Hutchings, Leonardo da vinci studies of friction, Wear 360-361, 51 (2016).
+[3] Wikipedia contributors, Discovery of neptune -- Wikipedia, the free encyclopedia, https: //en.wikipedia.org/w/index.php?title=Discovery_ of_Neptune&oldid=1000734782 (2021), [Online; accessed 23-February-2021].
+[4] Wikipedia contributors, Cowan­reines neutrino experiment -- Wikipedia, the free encyclopedia, https: //en.wikipedia.org/w/index.php?title=Cowan%E2% 80%93Reines_neutrino_experiment&oldid=1000625707 (2021), [Online; accessed 23-February-2021].
+[5] M. S. Turner, The dark side of the universe: from zwicky to accelerated expansion, Physics Reports 333, 619 (2000).
+[6] V. C. Rubin, Dark matter in spiral galaxies, Scientific American 248, 96 (1983).
+[7] A. Wolszczan and D. A. Frail, A planetary system around the millisecond pulsar psr1257+ 12, Nature 355, 145 (1992).
+[8] L. Esposito and E. Harrison, Properties of the hulsetaylor binary pulsar system, The Astrophysical Journal 196, L1 (1975).
+[9] M. Cranmer, S. Greydanus, S. Hoyer, P. Battaglia, D. Spergel, and S. Ho, Lagrangian neural networks, arXiv preprint arXiv:2003.04630 (2020).
+[10] S. Greydanus, M. Dzamba, and J. Yosinski, Hamiltonian neural networks, in Advances in Neural Information Processing Systems (2019) pp. 15379­15389.
+[11] M. Finzi, K. A. Wang, and A. G. Wilson, Simplifying hamiltonian and lagrangian neural networks via explicit constraints, Advances in Neural Information Processing Systems 33 (2020).
+
+[12] A. Choudhary, J. F. Lindner, E. G. Holliday, S. T. Miller, S. Sinha, and W. L. Ditto, Forecasting hamiltonian dynamics without canonical coordinates, arXiv preprint arXiv:2010.15201 (2020).
+[13] P. Jin, Z. Zhang, A. Zhu, Y. Tang, and G. E. Karniadakis, Sympnets: Intrinsic structure-preserving symplectic networks for identifying hamiltonian systems, Neural Networks 132, 166 (2020).
+[14] P. Toth, D. Jimenez Rezende, A. Jaegle, S. Racani`ere, A. Botev, and I. Higgins, Hamiltonian Generative Networks, arXiv e-prints , arXiv:1909.13789 (2019), arXiv:1909.13789 [cs.LG].
+[15] Z. Long, Y. Lu, X. Ma, and B. Dong, Pde-net: Learning pdes from data, in International Conference on Machine Learning (PMLR, 2018) pp. 3208­3216.
+[16] R. T. Chen, Y. Rubanova, J. Bettencourt, and D. K. Duvenaud, Neural ordinary differential equations, Advances in neural information processing systems 31, 6571 (2018).
+[17] P. W. Battaglia, R. Pascanu, M. Lai, D. Rezende, and K. Kavukcuoglu, Interaction networks for learning about objects, relations and physics, arXiv preprint arXiv:1612.00222 (2016).
+[18] F. Alet, E. Weng, T. Lozano-P´erez, and L. P. Kaelbling, Neural relational inference with fast modular metalearning, in Advances in Neural Information Processing Systems, Vol. 32, edited by H. Wallach, H. Larochelle, A. Beygelzimer, F. d'Alch´e-Buc, E. Fox, and R. Garnett (Curran Associates, Inc., 2019) pp. 11827­11838.
+[19] P. Y. Lu, S. Kim, and M. Soljaci´c, Extracting interpretable physical parameters from spatiotemporal systems using unsupervised learning, Phys. Rev. X 10, 031056 (2020).
+[20] K. Champion, B. Lusch, J. N. Kutz, and S. L. Brunton, Data-driven discovery of coordinates and governing equations, Proceedings of the National Academy of Sciences 116, 22445 (2019).
+
+10
+
+[21] S.-M. Udrescu and M. Tegmark, Symbolic pregression: Discovering physical laws from raw distorted video, arXiv preprint arXiv:2005.11212 (2020).
+[22] S. Kim, P. Lu, S. Mukherjee, M. Gilbert, L. Jing, V. Ceperic, and M. Soljacic, Integration of neural network-based symbolic regression in deep learning for scientific discovery, arXiv preprint arXiv:1912.04825 (2019).
+[23] M. Raissi, P. Perdikaris, and G. E. Karniadakis, Physicsinformed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations, Journal of Computational Physics 378, 686 (2019).
+[24] T. Matsubara, A. Ishikawa, and T. Yaguchi, Deep energybased modeling of discrete-time physics, arXiv e-prints , arXiv (2019).
+[25] M. Cranmer, A. Sanchez-Gonzalez, P. Battaglia, R. Xu, K. Cranmer, D. Spergel, and S. Ho, Discovering symbolic models from deep learning with inductive biases, arXiv preprint arXiv:2006.11287 (2020).
+[26] M. Raissi, A. Yazdani, and G. E. Karniadakis, Hidden fluid mechanics: Learning velocity and pressure fields from flow visualizations, Science 367, 1026 (2020).
+[27] T. Wu and M. Tegmark, Toward an artificial intelligence physicist for unsupervised learning, Phys. Rev. E 100, 033311 (2019).
+[28] S.-H. Li, C.-X. Dong, L. Zhang, and L. Wang, Neural canonical transformation with symplectic flows, Phys. Rev. X 10, 021020 (2020).
+[29] M. Lutter, C. Ritter, and J. Peters, Deep lagrangian networks: Using physics as model prior for deep learning, arXiv preprint arXiv:1907.04490 (2019).
+[30] Z. Liu and M. Tegmark, Machine learning conservation laws from trajectories, Phys. Rev. Lett. 126, 180604 (2021).
+[31] G. Welch, G. Bishop, et al., An introduction to the kalman filter (1995).
+[32] V. L. Guen, Y. Yin, J. Dona, I. Ayed, E. de B´ezenac, N. Thome, and P. Gallinari, Augmenting physical models with deep networks for complex dynamics forecasting, arXiv preprint arXiv:2010.04456 (2020).
+[33] A. Ajay, J. Wu, N. Fazeli, M. Bauza, L. P. Kaelbling, J. B. Tenenbaum, and A. Rodriguez, Augmenting physical simulators with stochastic neural networks: Case study of planar pushing and bouncing, in 2018 IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) (IEEE, 2018) pp. 3066­3073.
+[34] J. Wu, I. Yildirim, J. J. Lim, B. Freeman, and J. Tenenbaum, Galileo: Perceiving physical object properties by integrating a physics engine with deep learning, Advances in neural information processing systems 28, 127 (2015).
+[35] Y. D. Zhong, B. Dey, and A. Chakraborty, Dissipative symoden: Encoding hamiltonian dynamics with dissipation and control into deep learning, arXiv preprint arXiv:2002.08860 (2020).
+[36] L. Scientific, V. collaborations, B. Abbott, R. Abbott, T. Abbott, M. Abernathy, F. Acernese, K. Ackley, C. Adams, T. Adams, P. Addesso, et al., The basic physics of the binary black hole merger gw150914, Annalen der Physik 529, 1600209 (2017).
+[37] J. Hanc, S. Tuleja, and M. Hancova, Symmetries and conservation laws: Consequences of noether's theorem, American Journal of Physics 72, 428 (2004).
+
+[38] H. Goldstein, C. Poole, and J. Safko, Classical mechanics (2002).
+
+11
+
+Appendix A: Toy Example details
+
+For each dynamical system, the left hand side is q¨, and right hand side is physical ground truth where conservative and non-conservative dynamics is explicitly separated as {fcP HY (q, q )} + {fnP HY (q, q , t)}.
+HO+MF (k = B = 1):
+
+x¨ y¨
+
+= {-k
+
+x y
+
++B
+
+y -x
+
+}+{
+
+0 0
+
+}
+
+(A1)
+
+HO+CG (k = g = 1)
+
+HO+LD
+
+(k
+
+=
+
+1, 
+
+=
+
+1 2
+
+)
+
+HO+CD
+
+(k
+
+=
+
+1, 
+
+=
+
+1 2
+
+)
+
+HO+PF
+
+(k
+
+=
+
+1, a
+
+=
+
+1 2
+
+)
+
+x¨ = {-kx - g} + {0} x¨ = {-kx} + {-x } x¨ = {-kx} + {-sgn(x )} x¨ = {-kx} + {asin(t)}
+
+(A2) (A3) (A4) (A5)
+
+Appendix B: Neural network training details
+
+We parameterize both the our LNN (conservative) and our UAN (non-conservative) force models as non-weight-
+sharing fully connected feedforward neural networks with two hidden 200-neuron layers. The LNN uses a mixture of
+softplus and quadratic activation (see Appendix C for details) and has Eq. (3) hard-coded right before outputting fcNN , while the UAN uses LeakyReLU activation (with negative slope  = 0.2) and does not involve in any other inductive biases.
+We measure the performance of NNPhD for
+
+  {.01, .02, .05, .1, .2, .5, 1, 2, 5, 10, 20, 50, 100}
+
+(B1)
+
+by first initializing and training NNPhD with  = 0.01 using the ADAM optimizer with learning rate {10-2, 10-3, 10-4, 10-5} for 2000 steps (500 steps for each learning rate), and iteratively increasing  and train
+for 2000 steps for each new -value. The model parameters of LNN and UAN are updated simultaneously.
+
+Appendix C: Tricks to Boost LNN Training
+
+As mentioned in [9], LNN is unstable and inefficient to train with traditional initializations in ML. As a result,
+
+expensive grid search of proper initializations is required. We propose two simpler tricks that have some improvements
+
+and
+
+are
+
+easy
+
+to
+
+implement.
+
+We
+
+use the
+
+example
+
+of a
+
+harmonic
+
+oscillator.
+
+The Lagrangian
+
+L=
+
+1 2
+
+q2
+
+-
+
+1 2
+
+q2
+
+contains
+
+only quadratic terms. We build a two hidden-layer networks with width 4-200-200-2.
+
+Activation Trick: [9] uses Softplus as activation function, which is general but inefficient to represent a quadratic
+
+function. However the quadratic function is common and useful in physics, we propose to divide neurons into two
+
+groups, where one group uses Softplus as activation, and the other group uses quadractic function as activation.
+
+Split Trick: One of instability when forwarding LNN comes from inversion of q q L. In physical terms, q q L represents a mass scalar (matrix) which is positive (positive definite). However this constraint is not explicitly
+
+embedded to LNN, leading to training instabilities. We split L into two parts:
+
+L
+
+=
+
+L1
+
++
+
+L2
+
+=
+
+LN N
+
++
+
+1 aq T q 2
+
+(C1)
+
+where L1 is learned by LNN, while L2 is a fixed quadratic term (we choose a = 1). At initializations when LNN  0,
+
+L
+
+
+
+1 2
+
+aq T
+
+q
+
+is
+
+positive
+
+definite.
+
+To test how the proposed two tricks operate, we implement four models in Figure 7 to fit 1D harmonic oscillator:
+
+Softplus or quadratic activation, and w/wo the split trick. The best performance one is the LNN using quadratic
+
+activation and the split trick.
+
+12
+
+FIG. 7: Tricks to boost LNN training
+
+Appendix D: Lagrangian mechanics for machine learning readers
+
+For readers whose background is primarily in machine learning rather than physics, this section provides a brief
+
+review of the Lagrangian mechanics formalism that we use in this paper.
+
+Conservative dynamics describes a dynamic where there exist conserved quantities (energy, momentum, angular
+
+momentum etc). Conservation laws are important in physics, as it corresponds to symmetries of our mother nature,
+
+according to Noether's theorem [37]. In particular, energy conservation is equivalent to time translational symmetry.
+
+To describe dynamics that conserves energy, physicists employ (time-independent) Lagrangian or Hamiltonian for-
+
+mulation. Since our work and prior work Lagrangian Neural Network (LNN) [9] are based on Lagrangian mechanics,
+
+we provide a brief introduction here.
+
+The Lagrangian formalism models a classical physics system with trajectory x(t) = (q, q ) that begins in one
+
+state x(t0) and ends up in another state x(t1)(t1 > t0), where q and q are called the generalized coordinates
+
+and velocities respectively. There are many paths that these states might take as they pass from x(t0) to x(t1),
+
+and Lagrangian mechanics tells that there is only one path that the physical system will take, i.e., the path that
+
+minimizes
+
+t1 t0
+
+(T
+
+(q(t),
+
+q (t))
+
+-
+
+V (q(t), q (t)))dt,
+
+where
+
+T
+
+is kinetic energy and V
+
+is the potential energy.
+
+The term
+
+L(q, q )  T (q, q ) - V (q, q ) is called Lagrangian and the path (trajectory) of the system is determined by Euler-
+
+Lagrange equation:
+
+d dt q L = qL.
+
+Based
+
+on
+
+the
+
+formulas
+
+in
+
+Lagrangian
+
+Neural
+
+Network
+
+(LNN)
+
+[9],
+
+Euler-Lagrange
+
+equation
+
+d dt
+
+q L
+
+=
+
+qL
+
+can
+
+be
+
+rewritten
+
+by
+
+applying
+
+a
+
+chain
+
+rule
+
+d dt
+
+Tq
+
+L
+
+=
+
+(q Tq L)q¨ + (qq L)q
+
+resulting
+
+in:
+
+q¨ = (q Tq L)-1(qL - (qTq L)q )
+
+(D1)
+
+One inductive bias brought by Lagrangian mechanics is that Eq. (3) describes conservative physical dynamics. That is, the energy function defined as
+
+H(q, q ) = Tq L(q, q )q - L(q, q )
+
+(D2)
+
+is constant along a trajectory (q(t), q (t)) driven by Eq. (3). The proof of H(q, q ) conservation can be found in standard physics textbooks [38] and is included here for completeness.
+
+Lemma 1. Given a Lagrangian L(q, q ), the energy defined in Eq. (3) is conserved along the trajectory (q(t), q (t)) driven by Eq. (2).
+
+Proof. Invoke the chain rule one obtains the time derivative of L:
+
+dL dt
+
+=
+
+q T qL
+
++
+
+q¨T q L
+
+Eq.
+
+(4)
+
+is
+
+equivalent
+
+to
+
+Euler-Lagrangian
+
+equation
+
+d dt
+
+q L
+
+=
+
+qL,
+
+so
+
+we
+
+replace
+
+qL
+
+with
+
+d dt
+
+q L:
+
+dL dt
+
+=
+
+q T
+
+d dt
+
+q
+
+L
+
++
+
+q¨T
+
+q
+
+L
+
+=
+
+d dt
+
+(q T
+
+q L)
+
+-
+
+dH dt
+
+
+
+d dt
+
+(q T
+
+q L
+
+-
+
+L)
+
+=
+
+0
+
+(D3) (D4)
+
+13
+
+Since not all physical system conserves energy, Lagrangian mechanics is insufficient to describe non-conservative dynamics, motivating the design of NNPhD framework. We prove that linear damp example is non-conservative, i.e., it cannot be represented by Lagrangian mechanics.
+
+Lemma 2. Let function f : R2  R be defined as f (q, q ) = cq , where c can be any real non-zero constant. Then, f cannot be represented by Eq. (3) for any Lagrangian L  D2(q, q ) (D2(q, q ) is the function space consisting of all
+twice-differentiable functions with respect to (q, q )).
+
+Proof. We prove the claim by reduction to absurdity. Suppose there exists a Lagrangian L  D2(q, q ), such that,
+
+2L
+
+-1 L
+
+2L
+
+cq = q 2 (q, q )
+
+(q, q ) -
+
+(q, q ) q .
+
+q
+
+q q
+
+(D5)
+
+By multiplying
+
+2L q 2
+
+(q,
+
+q )
+
+to both sides of eq. (D5), we have
+
+2L
+
+L
+
+2L
+
+c
+
+q 2 (q, q )
+
+q = (q, q ) - q
+
+(q, q ) q q
+
+q ,
+
+which by eq. (D2) further leads to
+
+H
+
+H
+
+c (q, q ) + (q, q ) = 0.
+
+q
+
+q
+
+(D6)
+
+By variable substitution, let H(q, q ) = g(cq + q , q - cq). By eq. (D6),
+
+g(cq + q , q - cq) H(q, q ) q
+
+H(q, q ) q
+
+=
+
++
+
+(cq + q )
+
+q (cq + q )
+
+q (cq + q )
+
+1 H(q, q ) 1 H(q, q )
+
+=
+
++
+
+= 0.
+
+2c q
+
+2 q
+
+Therefore, H(q, q ) is invariant of cq + q and only relies on the value of q - cq. Thus, we can further abbreviate H(q, q ) as g(q - cq). On the other hand, by eq. (D2),
+
+g(-cq) = g(0 - cq) = H(q, q ) = -L(q, 0).
+
+Therefore,
+
+L(q, q )
+
+L(q, q ) - L(q, 0)
+
+= lim
+
+q q =0 q 0
+
+q
+
+=
+
+lim
+
+q
+
+L(q,q ) q
+
+(q,
+
+q )
+
+-
+
+g(q
+
+-
+
+cq)
+
++
+
+g(-cq)
+
+q 0
+
+q
+
+() L(q, q ) =
+
+- g (-cq),
+
+q q =0
+
+where
+
+eq.
+
+()
+
+is
+
+due
+
+to
+
+that
+
+L(q,q ) q
+
+(q,
+
+q )
+
+is
+
+differentiable
+
+(thus
+
+continuous).
+
+Therefore, we have g (q) = 0 for any q, which further leads to H(q, q ) is a constant function and
+
+2L
+
+-1 H(q, q )
+
+cq = - q 2 (q, q )
+
+= 0. q
+
+The proof is completed since c = 0.
+
+14
+
+Appendix E: Learning perspectives of Section II C
+
+We describe the learning task based on the force decomposition in Section II C. Given samples
+(q(i), q (i), t(i); q¨(i)), i = 1, · · · , N that are uniformly drawn from the trajectories of dynamic q¨ = f (q, q , t) with
+t  [0, T ] or a given distribution µ, we aim to learn both fc and fn from data. Because the ground-truth dynamic and its vector space are unknown, we need to select a model space (G, · G) which is also a normed vector space to find the best model in it. For this learning problem, we learn the model pair (fcNN , fnNN ) simultaneously by solving the following constrained minimization problem
+
+min LS (fnNN , fcNN ) =
+(fnNN ,fcNN )
+
+1 N
+
+N i=1
+
+fcNN (q(i), q (i)) + fnNN (q(i), q (i), t(i)) - q¨(i) G
+
+s.t.
+
+fcN N
+
+= arg min gGc
+
+1 N
+
+N i=1
+
+q¨(i) - g(q(i), q (i)) G
+
+We make the following discussions on the learning task: We denote the optimal models of the above optimization
+
+problem as (fcNN, fnNN). The interpolating prediction ability (which is measured by the gap between
+
+T 0
+
+fcNN +
+
+fnNN - q¨ dt and LS(fcNN, fnNN)) is determined by the approximation ability of G and the number of training data.
+
+As the number of training data N increases, the gap will be smaller. As the approximation ability of G becomes
+
+stronger, the gap will be smaller.
+
+Appendix F: Theorem 1 (formal)
+
+Theorem 1. We suppose the ground-truth hypothesis space (G, · p), Let fcNN (q, q ; wc) be the Lagrangian Neural Network with parameters wc in NNPhD framework, and fnNN (q, q , t; wn) be the black box neural network with parameters wn in NNPhD framework. Assume the black box neural network can interpolate every contin-
+uous function of (q, q , t) at any N points, i.e., for any dataset {(q(i), q (i), t(i))}Ni=1 with distinguished elements, {{fnNN (q(i), q (i), t(i); wn)}Ni=1 : wn  Rdwn } = RN , where dwn is the dimension of wn. Then, given any continuous function f and any norm · on function space C(q, q , t), the following claim stands:
+
+(1) For  > 1, optimizing LNNP hD is equivalent to optimize fcNN (·, ·; wc) - q¨ while keeping fnNN (·, ·, ·; wn) as zero, that is,
+
+arg min
+wc ,wn
+
+1N N
+
+1
+fcNN (q(i), q (i); wc) + fnNN (q(i), q (i), t(i); wn) - q¨(i) p p + 
+
+i=1
+
+1
+
+1 N
+
+fnNN (q(i), q (i), t(i); wn) p
+
+p
+
+
+
+ 
+
+=
+
+(wc, wn) 
+
+:
+
+wc
+
+
+
+arg
+
+min
+wc
+
+
+
+1
+
+1N N
+
+fcNN (q(i), q (i); wc) - q¨(i) p
+
+p
+,
+
+i=1
+
+
+  fnNN (q(i), q (i), t(i); wn) = 0 .  
+
+(2) For 0 <  < 1, optimizing LNNP hD is also equivalent to optimize fcNN (·, ·; wc) - q¨ while keeping fnNN (·, ·, ·; wn) as f - fcNN (·, ·; wc), that is,
+
+arg min
+wc ,wn
+
+1N N
+
+1
+fcNN (q(i), q (i); wc) + fnNN (q(i), q (i), t(i); wn) - q¨(i) p p + 
+
+i=1
+
+1
+
+1 N
+
+fnNN (q(i), q (i), t(i); wn) p
+
+p
+
+
+
+ 
+
+= (wc, wn) 
+
+:
+
+wc
+
+
+
+arg min
+wc
+
+
+
+1
+
+1N N
+
+fcNN (q(i), q (i); wc) - q¨(i) p
+
+p
+,
+
+i=1
+
+
+  fnNN (q(i), q (i), t(i); wn) = f (q(i), q (i), t(i)) - fcNN (q(i), q (i); wc) .  
+
+We will provide proof of Theorem 1. We will actually show our results hold for general norms which include the discrete norm we use in Theorem 1. Concretely, Theorem 1 holds as a special case as the following theorem:
+
+Theorem 2 (Theorem 1, extended to general norms). Let fcNN (q, q ; wc) be the Lagrangian Neural Network with parameters wc in NNPhD framework, and fnNN (q, q , t; wn) be the black box neural network with parameters wn in NNPhD framework. Assume the black box neural network can represent every continuous function of (q, q , t) under the norm · , i.e., {g(q, q , t) : wn, g(q, q , t) - fnNN (q, q ; wn) = 0} = C(q, q , t). Then, given any continuous function f , the following claim stands:
+(1) For  > 1,
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+=
+
+(wc, wn) : wc  arg min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+,
+
+fnNN (q, q , t; wn) = 0 .
+
+15
+
+(2) For 0 <  < 1,
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+=
+
+(wc, wn) : wc  arg min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+,
+
+fnNN (q, q , t; wn) - f (q, q , t) + fcNN (q, q ; wc)
+
+=0
+
+.
+
+Proof. We prove the two cases above separately. (1) If  > 1, for any wc and wn,
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) = f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) + fnNN (q, q , t; wn) + ( - 1) fnNN (q, q , t; wn)
+()
+ f (q, q , t) - fcNN (q, q ; wc) + ( - 1) fnNN (q, q , t; wn) .
+
+(F1)
+
+Since  - 1 > 0,
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) + ( - 1) fnNN (q, q , t; wn)
+
+=
+
+arg min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+, argwn
+
+fnNN (q, q , t; wn)
+
+=0
+
+.
+
+For any (wc0, wn0) where wc0  arg minwc f (q, q , t) - fcNN (q, q ; wc) and fnNN (q, q ; wn0) = 0, the equality of inequality () of Eq. (F1) is obtained. Therefore,
+
+(wc0,
+
+wn0 )
+
+
+
+arg
+
+min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn) ,
+
+which further leads to
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) + ( - 1) fnNN (q, q , t; wn)
+
+ arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn)
+
+,
+
+and
+
+min
+wc ,wn
+= min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) f (q, q , t) - fcNN (q, q ; wc) + ( - 1) fnNN (q, q , t; wn) .
+
+(F2)
+
+Combining Eq. (F1), Eq. (F2) further leads to
+
+arg min
+wc ,wn
+ arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) f (q, q , t) - fcNN (q, q ; wc) + ( - 1) fnNN (q, q , t; wn) .
+
+The proof for  > 1 is completed. (2) If  < 1, for any wc and wn, we decompose f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) as follows:
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) =( + (1 - )) f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn)
+()
+  f (q, q , t) - fcNN (q, q ; wc) + (1 - ) f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) ,
+
+(F3)
+
+where eq. () is due to triangle inequality. On the other hand, for any fixed wc, minimum of eq. (F3) is obtained if and only if fnNN (q, q , t; wn) - f (q, q , t) + fcNN (q, q ; wc) = 0, in which case equality of eq. () is also obtained. Therefore, for a given wc,
+
+min
+wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+= f (q, q , t) - fcNN (q, q ; wc) ,
+
+16
+
+and
+
+arg min
+wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+={wn : fnNN (q, q , t; wn) - f (q, q , t) + fcNN (q, q ; wc) = 0}.
+
+(F4)
+
+Since
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+= arg min min
+wc wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn) ,
+
+by applying eq. (F4), we finally have
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+=
+
+(wc, wn) : wc  arg min 
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+,
+
+fnNN (q, q , t; wn) - f (q, q , t) + fcNN (q, q ; wc)
+
+=0
+
+=
+
+(wc, wn) : wc  arg min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+,
+
+fnNN (q, q , t; wn) - f (q, q , t) + fcNN (q, q ; wc)
+
+=0
+
+.
+
+The proof is completed.
+
+The above theorem describes the case that fnNN (q, q , t; wn) can represent every continuous function. However, in practice, the black box neural network can only access functions close to the original solution. In this general case,
+we instead have
+
+Corollary 2.1. Let fcNN (q, q ; wc) be the Lagrangian Neural Network with parameters wc in NNPhD framework, and fnNN (q, q , t; wn) be the black box neural network with parameters wn in NNPhD framework. Assume the black box neural network can approximate every continuous function of t, q, q by error  > 0 under some norm · on function
+space C(q, q , t), i.e., f  C(q, q , t), there exists a wnf , such that, fnNN (q, q , t, wnf ) - f (q, q , t)  . Furthermore, assume there exists w0, such that, fnNN (q, q , t; w0)  0. Then, given any continuous function f , the following claim stands:
+
+· For  > 1,
+
+arg min
+wc ,wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)
+
++  fnNN (q, q , t; wn)
+
+=
+
+arg min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
+,0
+
+.
+
+· For  < 1, for any (wc0, wn0)  arg minwc,wn f (q, q , t)-fcNN (q, q ; wc)-fnNN (q, q , t; wn) + fnNN (q, q , t; wn) ,
+
+fnNN (q, q , t; wn0) - f (q, q , t) + fcNN (q, q ; wc0)
+
+1+
+
+
+
+,
+
+1-
+
+f (q, q , t) - fcNN (q, q ; wc0)
+
+ min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc)
+
++ (1 + ).
+
+(F5) (F6)
+
+Proof. When  > 1, the claim can be proved following exactly the same routine as Theorem 1. When  < 1, we follow the same routine as Theorem 1 to decompose the optimization problem into a two step minimization problem: fixed wc, let g(q, q , t) = f (q, q , t) - fcNN (q, q ; wc). Then, there exists a wng, such that
+fnNN (q, q , t; wng ) - g(q, q , t)  .
+
+Therefore,
+
+min
+wn
+
+f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn)
+
+ f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wng ) +  fnNN (q, q , t; wng )
+
+(1 + ) f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wng ) +  f (q, q , t) - fcNN (q, q ; wc))
+
+ f (q, q , t) - fcNN (q, q ; wc)) + (1 + ).
+
+Let wn = arg minwn f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) . Then,
+(1 - ) f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn)  f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) - f (q, q , t) - fcNN (q, q ; wc)) (1 + ),
+
+which finishes the proof of Eq. (F5). Let h(wc) = minwn f (q, q , t) - fcNN (q, q ; wc) - fnNN (q, q , t; wn) +  fnNN (q, q , t; wn) . By Eq. (F7),
+h(wc) -  f (q, q , t) - fcNN (q, q ; wc)  (1 + ),
+
+which further leads to
+
+min
+wc
+
+h(wc)
+
+ (1 + ) +  min
+wc
+
+f (q, q , t) - fcNN (q, q ; wc) .
+
+This completes the proof.
+
+17 (F7)
+
+

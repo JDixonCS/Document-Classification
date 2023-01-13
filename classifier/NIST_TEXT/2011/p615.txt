@@ -1,0 +1,845 @@
+UPS: Efficient Privacy Protection in Personalized Web Search
+
+Gang Chen, He Bai, Lidan Shou, Ke Chen, and Yunjun Gao
+Dept. of Computer Science, Zhejiang University Hangzhou, China
+cg@zju.edu.cn, baihe.zju@gmail.com, should@zju.edu.cn, chenk@zju.edu.cn, gaoyj@zju.edu.cn
+
+ABSTRACT
+In recent years, personalized web search (PWS) has demonstrated effectiveness in improving the quality of search service on the Internet. Unfortunately, the need for collecting private information in PWS has become a major barrier for its wide proliferation. We study privacy protection in PWS engines which capture personalities in user profiles. We propose a PWS framework called UPS that can generalize profiles in for each query according to user-specified privacy requirements. Two predictive metrics are proposed to evaluate the privacy breach risk and the query utility for hierarchical user profile. We develop two simple but effective generalization algorithms for user profiles allowing for query-level customization using our proposed metrics. We also provide an online prediction mechanism based on query utility for deciding whether to personalize a query in UPS. Extensive experiments demonstrate the efficiency and effectiveness of our framework.
+Categories and Subject Descriptors
+H.3.3 [Information Search and Retrieval]: Search process; H.3.m [Miscellaneous]; D.2.8 [Software Engineering]: Metrics--complexity measures, performance measures
+General Terms
+Experimentation, Measurement
+Keywords
+Personalized, Privacy, Metric, Utility, Trade-off
+1. INTRODUCTION
+Personalized web search (PWS) is a general category of search techniques which provide search results tailored for individual user needs. As a price, user information has to be collected and analyzed to figure out the user intention behind the issued query. The solutions to PWS can generally be categorized into two types, namely click-log-based methods and profile-based ones. Although there are pros and cons for both types [5], the profile-based PWS has
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+demonstrated more effectiveness in improving the quality of web search recently, with increasing usage of personal and behavior information to profile its users, which is usually gathered implicitly from query history [22, 19, 21], browsing history [20, 17], clickthrough data [16, 12, 5], bookmarks [10], user documents [22, 27] and so forth. Unfortunately, this implicitly collected personal data can easily reveal a gamut of the user's private life. Privacy issues rising from the lack of protection for such data, for instance the AOL query logs scandal[7], not only cause panic among individual users, but also dampen the data-publisher's enthusiasm in offering personalized service. In fact, privacy concerns have become the major barrier for wide proliferation of PWS services.
+To address this privacy threat, researchers of profile-based PWS have to consider two contradicting effects during the search process. On one hand, they attempt to improve the search quality with the personalization utility of the user profile. On the other hand, they need to hide the privacy existing in the user profile to minimize the risk of privacy breach. A few previous studies [27, 9] suggest that people may compromise privacy if the personalization yields them profitability in service quality. In an ideal case, significant gain in personalization would be easily traded with only a small portion, often referred to as a generalization, of the user profile. Thus, user privacy can be protected without compromising the personalized search quality.
+Unfortunately, these previous works do not address privacy protection in PWS adequately. The problems with the existing methods are explained in the following observations.
+(1) The existing works in privacy protection of PWS generalizes each user profile for only once off line, and then use Such profile to personalize all queries from a same user indiscriminatingly. The "one profile fits all" strategy certainly has drawbacks given a variety of queries. One evidence reported in [5] is that profile-based personalization may not even help to improve the search quality for some ad-hoc queries, though exposing user profile to a server could put the user's privacy at risk. Therefore, a query-oriented decision on generalization degree, and even on whether personalize the search or not, would help to provide flexible service. To the best of our knowledge, no previous work has supported such feature.
+(2) The current solutions do not take into account the customization of privacy requirements, probably making some user profiles to be over-generalized while some others insufficiently generalized. For example, in [27], all the sensitive topics are detected using an absolute metric called surprisal based on the information theory, assuming that the interests with less user document support are more sensitive. However, this assumption may not be correct. If a user has a large number of documents about "sex", the surprisal of this topic may lead to a conclusion that "sex" is very general and not
+
+615
+
+sensitive, despite the truth which is opposite. Unfortunately, few prior work can effectively address individual privacy needs during the generalization.
+(3) Many personalization techniques require iterative user interactions when creating personalized search results. For example, some click-based metrics as rank scoring [2] and average rank [12], etc., are used to refine the search results through multiple query iterations. This paradigm is however infeasible as user profile generalization is needed for protecting privacy for each query. This inevitably pose a new challenge in terms of efficiency. Thus we need predictive metrics for the search quality and breach risk after personalization, without incurring iterative user interaction.
+To solve the above problems, our approach customizes profile generalization on two levels, namely the user-level and the querylevel. The user-level customization allows users to specify personalized privacy requirements. The query-level customization varies the generalization granularity based on the contents of the query. Meanwhile, our approach guarantees the efficiency during the generalization as it has to be applied online.
+We perform the online generalization based on two conflicting metrics, namely the query utility and the risk of privacy disclosure, defined for user profiles, which are captured in a hierarchical taxonomy. The basic idea is to maintain the complete user profile on the client side, and exploit the semantic information contained in the taxonomy to model user-specified privacy requirements. Given a query, a local search wrapper employs a generalization algorithm which attempts to strike a balance between the two metrics, while respecting the privacy requirements. The output is then exposed to the server to personalize the search results. Our main contributions are summarized as following.
+· We propose a PWS framework called UPS (literally for User customizable Privacy-preserving Search) that can generalize profiles for each query according to user-specified privacy requirements.
+· We propose two predictive metrics to evaluate the privacy breach risk and the query utility for hierarchical user profile.
+· We develop two simple but effective generalization algorithms for user profiles allowing for query-level customization using our proposed metrics.
+· We provide an online mechanism based on query utility for deciding whether to personalize a query in UPS.
+· Extensive experiments demonstrate the efficiency and effectiveness of our UPS framework.
+The rest of this paper is organized as follows. Section 2 reviews the related work, focusing on PWS and its privacy preservation. Section 3 briefly describes the UPS architecture. Section 4 introduces the user profile data and gives the problem statement. The generalization techniques used in UPS are proposed in Section 5. The experimental results and findings are reported in Section 6. Finally, Section 7 concludes the paper.
+2. RELATED WORKS
+In this section, we overview the related works. We focus on the literature of profile-based personalization and privacy protection in PWS system.
+2.1 Profile-Based Personalization
+Previous works on profile-based PWS mainly focus on improving the search utility. The basic idea of these works is to tailor the search results by referring to, often implicitly, a user profile that reveals an individual information goal. In the remainder of this
+
+subsection, we review the previous solutions to PWS on two aspects, namely the representation of profiles, and the measure of the effectiveness of personalization.
+Many profile representations are available in the literature to facilitate different personalization strategies. Earlier techniques utilize term lists/vectors [20] or bag of words[22] to represent their profile. However, most recent works build profiles in hierarchical structures due to their stronger descriptive ability, better scalability, and higher access efficiency. The majority of the hierarchical representations are constructed with existing weighted topic hierarchy/graph, such as ODP1 [5, 4, 19, 11], Wikipedia2 [6, 14], etc. Another work in [27] builds the hierarchical profile automatically via term-frequency analysis on the user data. In our proposed UPS framework, we do not focus on the implementation of the user profiles. Actually, our framework can potentially adopt any hierarchical representation based on a taxonomy of knowledge.
+As for the performance measures of PWS in the literature, Normalized Discounted Cumulative Gain (nDCG) [8] is a common measure of the effectiveness of an information retrieval system. It is based on a human-graded relevance scale of item-positions in the result list, and is therefore known for its high cost in explicit feedback collection. To reduce the human involvement in performance measuring, researchers also propose other metrics of personalized web search that rely on clicking decisions, including Average Precision [1, 27], Rank Scoring [2], and Average Rank [19, 12]. We use the Average Precision metric, proposed by [5], to measure the effectiveness of the personalization in UPS. Meanwhile, our work is distinguished from previous studies as it also proposes two predictive metrics, namely search utility and risk of privacy disclosure, on a profile instance without requesting for user feedback.
+2.2 Privacy Protection in PWS System
+Generally there are two classes of privacy protection problems for PWS. One class includes those treat privacy as the identification of an individual, as described in [18]. The other includes those consider the sensitivity of the data, particularly the user profiles, exposed to the PWS server.
+Typical works in the literature of protecting user identifications (class one) try to solve the privacy problem on different levels, including the pseudo-identity, the group identity, no identity, and no personal information. Solution to the first level is proved to fragile[7]. The third and fourth levels are impractical due to high cost in communication and cryptography. Therefore, the existing efforts focus on the second level. Both [26] and [28] provide online anonymity on user profiles by generating a group profile of k users. Using this approach, the linkage between the query and a single user is broken. In [3], the useless user profile (UUP) protocol is proposed to shuffle queries among a group of users who issue them. As a result any entity cannot profile a certain individual. These works all assume the existence of a trustworthy third-party anonymizer, which is not readily available over the Internet at large.
+The solutions in class two do not require third-party assistance. In these solutions, users only trust themselves and cannot tolerate the exposure of their complete profiles an anonymity server. In [9], Krause et al. employ statistical techniques to learn a probabilistic model, and then use this model to generate the near-optimal partial profile. One main limitation in this work is that it builds the user profile as a finite set of attributes, and the probabilistic model is trained through predefined frequent queries. These assumptions are impractical in the context of PWS. Xu et al. proposed a privacy pro-
+1Open Directory Project (ODP), http://dmoz.org/ 2Wikipedia, the Free Encyclopedia, http://www.wikipedia.org/
+
+616
+
+tection solution for PWS based on hierarchical profiles [27]. Using a user-specified threshold, a generalized profile is obtained in effect as a rooted subtree of the complete profile. Unfortunately, this work does not address the query utility, which is crucial for the service quality of PWS. For comparison, our approach takes both the privacy requirement and the query utility into account.
+A more important property which distinguishes our work from [27] is that we provide personalized privacy protection in PWS. The concept of personalized privacy protection is first introduced by Xiao et al. [24] in Privacy-Preserving Data Publishing (PPDP). A person can specify the degree of privacy protection for her/his sensitive values by specifying "guarding nodes" in the taxonomy of the sensitive attribute. Motivate by this, we allow users to customize privacy needs in their hierarchical user profiles.
+Aside from the above works, a couple of recent studies have raised an interesting question which concerns the privacy protection in PWS. The works in [5, 23] have found that personalization may have different effects on different queries. Queries with larger click-entropies, namely distinct queries, are expected to benefit more from personalization, while those with smaller values (ambiguous ones) are not. Moreover, the latter may even cause privacy disclosure. Therefore, the need for personalization becomes questionable for such queries. Teevan et al. [23] collect a set of features of the query to classify queries by their click-entropy. While these works are motivative in questioning whether to personalize or not to, they assume the availability of massive user query logs (on the server side) and user feedback. In our UPS framework, we differentiate distinct queries from ambiguous ones based on a client-side solution using the predictive query utility metric.
+3. OVERVIEW OF UPS
+
+Client-side
+
+q1 q2
+
+
+
+r'1
+
+User
+
+r'2
+
+
+
+Online Generalizer
+Privacy Preference
+Complete Profile
+
+Networking
+
+q1, q2,
+
+G1 G2
+
+
+
+r1
+r2
+
+
+Server
+
+Figure 1: System architecture of UPS
+The UPS framework consists of a non-trusty search engine server and a number of clients. As illustrated in Figure 1, each client user accessing the search service trusts no one but himself/herself. The key facility for privacy protection is an online generalizer implemented as a search proxy running on the client machine itself. The proxy maintains both the complete user profile, in a hierarchy of nodes with semantics, and the user-specified (customized) privacy requirements represented as a set of forbidden nodes.
+The search process is described as following. (1) When a user issues a query qi on the client, the proxy generalizes the user profile according to both the user-specified privacy requirements and the query content. The former is used for user-level customization while the latter is for query-level customization. The output of this run-time step is a generalized user profile Gi satisfying the privacy requirements. (2) Subsequently the query and the generalized user profile are sent together to the PWS server for personalized search. (3) The search results are personalized with the profile and deliv-
+
+ered back to the query proxy. (4) Finally, the proxy either presents the raw results to the user, or reranks them with the complete user profile.
+In the next section, we shall focus on the novel techniques in (1) representing user profile in a hierarchical taxonomy; (2) generalizing the profile according to customized privacy requirements; (3) optimzing the generalization.
+
+4. DATA STRUCTURE AND PROBLEM DEFINITION
+In this section, we first introduce the structure of user profile in UPS. Then we describe the techniques to generalize a user profile. Finally, we present the attack model and formulate the problem of privacy protection in user profile generalization.
+
+4.1 User Profile
+Consistent with many previous works in personalized Web services, each user profile in UPS adopts a hierarchical tree structure. Each node in the tree is selected from a taxonomy repository. For ease of presentation, Table 1 summarizes all the symbols used in this paper.
+
+Table 1: Symbols and Descriptions
+
+Symbol Description
+
+root(T ) The root of the tree T
+
+subtr(n, T ) The subtree rooted on n within T
+
+paren(n, T ) The parent of n within T
+
+C(n, T ) Children of n within T
+
+S(T )
+
+All nodes to build the tree T
+
+P (n, T ) All nodes on the path from root of T to n
+
+We start by introducing two assumptions to formalize our definition of user profile:
+
+ASSUMPTION 1. There exists a public accessible taxonomy repository, denoted as R, which represents the entire topic domain (of human knowledge) as a huge topic hierarchy.
+
+Specifically, given any topic t detected with human knowledge, we can find a corresponding node (also referred to as t) within R. Moreover, the subtree subtr(t, R) is recognized as the taxonomy accompanying topic t.
+
+ASSUMPTION 2. Every node t within the taxonomy repository R is labeled with a coefficient called succession ratio, denoted by t.succ, which describes how likely a topic can be narrowed down from its parent node. Formally, succession ratio is defined as:
+
+t.succ =
+
+P r(t) = 1, P r(t|paren(t, R)),
+
+t = root(R) t = root(R).
+
+(1)
+
+The above assumptions can be used to define a probability model which is crucial for defining the user profile. If both assumptions are satisfied, R can be mapped to a weighted partition strategy on the probability space of the topic domain. Then, every topic inside R can be considered as a random event. The root of R represents the domain itself, and its probability is obviously 100%. For any other topic t, the probability can be calculated by multiplying the succession ratio when traversing the path from the root to t.
+
+P r(t) = t.succ × P r(paren(t, R))
+
+=
+
+s.succ
+
+(2)
+
+sP (t,T )
+
+617
+
+Database PL.Prog
+
+Reseach Privacy
+
+Web-privacy
+
+CS
+
+Develop Program C/C++
+
+Sports
+
+Swim Freestyle
+
+Perl CPAN
+
+Root
+
+Music
+
+Rock
+
+Band
+
+Eagles
+
+Sex
+
+Instrum. Guitar
+
+Bluesharp
+
+Harp
+
+Chromatic
+
+(a) H-Tree: the hierarchical profile
+
+Computr Science
+
+Music
+
+Research
+
+Develop
+
+Rock
+
+DB Privacy
+
+Prog.
+
+Artist
+
+PL
+
+PWS
+
+C Perl
+
+(b) Taxonomy of CS
+
+(c) Taxonomy of Music
+
+Sports
+
+. . . . . . Golf Swim Tennis . . . . . .
+
+Breaststroke Freestyle Backstroke Butterfly
+
+(d) Background knowledge of the Sports taxonomy Figure 2: Taxonomy-based user profile
+
+Before giving the formal definition of user profile, we also need to introduce the notion of rooted subtree.
+DEFINITION 1. (ROOTED SUBTREE) Given two trees T1 and T2, the predicate "T1 is a rooted subtree of T2" is TRUE if there exists a node set D  S(T2) that, T1 is generated by removing the subtree set {subtr(t, T2)|t  D} from T2. We use T1 = rsubtr(T2, D) to denote that T1 is a rooted subtree of T2 by removing node set D.
+Now we can formalize the user profile as follows:
+DEFINITION 2. (USER PROFILE/H-TREE) Given a taxonomy repository R, a user profile H is a rooted subtree generated from the taxonomy repository R. i.e., the predicate "H is a rooted subtree of R" is TRUE.
+As Definition 2 states, user profile H is a hierarchical representation of user's interests, in the form of a subset selected (no matter implicitly or explicitly) from the entire topic domain denoted by the repository R. Hence, H inherits all its node features from R, including the succession ratios of all nodes in H.
+A diagram of a sample H-Tree is illustrated in Figure 2(a). We can observe that the user is mainly interested in Computer Science and Music, because the major portion of this profile is made up of fragments from taxonomies of CS and Music, as shown in Figure 2(b) and 2(c) respectively. Some other taxonomies also serve in comprising the profile, for example Sports and Sex. Note that the irrelevant parts of the tree are omitted.
+
+4.2 Customized Privacy Requirements
+Customized privacy requirements are given by specifying a number of so-called forbidden-nodes. This process is also called forbidding in our work.
+Given a user profile H, a user can easily specify his/her privacy preference by selecting in H a number of sensitive topics (nodes) which are not allowed to appear in the generalized profile. These forbidden-nodes indicate the customized privacy requirements of the user and will not be disclosed to the server.
+DEFINITION 3. (FORBIDDEN-NODE SET/F (U )) Given a user U and his/her profile H, the Forbidden-Node Set, denoted as F (U ), is the set of sensitive topics specified by U that satisfies the following two constraints: 1)F (U )  S(H). 2)f 1, f 2  F (U ) (f 1 = f 2), f 1 cannot present in the subtree of f 2, i.e., subtr(f 2, H).
+In the sample profile shown in Figure 2(a), user U specifies F (U ) = {PWS-privacy, Freestyle, Perl, Eagles, Harp, Sex} as the forbidden-node set, which is highlighted in dark color in H. Apparently, all the subtrees rooted at any nodes in F (U ) must also be removed in the generalized profile. For example, both Bluesharp and Chromatic under Harp should be removed. This is because an adversary can easily infer the forbidden-nodes from them given the knowledge of the public accessible taxonomy repository R.
+Note that there are some special cases for F (U ) which do not require generalization. Specifically, F (U ) =  implies that U is willing to release the entire H, while F (U ) = {root(H)} means that U will not disclose any personal information for PWS.
+4.3 Generalizing User Profile
+Specifying a forbidden-node set F (U ) may not be enough for privacy protection, as rooted subtree rsubtr(H, F (U )) may still lead to severe privacy disclosure. In the profile shown in 2(a), the user forbids Freestyle to conceal his/her swimming stroke from others. Thus, the output of a forbidding operation on the profile only releases its parent node Swim. Unfortunately, an adversary may probably infer Freestyle, because in the background knowledge of Swim (Figure 2(d)), Freestyle is a main branch besides the other three. If all styles are equally distributed, the probability of leakage is 25%. In contrast, suppose that node Swim has numerous sibling nodes in the background knowledge of the Sports taxonomy, if we remove node Swim, making node Sports a leaf node of the generalized profile, the output would provide much stronger protection to the user's privacy. The reason is that the probability of the forbidden-node leakage (Freestyle) becomes much smaller now. The process of removing nodes which cause large probabilities of forbidden-node leakage is called pruning.
+As another example, the parent node of Harp, namely Instrument, does not need to be pruned because the latter owns a large number of child nodes in the background knowledge. To save space, we do not plot the background knowledge of the taxonomy under node Instrument.
+By performing the forbidding and pruning procedures, we can obtain a generalized user profile defined as follows.
+DEFINITION 4. (GENERALIZED PROFILE/G-TREE) A generalized profile is a rooted subtree obtained in effect by removing a node set X(U ) from H, i.e., rsubtr(H, X(U )), where X(U ) satisfies 1) f  F (U ), x  X(U ) and f  S(subtr(x, H)), 2) x1, x2  X(U ) (x1 = x2), x1 cannot present in the subtree of x2, i.e., subtr(x2, H).
+
+618
+
+The nodes in X(U ) define a guarding boundary in H. In our running example, X(U ) = {PWS-privacy, Perl, Swim, Band, Harp, Sex}, and is visualized as the red curve in Figure 2(a).
+4.4 Attack Model and Problem Definition
+
+issue
+Alice specify
+
+trans. query & RP
+eavesdrop
+
+Server
+
+Freestyle Harp
+
+
+guess
+
+access
+
+Fobidden-Node Set
+
+Eve
+
+Taxonomy-Repo.
+
+Figure 3: Attack model of personalized web search
+Based on the above discussions, we can hereby define the attack and formulate the optimization problem for generalizing user profile. Our work aims at providing protection against a typical kind of privacy attack, namely eavesdropping. Consider the scenario shown in Figure 3. To corrupt Alice's privacy, the eavesdropper Eve successfully intercepts the communication between Alice and the PWS-server through some measures, such as manin-the-middle attack, invading the server, etc. Consequently, whenever Alice issues a query, the entire copy of the query together with a run-time generalized profile G will be captured by Eve. Based on G, Eve will attempt to rebuild the original H and predict the Forbidden-Node Set of Alice, with the background knowledge from the public-accessible taxonomy repository R.
+It is worth mentioning that, in our attack model, Eve is regarded as an adversary satisfying the following assumptions.
+Knowledge-bounded The background knowledge of the adversary should be limited to the taxonomy repository R. Both the profile H and privacy are defined based on R. This makes the profilebase generalization is incapable of resisting an adversary holding knowledge beyond such scope. Session-bounded None of previous captured information is available for tracing the same victim in a long duration. In other words, the eavesdropping will be started and ended within a single query session.
+These assumptions seem strong, but are reasonable in practice. This is due to the fact that majority of privacy attacks on the Web are undertaken by some automatic programs for sending targeted (spam) advertisements to a large amount of PWS-users. These programs rarely act as a real person that collects prolific information of a specific victim for a long time as the latter is much more costly. Subsequently, the privacy disclosure can be simplified to the exposure of user-specified Forbidden-Nodes, and can be measured by the probability the adversary touch any Forbidden-Node (f F (U )) of an individual, provided that the generalized profile (G) for a given query q is intercepted. Thus, the privacy protection of personalized web search is to minimize this probability.
+Meanwhile, it is always important to minimize the loss of utility when generalizing the user profile for privacy protection. For instance, in the running example of Fig 2(a), if we prune node Sports instead of Swim from (G), the privacy of U will be protected. However, this operation should be avoided because it will
+
+introduce considerable ambiguity if U queries for something related to the freestyle stroke (maybe the server will respond with items about improvised hip-hop). We now define the problem of privacy-preserving generalization in UPS as follows. Our definition relies on both the metric of privacy and the one of utility,
+
+PROBLEM 1. (-RISK PROFILE GENERALIZATION) Given a user profile H with Forbidden-Node Set F (U ) specified, a query q, metric of privacy risk(q, G), metric of utility util(q, G) and a user specified threshold , the optimal privacy-preserving generalization is to find an optimal instance of G (denoted as G), which satisfies the following Equation 3.
+
+G = argmax(util(q, G)), risk(q, G) < 
+
+(3)
+
+G
+
+Where  is the user-tolerant upper bound of the probability the attacker can touch his/her privacy. Note that metrics risk(q, G) and util(q, G) only depends on the instance of G and the issued query q as they are implemented to predict the privacy risk and personalization utility of G over q, without any user feedback. More details of these metrics will be presented in Section 5.2.
+
+5. IMPLEMENTATION AND OPTIMIZATION
+In this section, we present our implementation of privacy-preserving generalization in UPS. The generalization is implemented in two phases, namely the offline and online phases. We shall first describe the key techniques in each phase briefly. Second, we discuss the problem of measuring utility and privacy online based on the query and generalized profile. Third, we propose two efficient heuristic algorithms to find the near-optimal trade-off between the utility and the user privacy during generalization. Finally, some extra issues are discussed.
+5.1 Implementation of Generalization
+In our solution, we initialize the client proxy (generalizer) by generating the complete user profile and his/her privacy preference during the offline processing. In the run-time, when a query is issued, the proxy computes a generalized G-profile on the fly. Specifically, our solution consists of the following steps:
+Offline-1. Hierarchical profile construction The first step of the offline processing is to build the user profile in a topic hierarchy H that reveals user interests. To construct the profile, we first transform various types of user data into a set of plain-text documents, denoted as D(U ). Then we initialize H as a single root node. Given a public accessible taxonomy repository R (e.g., ODP, Wikipedia, etc), we detect the topic t in R for every document d  D(U ), and insert the vector of t into H. At last, the profile of U is created when all the user documents are processed. It should be noted that this step is replaceable and thus it is open to all available solutions if only the generated profile satisfy Definition 2.
+
+Algorithm 1: InitSensitivityLabels(t)
+
+Input: A profile node t in H
+
+1 if C(t, H) > 0 then
+
+2 foreach node i  C(t, H) do
+
+3
+
+InitSensitivityLabels(i);
+
+4 t.sen  iC(t,H) i.sen × i.succ;
+
+Offline-2. Integration of customized privacy requirements This step detects the risk (severity) of U 's privacy corruption for
+
+619
+
+the exposure of every node t in H according to F (U ), denoted as t.sen. First, for each node t  S(H), we need to prepare for the initial value of its sensitivity based on the following rule. If t  F (U ), then t.sen is initialized to 1.0. Otherwise, t.sen is initial-
+ized to 0.0 as it is safe for sharing it. Second, our framework computes and labels the sensitivity of each node in H as Equation 4, following bottom-up fashion. This is achieved by invoking the recursive routine InitSensitivityLabels on root(H), as shown in Algorithm 1.
+
+t.sen = P r(F (U )|t) =
+
+P r(x|t)
+
+(4)
+
+xF (U )
+
+When the above two steps are finished, we have obtained the profile H with privacy preference F (U ) ready, which sets up the basis for the Online processing. When a query q is issued, the online customized generalization consists of the following two steps:
+Online-1. Query-topic mapping. Typically, a user profile H contains a variety of topics. To process query-level customized generalization on it, we need to extract the topic domain detected from the query, and use it as an early-pruning strategy to reduce the search space in the user profile. Following this idea, we employ a mapping strategy denoted by MR(.), which depends on R, to assign the query q to the related topic domain MR(q), where each topic can be found as a node in R. Moreover, each topic t  MR(q) is associated with a weight t.gain, quantifying the relevancy between q and t. Since the number of related topics of different queries might be different. For fairness these weights are normalized as t.gain = P r(t|q). Thus, the greater t.gain is, the higher possibility q covers the topic t. As the mapping strategy used here is also replaceable, different solutions can be adopted. The details of query-topic mapping will be presented in Section 5.4.
+Online-2. Cost-based generalization. On the topic domain bounded by q and H in the previous step, the Online Generalizer solves Problem 1 in a cost-based manner. The details of this technique will also be given in Section 5.3.
+
+5.2 The Metrics Used in Generalization
+Before looking into the generalization algorithm, we need to handle a major challenge for designing the algorithm. That is how to construct an appropriate metrics, namely util(q, G) and risk(q, G), to predict the personalization utility and the privacy risk on issuing a query q with a selected instance of G effectively. We will analyze these two metrics separately at first.
+The purpose of the utility metric is to predict the potential gain (in revealing the user's information goal) of the query q on a generalized profile G. Different from the similar problem proposed by Krause. et. al [9], we do not have appropriate probabilistic tools to model the user's target intention. However, we can transform this utility prediction into the estimation of the discriminating power of a given query q (together with G) under the assumption below.
+
+ASSUMPTION 3. When a PWS-strategy is given ,the search quality is only determined by the discriminating power of the query on the exposed profile.
+
+Intuitively, the fewer topics a query covers, the more specific these topics are, and the more discriminating power the query has. Based on this observation, we formalize the utility of a given q and G with the tool Mutual Information, i.e., IG(Q; T ) in Equation 5, which estimates how much knowing q reduces the uncertainty about the topic domain bounded by G.
+
+IG(Q; T ) =
+
+P r(t, q) log
+
+P r(t, q) P r(t) P r(q)
+
+qQ tS(G)
+
+(5)
+
+= P r(q)
+
+P r(t|q) log
+
+P r(t|q) P r(t)
+
+qQ
+
+tS(G)
+
+Moreover, as our solution focuses on query-level customized generalization, the query set Q contains only one query q and thus P r(q) = 1. As a result, Equation 5 can be simplified as
+
+util(q, G) = IG(Q; T ) = IG(q; T )
+
+=
+
+P r(t|q) log
+
+P r(t|q) P r(t)
+
+(6)
+
+tSq (G )
+
+= DKL(P r(t|q) P r(t))
+
+Notice that in Equation 6, Sq(G) is a special topic set constructed as follows: t  MR(q), (i) if t  S(G), t is added to Sq(G); otherwise (ii) walk through the path to t to reach the farthest topic t within G, and then add t to Sq(G). In this case, we need to add the quota of t.gain to t .gain. For example, assume that
+"Root/Sports/Football" is a related topic of the query issued by the owner of H-profile in Figure 2(a), the corresponding topic that can be added to Sq(G) is "Root/Sport".
+The cost model of privacy is recognized by the overall identifi-
+cation of an individual's sensitive topics. For simplicity, we treat the confidentiality of F (U ) as a rigid target. That is, the exposure of any single Forbidden-Node x  F (U ) is recognized as a privacy corruption. Then, the overall cost model over G is modeled as the maximum of the probability to reveal any Forbidden-Node with any topic t in G exposed. Using sensitivity labeled on each topic in G during Offline-2, we can define the privacy cost with the metric risk(q, G) in Equation 7.
+
+risk(q, G) = max
+
+P r(x|t)
+
+tSq(G) xF (U )
+
+(7)
+
+= max t.sen tSq (G )
+
+We have described how we can quantify the utility util(q, G) for any given instance of generalized profile G, and its associated privacy cost risk(q, G). Using these two predictive metrics, the
+framework UPS can embody the generalization self-adaptively. Intuitively, our goal is to find a G, that maximizes util(q, G) while keeping risk(q, G) under the threshold , as defined in Problem 1.
+
+5.3 The Optimization Algorithms
+Basically, finding the optimal generalization needs to evaluate metrics util and risk on all possible candidates. Due to the huge space of possible topics determined by the repository R, the main challenge here is to reduce the computational hardness. Suppose H is a tree having depth n and an average fanout of m. As all rooted subtrees of H are candidates of G, the number of candidates grows exponentially with m  n, as shown in Equation 8.
+
+O(m, n) =
+
+a0 = 0, an = (an-1 + 1)m,
+
+n = 0,  O(2mn) n > 0.
+
+(8)
+
+It can be proven that finding the optimal generalization candidate is NP-hard, as it is a reduction from another NP-hard problem
+
+620
+
+proposed in [9]. In [9], Krause et al. model the user profile as a finite set of personal attributes V = {v1, v2, ...vn}, and quantify the utility (of predicting the user's target) and the risk (of identifying the user) over a given set A  V . They then propose the problem of selecting an optimal subset A of attributes to reveal (known as Attribute Selection), which maximally an aggregative metrics considering both the utility and the risk as much as possible. Krause et al. have proven that this is an NP-hard search problem, which can be reduced to our problem.
+THEOREM 1. Finding Optimal -Risk Profile Generalization (Problem 1) is NP-hard.
+PROOF. The reduction is quite straightforward: Given an instance of set V in Attribute Selection, we construct a corresponding instance of the hierarchal profile H in Profile Generalization by simply considering all the attributes of V as leaves and assigning root(H) as the parent to them. In this depth-2 hierarchy, for each leaf v, its v.gain and v.sen are specified with definitions in Attribute Selection. Obviously, the output instance of G in Profile Generalization is also the solution to Attribute Selection since G is another depth-2 hierarchy having set A as leaves.
+
+Algorithm 2: GreedyUtility(H, MR(q), )
+
+Input: profile H; topic domain MR(q); threshold 
+
+Output: generalized profile G satisfying -privacy
+
+1 Calculate clarity(q) with Equation 9;
+
+2 if clarity(q) <  then
+
+3 Let umax  -;
+
+4 Let G  ;
+
+5 Let G  rsubtr(H, F (U ));
+
+6 Generate Sq(G) by imposing MR(q) on G;
+
+7 Rebuild G from Sq(G);
+
+8 while G = root(R) do
+
+9
+
+if risk(q, G) <  and util(q, G) > umax then
+
+10
+
+G  G;
+
+11
+
+umax  util(q, G);
+
+12
+
+Let x  argmaxtSq(G) util(q, rsubtr(G, {t}));
+
+13
+
+G  rsubtr(G, {x});
+
+14
+
+Update Sq(G) by replacing x with paren(x, G);
+
+15
+
+paren(x, G).gain  paren(x, G).gain + x.gain;
+
+16
+
+Normalize t.gain among t  Sq(G);
+
+17 return G;
+
+18 return root(R) as G;
+
+In view of the computational hardness in finding the optimal generalization, we propose a greedy search algorithm, called GreedyUtility, to approximate this optimization. Algorithm 2 presents the pseudo-code of the algorithm.
+The loop on line 8-16 is the core component of the algorithm. The basic idea is as follows: The algorithm iteratively chooses a topic t from the candidate set Sq(G) when a further generalization, namely removing t from G, can obtain the highest gain in the personalization utility performance util(q, G). The iteration does not terminate until G is generalized to the single root. The intermediate instance of G with maximum util and risk under the threshold  is recorded as G. Obviously, the search space of this algorithm is bounded to the number of nodes in the profile, i.e. O(mn), for a profile with average depth n and fanout m.
+The time complexity of Algorithm 2 looks poor as it needs to greedily traverse through the generalization space to find the global
+
+optimal G. Fortunately, this cost is significantly offset by the benefit of employing query-topic mapping. when we employ the related topic domain MR(q) (output of Query-topic mapping) to rebuild G, the search space of the algorithm is reduced to Sq(G). Since G is initialized with the topics in Sq(G), a considerable number of irrelevant branches (topics) at upper levels of H are pruned. Thus the initial number of leaves in G becomes very limited. As a result, the necessary number of iterations is reduced significantly after this process.
+An additional optimization implemented in Algorithm 2 is the clarity prediction, namely to make online decision of whether to personalize a query. This is based on an observation that a great number of queries are distinct enough to describe the users' information needs without ambiguity. For such queries, personalization may be unnecessary, and profile-based personalization will contribute little or even harm the quality of service, as demonstrated in [5]. We use the proposed predictive query utility to detect such queries. Formally, each query is given a clarity measure over the taxonomy repository.
+
+clarity(q) = util(q, R) = IR(q; T )
+
+(9)
+
+In the algorithm, if clarity(q) > , where  is a system parameter, we skip the generalization and do not send the personalized profile to the server.
+Algorithm 2, GreedyUtility, is the direct approximate solution to the Problem 1, which is based on the observation that users usually prefer to constrain the risk of privacy disclosure during the generalization and try to maximize the query utility. Moreover, GreedyUtility can resist adversaries without the Session-bounded constant, if the user does not increase the threshold .
+We also propose another algorithm, GreedyPerformance, which simply tries to find G that maximizes an aggregative metric perf combined with util and risk (instead of only util in GreedyUtility). GreedyPerformance is only used in experiment to analyze the trade-off between the utility and the privacy. The aggregative metric perf will be presented in Section 6.2;
+
+5.4 Extra Issues in Generalization
+As mentioned in Section 5.1, step Offline-1 and Online-1 can both be replaced by alternative methods. However, the effectiveness of the UPS framework depends largely on the taxonomy repository being used. We recommend to employ hands-on and welldefined concept categorizations, such as ODP [4, 19], Wikipedia [6, 14] etc. For other methods not based on such taxonomies [27], we can extract the repository by mining the topic distribution among the documents stored in the server. Nevertheless, this simulation is expensive to process.
+Meanwhile, our framework assumes the availability of succession ratio information within the repository R, which has been supported by many solutions, e.g., the tree-profile of [27], where each node is associated with a set of supporting documents covering its topic. The succession ratio of a topic t (i.e., t.succ) can be instanced as the proportion of t's supporting documents in the supporting documents of t's parent. In fact, even if these succession ratios are absent in the repository, we can easily simulate them. One straightforward method is to use the topological structure of the taxonomy itself. For instance, Swim only has four children in the taxonomy of Swim, as shown in Figure 2(d), and hence F reestyle.succ can be simply calculated as 1/4 = 0.25. Similarly, succession ratios of Breaststroke, Backstroke and Butterfly can be computed.
+As for the mapping strategy used in Online-1, different solutions can be adopted. While some strategies [15, 13] assigns weights
+
+621
+
+to all candidates in MR(q), others do not. In the latter situation, we can simply share weights equally among the related topics, i.e., for |MR(q)| = n, t  MR(q), t.gain = P r(t|q) = 1/n. In addition, to solutions without the ready-to-use repository, the alternative of mappings is to use the term-distance between the query and topic label. Nevertheless, such mapping strategy is unstable because it suffers from the common limitation of term-based profile, such as irrelevant words, polysomy, and synonymy etc.
+6. EXPERIMENTAL RESULTS
+In this section, we present the experimental results of UPS. We conduct three experiments on UPS. In the first experiment, we study the detailed results of the metrics in each iteration of the proposed algorithms. Second, we look at the effectiveness of the proposed Query-Topic Mapping techniques. In the third experiment, we study the effectiveness of Clarity Prediction technique and the search quality of UPS.
+6.1 Experimental Setup
+The UPS framework is implemented on a PC with a Pentium Dual-Core 2.50GHz CPU and 2GB main memory, running Microsoft Windows XP. All the algorithms are implemented in Java.
+To evaluate the UPS framework, we use the AOL search query data as our dataset, which is the most recent published data we could find. The AOL search query data contains over 20 million queries and 30 million clicks of 650k users over 3 months (March 1, 2006 to May 31, 2006). The data format of each record is as follows:
+{AnonID, Query, QueryT ime[, ItemRank, ClickU RL]}
+Where the first 3 fields stand for the user of the identifier AnonID issued the Query at the timestamp QueryT ime, and the last 2 optional fields appear when the user further click the URL ClickU RL at the position ItemRank in the rank list returned by AOL over Query. We extract query logs of 50 distinct users (with #clicks
+2000) to build 50 user profiles. For each user, the user profile is built with the documents dumped from all ClickU RL in his/her log. In the original AOL-data, the ClickU RL field is truncated to the domain name (e.g. www.une.edu/mwwc/ becomes www.une.edu) except the URL is of the protocol https. As a result, we have to recover the full URLs by means of REPLAY. That is, to re-issue the Query of the AOL-records to some designate search engines and then retrieve the URLs match ClickU RL. We processed REPLAY respectively on top-100 results returned by Yahoo and ODP, and 40% (#clicks 800) and 25% (#clicks 500) full URLs is recovered. 80% of recovered documents are used to build profile and the rest are used as the test set.
+We utilize the ODP Web Directory as the public accessible taxonomy repository R. Note that the replaceable components of the framework (i.e. Offline-1 and Online-1) are both implemented using it. To build the complete user profile, each clicked document recovered from REPLAY, is mapped to a deep ODP category3 using the method proposed by [25] and all these generated category vectors are combined together to form the profile H. Additionally, the number of pages mapped to a specific ODP category can indicate the user's personal preference on it. Finally, for each profile, we randomly choose no more than 5 topics (with depth >= 3) as the Forbidden-Nodes.
+During the Online process, we issue every query form the test
+3To focus on the pure English categories, we filtered all categories under "Top/World" and "Top/Adult/World".
+
+set to a local search engine on the dump of ODP hierarchy 4 indexed with Luecene. The query-topic mapping of Online-1 is implemented by analyzing the statistics of ODP categories labeled on the returned documents, and the relevance weight of each topic, i.e., t.gain, is represented with the category frequency. After that the optimal generalized profile G is used to re-rank the result list of the test query, the search quality can be evaluated on the ranked lists before and after personalization.
+
+6.2 Experiment 1: Micro Results of Queries
+In this experiment, we analyze and compare the effect of the generalization on queries with different clarity, and study the trade-off between utility and privacy in the GreedyPerformance algorithm. As mentioned in Section 5.3, GreedyPerformance use an aggregative metric perf which is defined with both util and risk as follows:
+
+perf (q, G) = util(q, G) -   risk(q, G),
+
+(10)
+
+where  can be considered a privacy-to-utility conversion factor. We can find different solutions of G* by varying . In effect, a small  leads to solutions with higher utility and higher cost, whereas a large values of  incurs solutions with lower utility and lower privacy cost. The algorithm GreedyPerformance is only used to validate the feasibility to trade-off between the two contradicting metrics of utility and privacy. This idea is borrowed from [9].
+All queries are clustered by their clarity values into three groups using the 1-dimensional k-means algorithm. These three groups are called Distinct Queries, Medium Queries, and Ambiguous Queries, in descending order of their respective clarity values. These groups can be specified according to the following empirical rules obtained by splitting the boundaries between two neighboring clusters.
+
+· Distinct Queries for clarity(q) > 9.3. · Medium Queries for 6.9 < clarity(q)  9.3. · Ambiguous Queries for clarity(q)  6.9.
+
+As the results of queries within the same group display similar trends in this experiment, we only plot the results of three representative queries ("Wikipedia" for Distinct Queries, "Freestyle" for Medium Queries, and "Program" for Ambiguous Queries) in Figure 4. To facilitate the comparison, all results in this experiment are generated by using a particular user profile, that is, the entire repository R. We simply use the related topics set MR(q) to be F (U ).
+As Figure 4(a) shows, the utilities of all three samples show a diminishing-returns property during generalization, especially the ambiguous one (i.e. "Program"). This indicates that the higherlevel topics in the profile are more effective in improving the search quality during the personalization, while the lower-level ones are less. This property has also been reported in [9, 27].
+In addition, we observe the following results in Figure 4(a). First the distinct queries (i.e. "Wikipedia") require much fewer iterations than the ambiguous ones. Second, the diminishing-returns properties of the utility of ambiguous queries are more apparent, while the utility of distinct queries increases almost linearly in most iterations. The reason of such results is that the distinct queries have fewer related topics (usually less than 3 in our experiment) than the ambiguous ones, and these topics are more specific. This significantly contributes to their clarity.
+In Figure 4(b), the risk first declines rapidly, but the decrease slows down as more specific profile information becomes hidden. Figure 4(c) illustrates the trade-off pattern between the utility and
+4URL: http://rdf.dmoz.org/rdf/content.rdf.u8.gz
+
+622
+
+util
+
+10.0
+
+Distinct Medium
+
+Ambiguous
+
+8.0
+
+6.0
+
+4.0
+
+2.0
+
+0.0 0
+
+20 40 60 80 100 #Iterations
+
+(a) Results of util
+
+10.0
+
+8.0
+
+util
+
+6.0
+
+Distinct
+
+4.0
+
+Medium
+
+Ambiguous
+
+2.0
+
+ = clarity(.)
+
+ 
+
+= =
+
+ccllaarriittyy((..))02
+
+0.0
+
+0
+
+0.2 0.4 0.6 0.8
+
+1
+
+risk
+
+(c) Trade-off with different 
+
+perf
+
+risk
+
+1.0
+
+Distinct
+
+Medium
+
+0.8
+
+Ambiguous
+
+0.6
+
+0.4
+
+0.2
+
+0.0 0
+
+20
+
+40
+
+60
+
+80 100
+
+#Iterations
+
+(b) Results of risk
+
+10.0
+
+Distinct
+
+Medium
+
+8.0
+
+Ambiguous
+
+6.0
+
+ = clarity(.)
+
+4.0
+
+2.0
+
+0.0 0
+
+20 40 60 80 100 #Iterations
+
+(d) Results of perf
+
+Figure 4: Results of queries during each iteration in GreedP
+
+risk measures. For all the queries, we observe an interesting finding that there is an apparent "knee" on their trade-off curve when   clarity(q). Before this tuning point, small concessions on privacy can bring great promotion on utility; while after that, any tiny increase of utility will lead to enormous increase in risk. Hence, at this knee, we can achieve near-maximal utility at near-minimum cost. Therefore, we plot perf with  = clarity(q) in Figure 4(d) for the three samples. The generalization finds out the near-optimal trade-off for all of them within limited iterations. The maximum value of overall performance of distinct queries is larger than the other groups since they have better utility.
+
+6.3 Experiment 2: Effectiveness of Query-Topic Mapping
+We first verify the effectiveness of query-topic mapping in our generalization algorithms. To facilitate the comparison, we simulate two typical user profiles: one named diverse is obtained by merging the subtrees of the related topics of the three queries groups (namely Distinct, Medium, and Ambiguous); the other named similar is obtained by randomly choosing three specific topics (lowlevel nodes) that are close in the taxonomy.
+
+Table 2: Average Number of Iterations in Generalization
+
+Profile Query Group GreedyP/U Opti-QTM Optimal
+
+diverse
+
+Distinct Medium Ambiguous
+
+8.73 29.68 95.29
+
+19.41
+8.20 × 105 1.44 × 1018
+
+1.32 × 1026 1.32 × 1026 1.32 × 1026
+
+similar
+
+Distinct Medium Ambiguous
+
+5.47 17.13 49.97
+
+12.55
+1.56 × 104 1.15 × 109
+
+8.99 × 1011 8.99 × 1011 8.99 × 1011
+
+the search space to the size of the rebuilt profile (with Sq(H) as leaves), therefore ensuring the efficiency of online generalization.
+
+6.4 Experiment 3: Results of Clarity Prediction and Search Quality
+
+In this experiment, we demonstrate the effectiveness of the pro-
+
+posed Clarity Prediction technique, and evaluate the real search
+
+quality on commercial search engines using our UPS framework.
+
+The search results is re-ranked with the generalized profile output
+
+by GreedyU tility over 50 target users. The final search quality is
+
+evaluated using the Average Precision (denoted as AP) of the click
+
+records of the users. AP is defined as
+
+n
+AP =
+
+i /n
+
+(11)
+
+i=1 li.rank
+
+where li is the ith relevant link identified for a query, and n is the number of relevant links.
+For each test query, the framework computes the Borda fusion[5] of the UPRank u and the original rank o as the personalized ranking, and then evaluate the AP of the search results on both the fusion and the original ranking. UPRank is defined as the descending order of link l sorted by the uscore, which is the weighted sum over topics reserved in profile G, where the weight rel(l, t) is the relevance between the link and the profile topic [25]. The uscore is given by
+
+uscore(l) =
+
+rel(l, t).
+
+(12)
+
+tSq (G )
+
+Figure 5 shows the average AP of the ranks before (Original) and after (Fusion) personalization (GreedyUtility with  = 0.1 and
+
+clarity prediction feature disabled) on the test queries respectively on Yahoo and ODP. From both results we can observe that improve-
+
+ments of the search quality for Medium Queries and Ambiguous
+
+Queries are much more significant than that of Distinct Queries. In particular, the personalization on Distinct Queries of Yahoo results reduces the average performance from 73.4% to 63.6%. This is be-
+
+cause some irrelevant profile topics (noises) are added. The results
+
+demonstrate that profile-based personalization is more suitable for queries with small clarity(q). Therefore, clarity prediction is an effective technique to determine whether personalization can improve the search quality of a given query.
+
+Average Precision (%) Average Precision (%)
+
+90
+
+Original
+
+80
+
+Fusion
+
+70
+
+60
+
+50
+
+40
+
+30
+
+20
+
+10
+
+0 Distinct Medium Ambiguous
+
+(a) Yahoo
+
+90
+
+Original
+
+80
+
+Fusion
+
+70
+
+60
+
+50
+
+40
+
+30
+
+20
+
+10
+
+0 Distinct Medium Ambiguous
+
+(b) ODP
+
+Figure 5: Effectiveness of clarity prediction
+
+Table 2 lists the average number of iterations of different algorithms, where Opti-QTM and Optimal stand for the exhaustive algorithms (with or without Query-Topic Mapping respectively) to find the optimal generalized profile. We can find that the original search space of Optimal is so huge that it is impractical to process the exhaustion on a complete profile. The introduction of Query-Topic Mapping reduces the search space significantly in Opti-QTM. However, the efficiency of exhaustion is still intolerable when Sq(H) is large. Our greedy algorithms further reduce
+
+Figure 6 shows the results of search quality by varying the  threshold. It is observed that the average precision of FusionRank increases rapidly when  grows from 0.0 to 0.1. Then, further increasing  (in effect exposing more specific topics) will only improve the search quality marginally. Moreover, the AP of FusionRank based on Yahoo (Figure 6(a)) has a dramatic drops when  >= 0.3.
+A comparison between the personalization results of ODP and Yahoo reveals that, although the original ODP-Rank (AP = 37.3%)
+
+623
+
+Average-Precision (%) Average-Precision (%)
+
+70
+60
+50
+40
+30 Fusion Original
+20 0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 Privacy threshold 
+(a) Yahoo
+
+70
+60
+50
+40
+30 Fusion Original
+20 0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 Privacy threshold 
+(b) ODP
+
+Figure 6: Results of personalized search performance
+
+is much worse than the original Yahoo-Rank (AP = 46.7%), personalization on ODP will generate better ranking than that on Yahoo. The reason for this maybe is that the document-distribution of ODP over all the available topics is expectedly more consistent with its own taxonomy repository, which has been used to implement our framework.
+7. CONCLUSIONS
+This paper presented a client-side privacy protection framework called UPS for personalized Web search. UPS could potentially be adopted by any PWS which captures user profiles in a hierarchical taxonomy. The framework allowed users to specify customized privacy requirements via the hierarchical profiles. In addition, UPS also performed online generalization on user profiles to preserve the personal privacy without compromising the search quality. We proposed two greedy algorithms, namely GreedyUtility and GreedyPerformance, for the online generalization. The GreedyUtility algorithm could maximize the query utility while maintaining the disclosure probability below a user-specified threshold. The GreedyPerformance algorithm could be used to strike a balance between the disclosure risk and the search quality. We also designed a novel method for deciding whether to personalize a query on-the-fly. This method was distinguished from the existing approaches as it completely relied on the client-side utility estimation of the query. Our experimental results revealed that UPS could achieve quality search results while preserving user's customized privacy requirements. The results also confirmed the effectiveness and efficiency of our solution.
+For future work we will try to resist adversaries with boarder background knowledge, such as richer relationship among topics (e.g., exclusiveness, sequentiality, etc.), or capability to capture a series of k requests from the victim. We will also seek more sophisticated method to build the user profile, and better metrics to predict the performance (especially the utility) of UPS.
+8. ACKNOWLEDGMENTS
+This work is supported in part by the National Science Foundation of China (NSFC Grant No. 60803003, 60970124).
+9. REFERENCES
+[1] R. Baeza-Yates and B. Ribeiro-Neto. Modern Information Retrieval. Addison Wesley Longman, 1999.
+[2] J. S. Breese, D. Heckerman, and C. M. Kadie. Empirical analysis of predictive algorithms for collaborative filtering. In UAI, pages 43­52, 1998.
+[3] J. Castellí-Roca, A. Viejo, and J. Herrera-Joancomartí. Preserving user's privacy in web search engines. Comput. Commun., 32(13-14):1541­1551, 2009.
+
+[4] P. A. Chirita, W. Nejdl, R. Paiu, and C. Kohlschütter. Using odp metadata to personalize search. In SIGIR, 2005.
+[5] Z. Dou, R. Song, and J.-R. Wen. A large-scale evaluation and analysis of personalized search strategies. In WWW, pages 581­590, 2007.
+[6] E. Gabrilovich and S. Markovich. Overcoming the brittleness bottleneck using wikipedia: Enhancing text categorization with encyclopedic knowledge. In AAAI, 2006.
+[7] K. Hafner. Researchers Yearn to Use AOL Logs, but They Hesitate. New York Times, August 23, 2006.
+[8] K. Järvelin and J. Kekäläinen. Ir evaluation methods for retrieving highly relevant documents. In SIGIR, pages 41­48, 2000.
+[9] A. Krause and E. Horvitz. A utility-theoretic approach to privacy in online services. J. Artif. Intell. Res. (JAIR), 39:633­662, 2010.
+[10] J. Pitkow, H. Schütze, T. Cass, R. Cooley, D. Turnbull, A. Edmonds, E. Adar, and T. Breuel. Personalized search. Commun. ACM, 45(9):50­55, 2002.
+[11] A. Pretschner and S. Gauch. Ontology-based personalized search and browsing. In ICTAI '99, 1999.
+[12] F. Qiu and J. Cho. Automatic identification of user interest for personalized search. In WWW, pages 727­736, 2006.
+[13] G. Qiu, K. Liu, J. Bu, C. Chen, and Z. Kang. Quantify query ambiguity using odp metadata. In SIGIR, 2007.
+[14] K. Ramanathan, J. Giraudi, and A. Gupta. Creating hierarchical user profiles using wikipedia. HP Labs, 2008.
+[15] P. Schönhofen. Identifying document topics using the wikipedia category network. WIAS, 7(2):195­207, 2009.
+[16] X. Shen, B. Tan, and C. Zhai. Context-sensitive information retrieval using implicit feedback. In SIGIR, 2005.
+[17] X. Shen, B. Tan, and C. Zhai. Implicit user modeling for personalized search. In CIKM, 2005.
+[18] X. Shen, B. Tan, and C. Zhai. Privacy protection in personalized search. SIGIR Forum, 41(1):4­17, 2007.
+[19] M. Spertta and S. Gach. Personalizing search based on user search histories. In WI, 2005.
+[20] K. Sugiyama, K. Hatano, and M. Yoshikawa. Adaptive web search based on user profile constructed without any effort from users. In WWW, 2004.
+[21] B. Tan, X. Shen, and C. Zhai. Mining long-term search history to improve search accuracy. In KDD, 2006.
+[22] J. Teevan, S. T. Dumais, and E. Horvitz. Personalizing search via automated analysis of interests and activities. In SIGIR, pages 449­456, 2005.
+[23] J. Teevan, S. T. Dumais, and D. J. Liebling. To personalize or not to personalize: modeling queries with variation in user intent. In SIGIR, pages 163­170, 2008.
+[24] X. Xiao and Y. Tao. Personalized privacy preservation. In SIGMOD, 2006.
+[25] D. Xing, G.-R. Xue, Q. Yang, and Y. Yu. Deep classifier: automatically categorizing search results into large-scale hierarchies. In WSDM, pages 139­148, 2008.
+[26] Y. Xu, K. Wang, G. Yang, and A. W.-C. Fu. Online anonymity for personalized web services. In CIKM, pages 1497­1500, 2009.
+[27] Y. Xu, K. Wang, B. Zhang, and Z. Chen. Privacy-enhancing personalized web search. In WWW, pages 591­600, 2007.
+[28] Y. Zhu, L. Xiong, and C. Verdery. Anonymizing user profile for personalized web search. In WWW, pages 1225­1226, 2010.
+
+624
+
+

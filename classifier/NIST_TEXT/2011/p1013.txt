@@ -1,0 +1,969 @@
+Recommending Ephemeral Items at Web Scale
+
+Ye Chen
+Microsoft Corporation Mountain View, CA 94086 USA
+yec@microsoft.com
+
+John F. Canny
+University of California, Berkeley Berkeley, CA 94720 USA
+jfc@cs.berkeley.edu
+
+ABSTRACT
+We describe an innovative and scalable recommendation system successfully deployed at eBay. To build recommenders for long-tail marketplaces requires projection of volatile items into a persistent space of latent products. We first present a generative clustering model for collections of unstructured, heterogeneous, and ephemeral item data, under the assumption that items are generated from latent products. An item is represented as a vector of independently and distinctly distributed variables, while a latent product is characterized as a vector of probability distributions, respectively. The probability distributions are chosen as natural stochastic models for different types of data. The learning objective is to maximize the total intra-cluster coherence measured by the sum of log likelihoods of items under such a generative process. In the space of latent products, robust recommendations can then be derived using na¨ive Bayes for ranking, from historical transactional data. Item-based recommendations are achieved by inferring latent products from unseen items. In particular, we develop a probabilistic scoring function of recommended items, which takes into account itemproduct membership, product purchase probability, and the important auction-end-time factor. With the holistic probabilistic measure of a prospective item purchase, one can further maximize the expected revenue and the more subjective user satisfaction as well. We evaluated the latent product clustering and recommendation ranking models using real-world e-commerce data from eBay, in both forms of offline simulation and online A/B testing. In the recent production launch, our system yielded 3-5 folds improvement over the existing production system in click-through, purchase-through and gross merchandising value; thus now driving 100% related recommendation traffic with billions of items at eBay. We believe that this work provides a practical yet principled framework for recommendation in the domains with affluent user self-input data.
+This work was mainly conducted when the authors were affiliated with eBay Inc.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+Categories and Subject Descriptors
+H.3.3 [Information Search and Retrieval]: Clustering, Information filtering.
+General Terms
+Algorithms, Experimentation, Performance
+Keywords
+Recommender systems, collaborative filtering, generative models, clustering, Bayesian methods, evaluation
+1. INTRODUCTION
+Recommendation for online marketplaces such as eBay raises several unique challenges. First, a majority of items are ad hoc listings not covered by any predefined product or catalog taxonomy. This can be partially attributed to the nature of the inventory under study, which features a very long tail of item types and, not uncommon, "one-of-akind" inventory. Besides, to maintain such a catalog so to capture a highly dynamic and diverse inventory can be a daunting task. We approach this challenge by deliberately reducing volatile and noisy item data to persistent and robust latent products [6]. The latent products shall discover statistical structure underlying the item data, and may not necessarily have bearings on physical products. The projection space should be ultimately optimized for the effectiveness of recommendation or other information retrieval and filtering tasks.
+Second, the historical transactional data at the user level is very sparse. For example, over a three-month period of time at eBay, each buyer on average made 17.31 bids and won 5.63 of them. The publicized Netflix user-movie rating data, on the other hand, has 208.33 ratings on average for each user [3], i.e., more than 30-fold sparser for purchases and 10-fold sparser for bids with the eBay transactional data. User-item ratings are not available in eBay's dataset1, nor this kind of ratings are appropriate or calibrated preference measure for such a diverse inventory. We argue that historical purchases are at least no worse than rating-based collaborative filtering (CF) data, since purchases reflect monetary commitments. However, given the sparsity of historical transactions or bid attempts, the stateof-the-art CF approaches, devised for rating-based datasets,
+1There does exist a feedback score from a buyer towards a seller with regard to an item purchase, but this cannot be used as user-item rating due to the significant role played by the seller.
+
+1013
+
+such as latent factor models [17] may not be directly applicable or work as well. From the data perspective, we need to incorporate more implicit preference data such as search queries and results, item views, personalized saved searches and tracked items, bids and purchases. From the method perspective, we apply na¨ive Bayes to recognize co-preference or sequential-preference patterns [7]. The compactness of na¨ive Bayes is especially desired for such a sparse and noisy dataset, and it provides a probabilistic preference score for each candidate item. Recommendations can then be made by ranking and filtering candidates.
+2. FROM ITEMS TO PRODUCTS
+Deriving robust product concepts from item descriptions is an important first step for subsequent delivery of auction suggestions. Since most items are unique, typical modeling methods cannot be applied to user behavior since there is no link between user behaviors with the same or similar items. Items are defined by about 10 title words, possibly attribute values, a leaf category, price, and otherwise by behavioral data such as user views, bids and purchases. Our goal is to map each item ID to a more general product ID, i.e., to derive a map f : I  P , where I is the space of possible item features, and P is the set of product labels. so the problem is a clustering problem. In many similar cases such as movie and book recommendation, ad targeting or even text clustering, a projection map g would be applied from I to a lower dimensional space before clustering is applied. However, that approach is not suitable here for several reasons. Instead we apply model-based clustering directly to the item data such as a bag-of-words feature vector for title text. The reasons are as follows:
+First of all, title descriptions are extremely sparse having only about 10 terms on average in the case of eBay items. By contrast, movie data, texts for document clustering, or user history for targeting have hundreds or thousands of events. These events are highly correlated (e.g., users have similar ratings of similar movies) and projection serves to normalize dependencies (i.e., SVD creates a spherical Gaussian distribution in the low-dimensional space) and, most importantly, to robustly estimate the coordinates in the projection space. For such estimate to be accurate, the number of parameters in a typical record should be much larger than the dimension of the projection space. In the examples above, a good ratio of data parameters to dimension is 10:1. If the projection space dimension is too high, there is little or no value to the projection step. The variance is normalized, but this could equally well be achieved by normalizing the metric used in the original space. However, there is no "cleaning" of the data accomplished in such a projection. In practice, performance is very poor as the projection dimension approaches the number of item parameters in all the examples above.
+More importantly, the statistical dependencies between title words in eBay items are very different from the other examples above. In the first place, they are already quite independent. Users consciously try to describe the important features of their item in relatively few words. In many cases, words are genuine attributes or product category names. What dependencies remain are highly localized and product specific. For instance, the term "red" has high co-occurrence with products that come in a red version (e.g., iPods), but zero co-occurrence with products that do not come in red (e.g., iPhones). All other attributes have similar properties.
+
+Thus dependencies are entirely local in the product space, and it does not make sense to look for a global map from the title word space to a latent space. This differs from the other examples above where there are global dependencies based on user preference or document topic. Finally, by using a generative clustering method, we can accurately model these dependencies in the original parameter space. This opportunity is lost after a global projection.
+
+3. A LATENT PRODUCT MODEL
+In this section we formally describe the generative clustering model for learning latent products. An item x is the basic unit of transaction, embodied by a set of unstructured and heterogeneous data including auction title, description, attribute name-value pairs, price, among others. The item data can be categorized into three types: (1) binary variables for term occurrences in textual data such as auction title and description, i.e., b = (b1, b2, . . . , bV ) where V is the size of vocabulary; (2) categorical variables for indexed attribute values such as brand and color, i.e., c = (c1, c2, . . . , cU ) where U is the number of attributes; and (3) continuous variables for numerical data such as price, i.e., g = (g1, g2, . . . , gS) where S is the dimension of numerical feature space. A dense representation of an item thus becomes a 3-tuple of vectors: x = (b, c, g).
+A latent product z is the persistent concept underlying items. We use a binomial distribution Binom(p) to model each binary variable, a multinomial distribution Mult() for each categorical variable, and a Gaussian distribution N (µ, 2) for each continuous variable, possibly after log transformation. Notice that we only allow one trial for each binomial and multinomial process per item, i.e., Bernoulli and categorical distributions, respectively. The one-trial specialization is appropriate for the item data, since sellers tend to use concise words for listing items and repeated terms are less relevant. A categorical attribute's values are mutually exclusive, hence an item has exactly one value. We further assume the variance 2 of a continuous variable is a constant w.r.t. a collection of items. A latent product is then represented as a vector of Bernoulli success probabilities, multinomial parameters, and Gaussian means: z = (p1, p2, . . . , pV , 1, 2, . . . , U , µ1, µ2, . . . , µS). The belongingness of an item to a latent product is stochastically modeled as the following generative process:
+
+1. For binary variables: bv  Binom(pv), v  {1, . . . , V };
+
+2. For categorical variables: cu  Mult(u), u  {1, . . . , U }; 3. For continuous variables: gs  N (µs, 2), s  {1, . . . , S}. Given a latent product zk, the likelihood of an item xi is:
+
+p(xi|zk) =
+
+pkv
+
+(1 - pkv) ku
+
+v:biv =1
+
+v:biv =0
+
+u
+
+×
+
+ 1 exp - (gis - µks)2 , (1)
+
+s 22
+
+22
+
+where ku is the multinomial probability corresponding to the outcome ciu. The log likelihood is then:
+
+(xi|zk) 
+
+log (pkv) +
+
+log (1 - pkv)
+
+v:biv =1
+
+v:biv =0
+
++
+
+1 log (ku) - 22
+
+(gis - µks)2.
+
+(2)
+
+u
+
+s
+
+1014
+
+3.1 Parameter Estimation
+Given a set of items I = {xi}ni=1, we wish to learn a smaller set of latent products P = {zk}m k=1 and derive assignments of items xi to latent products zk with maximum likelihood, such that the total intra-product log likelihood of the item data I is maximized.
+
+(z1, . . . , zm) = argmax
+
+ik (xi|zk),
+
+(3)
+
+(z1,...,zm) k i
+
+where ik is an indicator variable for item-product membership.
+The latent product vectors (z1, . . . , zm) are the only model parameters to be estimated, while ik can be viewed as hidden variables. The hard product membership assumption directly yields the maximum likelihood estimate (MLE) of ik with zkk fixed. Since we use binomial, multinomial and Gaussian distributions to model item generation, the MLE of the latent product parameters zk are simply given by the means of the item random vectors belonging to that product. We thus derive the following EM algorithm:
+
+
+
+1 k = argmax (xi|zk ),
+
+E-step: ik 
+
+k
+
+(4)
+
+0 otherwise.
+
+M-step: zk  E (xi|ik = 1) .
+
+(5)
+
+In a standard EM algorithm, the E-step would compute the expectation of hidden variables. In our formulation however, the expected value of ik is deterministically given by its MLE. This approach is referred to as a variant of the generalized EM, or essentially an alternating coordinate ascent [20]. The model so far is quite similar to k-means clustering. However, there are significant differences in distance metric and cluster assignment. As we show later in the experiments, our probabilistic distance outperforms traditional metrics such as Euclidean and cosine similarity. More importantly, the probabilistic item-product belongingness allows us to derive a probabilistic item preference score for recommendation purpose.
+The initialization of (z1, . . . , zm) is obtained by first uniformly randomly sampling m groups of items and then performing a M-step assuming that these groups represent m latent products, respectively. To address the sparsity and possible noise of such initialization, we further smooth the local parameters zk by the background probabilities q, i.e., the Jelinek-Mercer method [16]:
+
+zk  (1 - )zk + q,
+
+(6)
+
+where the background probabilities q are obtained by performing a M-step assuming that the entire set of items are generated from a single global latent product, and  is the smoothing factor with a relatively small value, e.g.,  = 0.01. It is also desired to perform smoothing after each iteration of EM for the same reason of sparsity, especially at the early stage. A Bayesian smoothing method would impose a conjugate prior for zk [23]. We choose the interpolation form mainly for computational efficiency, as elaborated in Section 3.2.
+It is important to note that item clustering is an intermediate step towards recommendation learning, its primary goal is a mild entropy reduction or data cleaning. Our choice of the hard item-product membership has serious advantages in production in space and time. The current production implementation writes belonging latent products to the item
+
+search indexing system; hence allowing for two latent products for each item would double the precious production storage, as well as the item scoring and ranking time.
+
+3.2 Efficient Inference
+
+The inferential task given a model trained is to assign an unseen item x to a derived latent product with maximum log likelihood:
+
+k = argmax (x |zk),
+
+(7)
+
+k
+
+which is identical to a final E-step. The same calculation (Estep) is performed iteratively during clustering, and dominates the run-time of training with a complexity of O(nmV ) for a na¨ive dense implementation. Therefore the key to the performance is an efficient method to evaluate Eq. (2). For clarity, we will describe a method for the Bernoulli terms only, which are very numerous and sparse. Since the method involves only association of indices, the generalization to multinomial and Gaussian scores should be obvious. There should be only a few multinomial and Gaussian parameters and they are assumed to be dense. The simplified score after smoothing becomes:
+
+(xi|zk) =
+
+log ((1 - )pkv + qv)
+
+v:biv =1
+
+(8)
+
++
+
+log (1 - (1 - )pkv - qv).
+
+v:biv =0
+
+Let us define pa = (1-)pkv +qv and pb = qv, and further split the right-hand side of the above according to whether pkv is zero or not:
+
+(xi|zk) =
+
+log (pa)
+
+v:pkv >0,biv =1
+
++
+
+log (1 - pa)
+
+v:pkv >0,biv =0
+
+(9)
+
++
+
+log (pb)
+
+v:pkv =0,biv =1
+
++
+
+log (1 - pb),
+
+v:pkv =0,biv =0
+
+which can be rewritten by pre-computing dense biv = 0 terms as default:
+
+(xi|zk) =
+
+log
+
+v:pkv >0,biv =1
+
+pa 1 - pa
+
++
+
+log (1 - pa)
+
+v:pkv >0
+
++
+
+log
+
+v:pkv =0,biv =1
+
+pb 1 - pb
+
++
+
+log (1 - pb),
+
+v:pkv =0
+
+(10)
+
+and we can push this idea one step further by assuming
+
+1015
+
+pkv = 0 in a densified pre-computation:
+
+(xi|zk) =
+
+log
+
+v:pkv >0,biv =1
+
+pa(1 - pb) (1 - pa)pb
+
++
+
+log 1 - pa
+
+v:pkv >0
+
+1 - pb
+
++ log (1 - pb)
+
+v
+
++
+
+log pb .
+
+v:biv =1
+
+1 - pb
+
+(11)
+
+We notice that of these four right-hand side terms, only the first depends on both the cluster k and the item i. It comprises only terms which are shared between both the item, and the nonzero components of pkv. By pre-computing the item-independent sparse vectors akv = (log (pa)-log (1 - pa)- log (pb) + log (1 - pb)) only at nonzeros of pkv, we can evaluate this first sum with a sparse matrix product v akvbiv. The second and third right-hand side sums have been made independent of the item data, and so can be computed only once for each cluster, where the third term is in fact constant across all clusters. The fourth sum depends on the item data and pb. But pb depends only on the background probability, and not cluster data. There is no need to compute this term when deciding how to assign an item since it is fixed for that item. Therefore if we define
+
+ek =
+
+log
+
+v:pkv >0
+
+1 - pa 1 - pb
+
++ log (1 - pb),
+v
+
+(12)
+
+then to assign an item to a cluster, we only need compute the partial score:
+
+(xi|zk)  akvbiv + ek,
+v
+
+(13)
+
+while the complete score including cluster-independent terms is:
+
+(xi|zk) = akvbiv + ek + fvbiv,
+
+v
+
+v
+
+(14)
+
+where fv = log (pb) - log (1 - pb). On typical data (cluster size around 20, several million
+items), there is only one overlapping term between a random item and a random cluster. With a straightforward sparse matrix multiplication implementation, one item-cluster comparison takes about 4 nanoseconds on a 3GHz single processor machine. For existing items which should account for the majority of inventory, we perform an offline batch final E-step to build an item-to-product (I2P) map, which is a sparse matrix for latent products lookup from query items. Since recommendations are derived at the latent product level, we also need to store a product-to-item (P2I) map, where P2I = I2P , to lookup items from recommended latent products.
+It is important to emphasize that the efficient inference described above generalizes to standard clustering and other problem domains with high-dimensional sparse data [12], such as language models for information retrieval [23]. A similar decomposition as Eq. (11) can be readily derived for k-means with squared Euclidean distance by pre-computing instance-independent and non-linear (quadratic) terms, while in our case log terms are pre-computed. The complexity of
+
+E-step now reduces to O(nm  nnzx), where nnzx is the average number of nonzeros per item. Given a typical vocabulary size of 100K and item size of 10, the speed-up is 10K times.
+3.3 Cluster Management
+The number of latent products m, as in other clustering methods, is an input parameter to the algorithm. The choice of m depends on domain requirements, particularly the desired granularity level of latent products. Accurate recommendations require fine-grained latent products, but too fine granularity may suffer noisy and unreliable recommendations. This is yet another instance of precision-recall trade-off, and the optimization objective in our case is to maximize the effectiveness of recommendations.
+We wish to learn a relatively large number of latent products with high intra-product uniformity to make precise recommendations, while keeping the size of each product cluster above a certain threshold to maintain an acceptable recall level. Hence we use the following heuristics for cluster management:
+
+1. Given n input item examples, initialize m = n/d centroids as generating latent products by random sampling described in Section 3.1. Here d is the target average size of a cluster, e.g., d = 20.
+
+2. After each EM iteration, specifically the M-step, dissolve clusters with a size less than a threshold (too noisy), i.e., |zk| < . Here is the minimum cluster size we want to maintain, e.g., = 5.
+
+3. After every even EM iteration, break clusters with a size above a threshold (too diverse), i.e.,
+
+|zk|  exp (µ(log (|z|)) + (log (|z|))),
+
+(15)
+
+where µ(·) and (·) denote the mean and standard deviation of log cluster size respectively; and  gives -sigma threshold, e.g.,  = 3. We then randomly sample a subset of items in dissolved clusters as new centroids, using the same d as item-product ratio.
+
+3.4 Related Models
+Mixture models have been widely used for clustering, where each cluster is represented as a parametric distribution, e.g., a mixture of multinomial for document clustering [21]. Under a mixture model for learning latent products, the likelihood of an item xi is:
+
+p(xi) = p(zk)p(xi|zk),
+
+(16)
+
+k
+
+where an item xi is modeled as a convex combination of m latent product distributions p(xi|zk) with mixture proportions p(zk). The mixture model assumes soft product membership of items, i.e., an item-level mixture; and model parameters can be estimated by using the standard EM algorithm. The mixture approach is more statistically sound for semantically rich data such as documents and images, but less so for the item datasets that we are investigating for recommendation. An ordinary document often exhibits multiple topics, but an item is physically associated with exactly one product. In other words, soft membership is not well-motivated for item-to-product projection. Instead, we
+
+1016
+
+want to impose very sparse per-item latent product mixture proportions.
+Latent variable models, such as pLSI [14], LDA [4] and recent adaptation for recommendation [1, 2, 15, 22], allow even greater model expressiveness, i.e., a word-level topic mixture. However, these models do not serve the specific purpose of learning latent products, that is, a mild entropy reduction (e.g., 10-fold) with high within-cluster coherence (i.e., intra-product likelihood) in order to subsequently derive robust recommendations.
+Finally, we shall note that our method is a heterogeneous generalization of the multivariate Bernoulli model originated from text classification [19, 24]. As we showed in Section 3, the same centroid-based generative approach shall work for any heterogeneous combination of parametric distributions, as long as the MLE of model parameters can be obtained as the expectation of feature vectors.
+
+4. NAÏVE BAYES RECOMMENDER
+
+Now that we have inferential machinery mapping volatile items to persistent latent products, we can perform recommendation by using the following na¨ive Bayes for ranking:
+
+y = argmax p(y|x)  argmax p(x, y),
+
+(17)
+
+y
+
+y
+
+where x denotes a contextual or historical transaction of a latent product which will be used as the input to the recommender, e.g., a buyer's last purchase; and y indexes the recommended product for next purchase.
+
+4.1 Product-level Recommendation Model
+Given the objective of a recommender is to maximize sales, it is desired to compute p(x, y) in Eq. (17) as the joint probability of purchasing both x and y. However, purchase data is extremely sparse2, which makes the estimate noisy. Thus we smooth the pure purchase probability with other less sparse behaviors yet indicative of user preference, including clicks (i.e., clicking on a search result and landing to a view item page) and bids. Furthermore, it is unrealistic to assume a user is exposed to the entire inventory, so a normalized preference score should be made conditional on views (i.e., viewing search results). Finally, even the click or bid co-occurrence data can still be sparse, thus we further smooth the co-preference probability with a unigram popularity score dependent only on the candidate product y using Laplace smoothing.
+Formally, let C be an m × m matrix of co-occurrences, where a subscript pair index the co-occurring latent products and a superscript pair encode the behavioral types respectively. For example, Cyvxb is the number of users who bid on x and viewed y. We consider four types of co-occurrence patterns: (1) bid-bid (bb), (2) purchase-purchase (pp), (3) clickbid (cb), and (4) view-bid (vb). The product-to-product preference probability is:
+
+p(y|x)
+
+=
+
+1 Cybxb
+
++
+
+2 Cypxp
+
++
+
+3 Cycbx
+
++
+
+ ,
+
+Cyvxb + /p(y)
+
+(18)
+
+where (1, 2, 3) are coefficients for a convex combination of the three co-preference patterns,  is the smoothing factor,
+
+2Over a two-month period in one of the most popular categories at eBay (Clothing, Shoes & Accessories), above 50% of users only made one item purchase.
+
+and p(y) is the baseline popularity of y:
+
+p(y)
+
+=
+
+1Cyp + 2Cyb max (Cyv
+
++ 3 , )
+
+Cyc
+
+,
+
+(19)
+
+where (1, 2, 3) are mixture weights and  is a small value for numerical protection, e.g.,  = 1.0 × 10-8. Here C with
+a single subscript denotes a unigram count (for one latent
+product only) of a behavioral type encoded in a superscript. For instance, Cyv is the number of users who viewed y.
+
+4.2 Counting Co-occurrences
+To compute the product-to-product co-preference probability in Eq. (18) mainly involves counting co-occurring events, which is the computational bottleneck in offline training. Of the four co-occurrence matrices in Eq. (18), the view-bid matrix Cvb is the least sparse. We now use Cvb as an example to discuss several important design issues for a sound and scalable implementation.
+It turns out that one can leverage efficient sparse matrix operations to obtain the co-occurrence matrices. Since we count events in terms of users, we first form product-user count matrices, one for each relevant event type, by scanning the transactional data once and performing the inference in Eq. (7). Let Dv be an m × l product-user matrix of view counts, Db be a bid counts matrix with the same dimensions, and both use sparse representation. The cooccurrence matrix Cvb is then obtained by a sparse matrix multiplication DvDb . Furthermore, one only needs to count Cvb entries when at least one of the three numerator terms Cbb, Cpp, and Ccb has a nonzero corresponding entry. A dominant user behavioral conversion flow is: view  click  bid  purchase, and view events are typically an order of magnitude denser than non-view events; thus to leverage the data sparsity further we only count Cvb entries when the corresponding Ccb count is nonzero:
+
+Cvb = DvDb , (x, y) where Cycbx > 0.
+
+(20)
+
+The time period over which the co-occurrence matrices are defined (counted) is important, since the association between co-occurring events becomes noisier as they are spaced farther apart. Thus we only count co-occurring events if they happened within a relatively short overlapping time window. On the other hand, if the length of an overlapping window gets too short, there will be very few co-occurrences collected. We use a t × w sliding window to count cooccurrences, which works as follows. Along the time axis, we increment w-day transactional data into a t × w-day sliding window, and over which perform one iteration of counting. The t × w-day sliding window thus moves forward by w-day per iteration until the entire training period is exhausted. This design asserts that one pair of events co-occurred within a small w-day window casts t times as many counts as were the pair happened t×w-day apart. Our experiments showed that a 3 × 7-day sliding window gives optimal recommendations, as illustrated in Figure 1.
+A typical user first issues a search query, then views the search results, and potentially clicks some result landing to an item page. Since this voluntary user conversion course can be considered as a Markov chain and starts with clickthrough, i.e., view  click, it is critical to model the clickthrough process in a principled manner. It is known that the presentational position or rank of a result link in a search result page has significant impact on click-through
+
+1017
+
+t = 3 w = 7-day
+
+iteration 1:
+
+counting iteration 2:
+
+counting iteration 3:
+
+iteration 4:
+
+counting
+
+counting
+
+Figure 1: t × w-day sliding window.
+
+rate (CTR) [5, 11]. We adopt the position-bias model developed in [8], which imposes a positional prior to normalize (multiply) view count. A bottom position will have a lower prior probability than those higher up in a search result page, where a positional prior can be interpreted as the probability of a user physically viewing the link. Thus a result link showing at a lower position will only have a fraction of one normalized view count. From the click-through perspective, a user clicking lower-position item links effectively casts more preference votes (to Eq. (18)) than were these links shown at higher positions. We use an empirical positional prior distribution as follows,
+
+p(r; , ) = 1 r-, r = 1, 2, . . . , .
+
+(21)
+
+Z1
+
+Here  is a positive real number implying the rate at which
+
+a prior decreases as the positional rank r moves down in a
+
+search result page,  is the lowest rank the prior covers, and
+
+Z1 =
+
+ r=1
+
+r-
+
+is a normalizing constant.
+
+A default eBay
+
+search result page shows 50 item links and almost all clicks
+
+are from the first page, hence it is not only practically suf-
+
+ficient but also computationally efficient to define the prior
+
+over a discrete and finite range [1, 50]. When  = 0.5, there
+
+is a 7-fold a priori difference in CTR between the top and
+
+bottom positions, which fits well to the eBay search click-
+
+through data and is aligned with other similar domains such
+
+as sponsored search [8].
+
+Counting events in number of unique users provides one
+
+level of robot filtering mechanism, since each user can only
+
+vote once w.r.t. one co-occurrence. In addition, we apply
+
+another level of data-driven robot filtering by removing users
+
+whose total number of activities during a w-day window is
+
+above a certain threshold, e.g., thres7-day = 2000.
+
+4.3 Item-level Ranking Model
+In online recommendation, a triggering event is an item transaction (e.g., previous purchase), one then retrieves a candidate set of items and ranks them to recommend top N items. More formally, let i be a seed item and j be a candidate item. We wish to have a probabilistic scoring
+
+function to perform recommendation:
+
+j = argmax p(j|i).
+
+(22)
+
+j
+
+Recall that both the latent product clustering and productlevel recommendation models are derived in a statistically rigorous manner, and hence provide probabilistic measures. The item-to-item recommendation score can be factorized as the following Markov chain:
+
+p(j|i) = p(j|y)p(y|x)p(x|i)
+
+x,y
+
+(23)
+
+= p(j|y(j))p(y(j)|x(i))p(x(i)|i),
+
+where x and y denote input and recommended latent products, respectively. Under the hard membership assumption, marginalizing over latent variables x, y reduces to the belonging products x(i), y(j), and the first link p(x(i)|i) is deterministic. From here onwards, for simplicity we will shortcut x(i), y(j) to x, y as the latent products corresponding to the items i, j respectively.
+Additionally, there is one important factor to be incorporated in the scoring function, that is, the auction end time. User actions burst into the end time (within hours) of an auction; and the experience from search suggests that auction end time is one of the dominant factors in ranking items. We thus impose a time prior distribution biased towards ending-soon auction items. The final item-level scoring function becomes:
+
+p(j, h(j)|i) = p(j|y)p(y|x)p(h(j)),
+
+(24)
+
+where x = argmaxx (i|x ), and h(j) is the time difference in hours from recommendation serving time to auction end time of item j. The product-to-product score p(y|x) has been derived as Eq. (18) in Section 4.1, we now focus on the item-product membership score p(j|y) and the timedependent factor p(h(j)).
+The inference step in Eq. (7) gives the MLE of latent product assignment, but even the likelihood cannot be directly used as membership score in Eq. (24) for the purpose of ranking items. The reason is that item likelihood is not well calibrated across latent products, and we typically need to retrieve multiple y's for a given x to surface a best candidate set of j's. For example, one latent product y1 is more catalog-like and its items usually can be described in very few terms (some technological items). Another latent product y2 is less structured and its items need more terms to be embodied (some clothing items). The item likelihoods in y1 are then naturally higher than the ones in y2; but this does not necessarily mean y1 items are more coherent, nor should they be ranked higher. Within-product item log likelihood empirically appears Gaussian, from which we can transform to a standard Gaussian N (0, 1) to make it comparable across products. The calibrated item-product membership score is then:
+
+p(j|y) = 1 exp 1 ( (j|y) - ¯(·|y)) ,
+
+(25)
+
+Z2
+
+
+
+where ¯(·|y) is the mean item log likelihood for a latent prod-
+uct, and  is the standard deviation. Since  serves as a normalization factor, we use a constant informed by data3,
+
+3For one major category "Clothing, Shoes & Accessories", the item log likelihood variable has mean -40.5, standard deviation 20.6, median -38.5, and mode -26.0.
+
+1018
+
+e.g.,  = 20, for all y's. The normalization constant Z2 is needed to preserve the probabilistic interpretation of p(j|y).
+The auction-end-time factor p(h(j)) can be interpreted as a priori purchase probability w.r.t. remaining auction time and made independent of any specific item content. We assume the time prior follows an exponential distribution over discrete hourly time windows traversing backwards from auction end time to the current time; and hence introduce a smoothed exponential decay function as the timedependent score:
+1 p(h(j)) = max (, exp(-h(j))). (26)
+Z3
+Here h(j) = (tend - tnow)/3600 , and  is a positive decay constant. A two-day half-life gives  = log (2)/47. The smoothing factor  provides a minimum score; e.g.,  = 0.5 enforces any items beyond half-life will still get a 0.5 timedependent score. It turns out that this time score lowerbounding provides an important mechanism to mix up timesensitive items (auction items) and time-insensitive items (fixed-price items). The normalization constant Z3 makes p(h(j)) a distribution.
+One fundamental advantage of the item ranking model derived so far stems from viewing the user conversion sequence as a stochastic process, and hence estimating the purchase probability as in Eq. (24). Ranking recommendations directly in purchase probability shall optimize number of purchases, but this statistical framework can be easily extended to maximize other business metrics as well, such as revenue and user satisfaction. User purchase is a Bernoulli process with a success probability estimated by Eq. (24), one can then multiply some utility function f (u) by the purchase probability to obtain an estimate of the expected utility:
+
+E (f (uj)) = f (uj)p(j, h(j)|i),
+
+(27)
+
+where uj is the unit price of the target item j, which is given for fixed-price items. For active auction items, the price can be estimated as the smoothed average price of closed items belonging to the same latent product:
+
+u^(·|y) =
+
+jy uj +  , jy 1 + /u0
+
+(28)
+
+where uj is the winning bid amount of item j belonging to product y,  is a smoothing constant, and u0 gives a default price. To optimize revenue, the utility function is essentially the pricing model or listing fee structure:
+
+frev(u) = a1 min (u, b1)
+
++ a2 max (0, (min (u, b2) - b1))
+
+(29)
+
++ a3 max (0, (u - b2)),
+
+where (a1, a2, a3) are the listing fees for three consecutive price intervals: [0, b1], (b1, b2], and (b2, +], respectively. The current values at eBay are: (b1, b2) = ($25, $1000) and (a1, a2, a3) = (0.0875, 0.035, 0.015). User perceived utility or satisfaction is more subjective, and we use log-price as a surrogate for simplicity:
+
+fusr(u) = 1 + log (max (1, u)).
+
+(30)
+
+Finally, we apply several post-ranking filtering rules in compliance with domain-specific requirements: (1) items are active as of the time of delivery; (2) items with identical titles are de-duplicated; (3) current prices are below a
+
+threshold (e.g., $5000 for clothing category) to avoid recommending excessively expensive items; and (4) items are from sellers with a trust score above a threshold (e.g., 99.99% positive feedbacks).
+5. EXPERIMENTS
+Both the latent product clustering and the item ranking models as a whole shall be evaluated by the quality of recommendation. Online A/B testing would evaluate how the new models perform against the current production system in a live environment, but requires a full-fledged production deployment and a fraction of revenue-sensitive live traffic. Offline evaluation thus becomes particularly valuable for a closed-loop exploration before going live [9]. We conducted both offline and online evaluation, where offline evaluation guides us towards a sensible objective function and online testing reports metrics of business significance, including CTR (click-through rate), BTR (bid-through rate), PTR (purchase-through rate), and GMB (gross merchandising bought).
+5.1 Offline Evaluation
+A common way to evaluate recommendation models is yet to be established. It is not fully satisfactory to use general estimations such as test data log likelihood and perplexity, since these metrics fail to emphasize the very important yet small head portion of view recall. Other metrics used in rating-based recommendation such as RMSE (root mean squared error) [18] is not suitable for click-through data in our case. We adapt for the recommendation problem the evaluation method established in other similar domains such as ad targeting [8, 10].
+The quality of prediction is measured by two metrics: (1) the area under the click-view ROC curve (AUC), and (2) the relative CTR lift over a baseline predictor at a certain recall level of view. A click-view ROC curve plots the click recall vs. view recall, from the testing examples ranked in descending order of predicted score. The higher the AUC, the more accurate the predictor; and a random predictor would give an AUC of 0.5 (a diagonal ROC). Since view recall equals to click recall by random guess, each point on the ROC curve readily gives the relative CTR lift (click recall/view recall) over a baseline random predictor4. It is important to emphasize that in the context of recommendation, positive feedbacks include not only clicks, but also (and more so) bids, purchases, and even revenue. Therefore we use click and CTR in the above evaluation metrics in a generalized sense, which can also refer to other positive feedbacks.
+We consider recommendation based on a contextual or historical transaction, e.g., a user who has purchased i would also likely purchase j. We first use the item and transactional data over a training period to learn the latent product and recommendation models; thus deriving a scoring function of co-preference item pairs (i, j) (Eq. (24) or (27)), where the temporal order of (i, j) is deliberately ignored for better coverage. For the transactional data over a testing period, we form a global event stream of sequential-preference
+4The lift interpretation, besides easiness of implementation, motivates the use of click-view ROC for click-through data instead of traditional ROC. A traditional ROC plots true positive (TP) rate vs. false positive (FP) rate. For the clickview ROC in our case, we use (TP+FP) or all examples as the x-axis.
+
+1019
+
+item pairs, where the temporal order is respected for faithful evaluation. We then apply the scoring function to score and rank test item pairs. Finally, we compare the ranked list against the ground-truth feedbacks to compute ROC curve and lift. The evaluation method using log-price utility for purchase feedback is formalized in Algorithm 1.
+
+Algorithm 1: Offline evaluation
+
+Data structure: Event
+
+begin
+
+/* For non-view event types: 0:view, 1:click,
+
+2:bid, 3:bin, 4:watch, 8:winning bid.
+
+*/
+
+/* For view count: position normalized.
+
+*/
+
+1 int u ;
+
+/* user id */
+
+2 date t ;
+
+/* event time */
+
+3 int c ;
+
+/* non-view event type */
+
+4 float v ;
+
+/* position-normalized view count */
+
+5 float a ;
+
+/* bid amount */
+
+6 int j ;
+
+/* event item id */
+
+7 int i ;
+
+/* last winning item id, o/w 0 */
+
+end
+
+Input: Test event stream Event[e] Output: ROC curve
+
+8 begin
+
+9 Event[e]  sort test event stream by (u, t);
+
+10 i[e]  find most recent winning item by that user;
+
+/* To avoid stable sort artifacts
+
+*/
+
+11 Event[e]  RandomPermute(Event[e]);
+
+/* Score candidate item set
+
+*/
+
+12 foreach j where i is nonzero do
+
+13
+
+p(j, h(j)|i)  p(j|y)p(y|x)p(h(j));
+
+14
+
+E (f (a))  fusr(a)p(j, h(j)|i);
+
+15
+
+c  c  8?1 : 0;
+
+16
+
+v  v where i is nonzero;
+
+17 end
+
+/* ROC curve
+
+*/
+
+18 curve  ROC(E (f (a)),c,v );
+
+19 end
+
+We conducted experiments for one major category: "Clothing, Shoes & Accessories", which is representative of the unstructuredness, volatility, sparsity, and large scale characteristics of the domain. We used three-month worth of item and transactional data for training, and the following week for testing. For the recommendation modeling, the training data contains approximately 50M items, 1500M search events, and 600M down-streaming transactions. We sampled 50% search log for counting view-related co-occurrences. For the iterative clustering, the item data was down-sampled to 4M biased towards active ones (with at least one bid). After 10 EM iterations, 118,865 clusters converged with an average item log likelihood -14.68. With the learned latent products, we then performed an inference step to assign all items including those only seen in testing data to their MLE latent products, which yielded an average item log likelihood -29.47. All our experiments were run on a single node with 2× Quad-Core 3.2GHz 64-bit processors and 8GB RAM, using a multi-core parallel implementation. It took about 4 hours to learn clusters, and 6 hours to assign 50M items. So one item assignment takes less than half a millisecond, which is sufficient for online real-time performance. The recommendation learning (offline for p(y|x)) used 14 hours. Our implementation achieved above 200 Mflops throughout, and hence highly efficient and scalable [8].
+We experimented 10 variations in 2 scoring functions by 5
+
+positive feedback types, as summarized in Table 1. For each type of positive feedback, we benchmarked the co-preference log-price utility scoring with the popularity baseline, with the only difference being that the p(y|x) term in Eq. (27) is replaced with p(y) for the popularity score. This shows the value added by contextual item. Varying in feedback types demonstrates how the proposed recommendation models optimize different key metrics. The ROC curves for the proposed co-preference scoring and the baseline popularity are plotted in Figures 2(a) and 2(b) respectively, and the lift curves are plotted in Figures 3(a) and 3(b). The numerical results of AUC and lifts are summarized in Table 2.
+
+Label
+A B C D E F G H I J
+
+Table 1: Experimental Design
+
+Scoring function
+
+Positive feedback
+
+popularity co-preference (Eq. (27))
+popularity co-preference (Eq. (27))
+popularity co-preference (Eq. (27))
+popularity co-preference (Eq. (27))
+popularity co-preference (Eq. (27))
+
+click (c = 1) click (c = 1) bid, watch, purchase (c > 1) bid, watch, purchase (c > 1) purchase (c  8) purchase (c  8) revenue ((c  8)  frev(a)) revenue ((c  8)  frev(a)) log-price ((c  8)  fusr(a)) log-price ((c  8)  fusr(a))
+
+1
+
+0.8
+
+Click recall
+
+0.6
+
+0.4
+
+B
+
+0.2
+
+D F
+
+H
+
+J
+
+00
+
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+
+1
+
+View recall
+
+(a) Co-preference scoring.
+
+1
+
+0.8
+
+Click recall
+
+0.6
+
+0.4
+
+A
+
+0.2
+
+C E
+
+G
+
+I
+
+00
+
+0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9
+
+1
+
+View recall
+
+(b) Popularity scoring.
+
+Figure 2: ROC of click-recall vs. view-recall.
+As the results show, the log-price co-preference scoring outperforms the popularity baseline for all types of positive feedbacks. For the revenue feedback, the proposed recommendation model yields an AUC of 0.7595. The gain in lift
+
+1020
+
+CTR lift
+
+CTR lift
+
+10 B
+
+D
+
+8
+
+F
+
+H
+
+6
+
+J
+
+4
+
+2
+
+00
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1
+
+View recall
+
+(a) Co-preference scoring.
+
+10 A
+
+C
+
+8
+
+E
+
+G
+
+6
+
+I
+
+4
+
+2
+
+00
+
+0.2
+
+0.4
+
+0.6
+
+0.8
+
+1
+
+View recall
+
+(b) Popularity scoring.
+
+Figure 3: Lift in click-through.
+
+Table 2: AUC's and Lifts at Top View Recalls
+
+Label AUC Lift@1% Lift@2% Lift@5% Lift@10%
+
+A
+
+0.5287
+
+1.65
+
+B
+
+0.5397
+
+2.00
+
+C
+
+0.5328
+
+1.63
+
+D
+
+0.5452
+
+2.07
+
+E
+
+0.7563
+
+3.87
+
+F
+
+0.7562
+
+9.63
+
+G
+
+0.7583
+
+4.83
+
+H
+
+0.7595
+
+9.92
+
+I
+
+0.7533
+
+4.14
+
+J
+
+0.7536
+
+9.47
+
+1.54 1.74 1.52 1.81 3.72 7.11 4.21 7.28 3.83 7.06
+
+1.33 1.51 1.33 1.56 3.54 4.69 3.78 4.94 3.59 4.72
+
+1.19 1.41 1.20 1.45 3.27 3.24 3.40 3.45 3.28 3.28
+
+is more pronounced. Our model obtains 9.92 times relative revenue lift at the 1% view recall, 3.5 times lift at the 10% view recall, and 2-3 folds better than the popularity baseline at the 1-2% view recall range. The proposed recommender optimizes key metrics very well including purchase, revenue and log-price; but interestingly and as desired, not as well for operational metrics including click-through and bid-through.
+We also compared our generative clustering model with traditional k-means, specifically using squared Euclidean distance and cosine similarity in the tf-idf feature space. In terms of recommendation quality, the generative model is better than both conventional k-means. For log-price copreference scoring against log-price feedback, generative clustering yields an AUC of 0.7536, while k-means gets 0.7488 with Euclidean distance and 0.7471 with cosine similarity. Most importantly, we prefer the generative model since it
+
+provides a probabilistic membership score p(i|y) and naturally fits into the stochastic user conversion process as modeled in Eq. (24). With either distortion or cosine similarity, this nice probabilistic property is lost.
+5.2 Online Testing
+The proposed recommendation models were deployed to production. But before live traffic ramp-up, we conducted a longitudinal online A/B testing (the proposed model vs. the existing production system), lasting 4-6 months, explored the model space (positive event types and scoring functions), and tuned free parameters (event mixture weights , 's, decaying factors , 's, and smoothing factors , 's), on a daily basis. The final production model genuinely reflects an empirically optimal.
+One of the major placements is check-out page, where a user just purchased an item and our recommender delivers 12 next-purchase prospects as one campaign impression to the user. The online testing was conducted for four major categories that exhibit a wide spectrum of domain characteristics: (1) Clothing, Shoes & Accessories (CSA), (2) Computers & Networking (Comp), (3) Electronics (Elec), and (4) Cell Phones & PDAs (Cell). The testing results over a oneweek period are shown in Table 3. Our model substantially outperforms the current production recommender, which is a neighborhood-based collaborative filtering at the category level. For CSA, the historical CTR on check-out page was 2-3%, and PTR was about 1%. Thus our system would yield a 3-5 folds improvement should it go live. We also performed a paired t-test on the hourly pairwise performance metrics, and showed that all these performance differences were statistically significant at level  = 0.1%.
+
+Table 3: Online Testing Results
+Category Impressions CTR BTR PTR GMB
+
+CSA
+
+94,397
+
+13.50% 8.93% 3.03%
+
+Comp
+
+42,615
+
+6.90% 3.28% 1.48%
+
+Elec
+
+30,866
+
+10.69% 5.72% 2.26%
+
+Cell
+
+31,100
+
+8.70% 4.05% 2.14%
+
+Relative improvement over the current production system.
+
+4.9× 2.6× 2.4× 3.8×
+
+6. DISCUSSION
+We have presented a generative clustering model to learn persistent latent products from otherwise unstructured and dynamic items, a probabilistic recommendation model to learn co-preference patterns from historical transactional data, and hence providing a comprehensive and statistically sound solution to recommendation for long-tail marketplaces such as eBay. The proposed methodology is, however, of much generality.
+First, the generative clustering model is a simple yet principled way to capture hidden structure underlying volatile and heterogeneous data, and thus enables reasoning on such data for applications such as search and recommendation. There has been a remarkable trend of this type of data accumulating on the Web as social-networking sites (e.g., Facebook), video-sharing sites (e.g., YouTube), and microblogging services (e.g., Twitter) gain popularity. More importantly, we described a sparse and highly efficient inferential method to make the model scalable to large-scale realworld data. As future work, we shall evaluate soft itemproduct assignment to gauge whether the additional costs
+
+1021
+
+in terms of space and computational time could potentially result in additional gains in GMB.
+Second, the recommendation model is learned by assuming the user conversion flow is a stochastic process and using the position-normalized view count as the denominator. This yields a probabilistic measure of preference, possibly conditioned on some previous transactions. Not only the probabilistic scoring function can be further used for optimizing other recommendation metrics of business interest, but also it can be leveraged by other important applications as a user preference feature, such as search results re-ranking by user click-through feedback or perceived relevance [13].
+Finally, we have proposed an approach to offline evaluating item-based recommenders, particularly suitable for clickthrough data. The evaluation metrics, i.e., AUC and lift, are superior to other summary estimations such as test data log likelihood, since the former bears direct business significance. The closed-loop offline evaluation framework would considerably expedite exploration of much larger model and parameter spaces.
+7. ACKNOWLEDGMENTS
+The authors would like to thank the eBay merchandising team: Todd Forsyth, Petra Hofer, Jon Conradt, Helen Ye, Yan Huang; eBay Research Labs: Pavel Berkhin (now with Microsoft), Eric Brill, Neel Sundaresan, Dan Shen; eBay executive management: Mark Carges; and many other colleagues for making this work possible and successfully deployed.
+8. REFERENCES
+[1] D. Agarwal and B.-C. Chen. Regression-based latent factor models. ACM Conference on Knowledge Discovery and Data Mining (KDD 2009), pages 19­28, 2009.
+[2] D. Agarwal and B.-C. Chen. fLDA: Matrix factorization through latent Dirichlet allocation. ACM International Conference on Web Search and Data Mining (WSDM 2010), 2010.
+[3] J. Bennett and S. Lanning. The Netflix Prize. In KDDCup'07: Proceedings of KDD Cup and Workshop 2007, 2007.
+[4] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent Dirichlet allocation. Journal of Machine Learning Research, 3:993­1022, 2003.
+[5] O. Chapelle and Y. Zhang. A dynamic Bayesian network click model for web search ranking. International World Wide Web Conference (WWW 2009), pages 1­10, 2009.
+[6] Y. Chen and J. F. Canny. Probabilistic clustering of an item. U.S. Patent Application 12/694,885, filed: Jan, 2010.
+[7] Y. Chen and J. F. Canny. Probabilistic recommendation of an item. U.S. Patent Application 12/694,903, filed: Jan, 2010.
+[8] Y. Chen, M. Kapralov, D. Pavlov, and J. F. Canny. Factor modeling for advertisement targeting. Advances in Neural Information Processing Systems (NIPS 2009), 2009.
+[9] Y. Chen, D. Pavlov, P. Berkhin, A. Seetharaman, and A. Meltzer. Practical lessons of data mining at yahoo!
+
+ACM Conference on Information and Knowledge Management (CIKM 2009), 2009.
+[10] Y. Chen, D. Pavlov, and J. F. Canny. Large-scale behavioral targeting. ACM Conference on Knowledge Discovery and Data Mining (KDD 2009), pages 209­218, 2009.
+[11] N. Craswell, O. Zoeter, M. Taylor, and B. Ramsey. An experimental comparison of click position-bias models. Web Search and Web Data Mining (WSDM 2008), pages 87­94, 2008.
+[12] R. O. Duda, P. E. Hart, and D. G. Stork. Pattern Classification. Wiley-Interscience, 2nd Edition (October 2000), 2000.
+[13] F. Guo, C. Liu, A. Kannan, T. Minka, M. Taylor, Y.-M. Wang, and C. Faloutsos. Click chain model in web search. International World Wide Web Conference (WWW 2009), pages 11­20, 2009.
+[14] T. Hofmann. Probabilistic latent semantic indexing. ACM Conference on Information Retrieval (SIGIR 1999), pages 50­57, 1999.
+[15] T. Hofmann and J. Puzicha. Latent class models for collaborative filtering. International Joint Conference on Artificial Intelligence (IJCAI 1999), pages 688­693, 1999.
+[16] F. Jelinek and R. L. Mercer. Interpolated estimation of Markov source parameters from sparse data. Pattern Recognition in Practice, pages 381­402, 1980.
+[17] Y. Koren. Factorization meets the neighborhood: a multifaceted collaborative filtering model. ACM Conference on Knowledge Discovery and Data Mining (KDD 2008), pages 426­434, 2008.
+[18] Y. Koren. Collaborative filtering with temporal dynamics. ACM Conference on Knowledge Discovery and Data Mining (KDD 2009), pages 447­456, 2009.
+[19] A. Mccallum and K. Nigam. A comparison of event models for na¨ive Bayes text classification. AAAI-98 Workshop on Learning for Text Categorization, 1998.
+[20] K. Nigam, A. K. McCallum, S. Thrun, and T. M. Mitchell. Text classification from labeled and unlabeled documents using EM. Machine Learning, 39(2):103­134, 2000.
+[21] D. Pavlov, R. Balasubramanyan, B. Dom, S. Kapur, and J. Parikh. Document preprocessing for na¨ive Bayes classification and clustering with mixture of multinomials. ACM Conference on Knowledge Discovery and Data Mining (KDD 2004), pages 829­834, 2004.
+[22] L. Si and R. Jin. Flexible mixture model for collaborative filtering. International Conference on Machine Learning (ICML 2003), pages 704­711, 2003.
+[23] C. Zhai and J. Lafferty. A study of smoothing methods for language models applied to ad hoc information retrieval. ACM Conference on Information Retrieval (SIGIR 2001), pages 343­348, 2001.
+[24] S. Zhong and J. Ghosh. A comparative study of generative models for document clustering. SIAM International Conference Data Mining Workshop on Clustering High Dimensional Data and Its Applications, 2003.
+
+1022
+
+

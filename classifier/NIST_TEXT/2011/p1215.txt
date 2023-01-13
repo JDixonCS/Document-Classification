@@ -1,0 +1,392 @@
+Best Document Selection Based on Approximate Utility Optimization
+
+Hungyu Henry Lin
+University of California, Santa Cruz
+hhlin@soe.ucsc.edu
+
+Yi Zhang
+University of California, Santa Cruz
+yiz@soe.ucsc.edu
+
+James Davis
+University of California, Santa Cruz
+davis@soe.ucsc.edu
+
+1. INTRODUCTION
+Selecting the best document from a set (i.e. Best document selection) is a common problem with many real world applications. On a news commenting web site like Digg.com, a major task is to promote one comment onto a highly-visible sidebar to entice visitors to participate in the discussion. On a web search engine like Google, a widely used functionality is the "I'm feeling lucky" button that leads user directly to the highest ranked URL. On a content web site like nytimes.com, a single ad needs to be selected and displayed on the banner for each visitor.
+Best document selection is not a well studied problem by itself. One may think we can just cast it as a binary classification problem [1]. However, this approach lacks the ability to distinguish between multivariate levels of quality of the information. Another simple solution is just treat it as a ranking problem and use existing ranking algorithms to rank all documents (e.g. [2, 4], etc.). Then we can select only the first element from the sorted list. However, because ranking models optimize for all ranks, the model may sacrifice accuracy of the top rank for the sake of overall accuracy. This is an unnecessary trade-off.
+We describe an alternative approach to handle the best document selection problem. We do this by first defining an appropriate objective function for the domain, then create a boosting algorithm that explicitly targets this function. Because of the comparative simplicity of the objective function and the special characteristics of the best document selection problem, we can use a stronger and tighter approximation to optimize the objective function than existing approximated ranking solutions. Based on experiments on a benchmark retrieval data set and Digg.com news commenting data set, we find that even a simple algorithm built for this specific problem gives better results than baseline algorithms that were designed for the more complicated ranking tasks.
+Categories and Subject Descriptors: H.3.3 [Information Search and Retrieval]: Retrieval models General Terms: Algorithms, Experimentation, Measurement Keywords: Best Document Selection, Boosting, Learning to Rank
+Copyright is held by the author/owner(s). SIGIR'11, July 24­28, 2011, Beijing, China. ACM 978-1-4503-0757-4/11/07.
+
+2. OVERVIEW OF THE APPROACH
+
+2.1 Utility Function
+
+For the task of selecting the best document(s), we measure the utility as the average ratio between the selected document's relevance score and the best one:
+
+|Q|
+
+|Q|
+
+U= 1
+
+rk,s = 1
+
+1
+
+|Q| k=1 rk,o |Q| k=1 rk,o
+
+i
+
+rk,i[dk,i is selected]
+
+(1)
+
+where Q is the set of queries, and rk,s and rk,o are the relevance scores of the selected and optimal documents for the
+
+kth query, respectively. dk,i is a ith candidate document for the kth query, and rk,i is its relevance score. [] is the Iverson bracket that returns 1 for when the condition in the
+
+bracket is true, 0 otherwise. This measure is equivalent to
+
+Winner Take All (WTA), NDCG@1, and Precision@1 for
+
+binary labels. Otherwise, U can be seen as a multivariate
+
+case of Precision@1 as well as a non-exponentiated version
+
+of NDCG@1.
+
+2.2 Approximate Objective Function
+
+The utility measure in Equation 1 can not be optimized
+
+easily using gradient descent methods, since it is not dif-
+
+ferentiable. Similar to what people has done for optimiz-
+
+ing ranking measures such as MAP or NDCG, we find an
+
+approximate solution by constructing a new approximate
+
+objective function that is differentiable. To do so, we ap-
+
+proximate the Iverson bracket [] with a softmax function,
+
+which is commonly used in machine learning and statistics,
+
+for mathematical convenience. Thus the approximated ob-
+
+jective function is:
+
+[dk,i is selected]
+
+|Q|
+
+1
+
+1
+
+M(H) = |Q| k=1 rk,o
+
+rk,i
+i
+
+exp(  Hk,i) j exp(  Hk,j )
+
+-   exp(  Hk,i)2/( exp(  Hk,j ))2
+
+i
+
+j
+
+=l22 (·)
+(2)
+
+where H is the model (e.g. learner or hypothesis) to be learned, which can predict a relevance score for each document query pair, j is the index for candidate documents, Hk,i is the retrieval score of document i for query k estimated by hypothesis H.  is a coefficient that controls the tightness of the approximation. Note that the function approaches the indicator as  approaches infinite. l22(·) is introduced as a regularizer to control model complexity and
+
+1215
+
+avoid the overfitting problem, and  is a pre-set parameter that controls the degree of regularization.
+
+2.3 Algorithm: CommentBoost
+
+The approximated objective function in Equation 2 can
+
+be optimized via gradient boosting. We employ a stage-
+
+wise gradient technique a` la AdaBoost [3]. Its overview is
+
+presented in Fig. 1. We call this algorithm CommentBoost1
+
+or CBoost@1. It is a fast, list-wise boosting algorithm for
+
+best document selection.
+
+CBoost@1 alternates between finding the gradient vector
+
+of the objective function given the current hypothesis, find-
+
+ing a weak learner that correlates well with the gradient
+
+vector, then finding an appropriate alpha coefficient.2 If bi-
+
+nary classifiers are used as weak learners, then this results in
+
+setting
+
+each
+
+label
+
+as
+
+yk,i
+
+=
+
+sign(
+
+  Hk,i
+
+M(H
+
+))
+
+and
+
+weights
+
+as
+
+wk,i
+
+=
+
+abs(
+
+  Hk,i
+
+M(H
+
+)).
+
+However, any weak learners
+
+that may output real values (e.g. point-wise rankers) can be
+
+accepted as long as it is well correlated with the gradient.
+
+Initialize: Hk,i = 0 for all document-query pairs.   0 as a temperature parameter.
+  0 as a regularization parameter.
+
+For t = 1, ..., T : · For each document-query pair, compute
+
+
+
+wk,i
+
+=
+
+M(H ) Hk,i
+
+· Train a weak learner ht(d) that correlates well with w and get a weak ranking h : dk,i  hk,i  R
+
+· Compute:
+
+d
+
+t
+
+=
+
+M(H d
+
++ h)
+
+=0
+
+· Update hypotheses:
+
+H  H + th
+
+Output the final hypothesis: H(dk,i) =
+
+T t=1
+
+t ht
+
+(dk,i )
+
+Figure 1: The CBoost@1 algorithm
+
+3. EXPERIMENTS
+The algorithm is tested on a user comments data set collected from Digg.com, where the best document selection problem is well motivated. Labels are gathered as the community's vote on each comment, and features are gathered from various lexical tests (e.g. word count, SMOG scores) as well as user profiles (account age, friend counts, etc.). Features are then query-level normalized. We also compared our algorithm against previously published baselines on the LETOR3.0 data set3. For CBoost@1, we use decision
+
+1Because one major motivation for this algorithm is to select the
+
+best comment for users to discuss at Digg.com
+
+2By taking
+
+d d
+
+(,
+
+,
+
+)
+
+=
+
+-
+
++
+
+ 
+
+M(
+
++
+
+
+
+
+
+) =0,
+
+d d
+
+(,
+
+h,
+
+H
+
+)
+
+is
+
+less
+
+than
+
+d d
+
+M(H
+
++
+
+
+
+
+
+h)
+
+when
+
+
+
+<
+
+0
+
+and
+
+greater
+
+than
+
+d d
+
+M(H
+
++
+
+
+
+
+
+h)
+
+when
+
+ > 0.
+
+Thus there
+
+c  R
+
+s.t. (0, h, H) + c = M(H) and (, h, H) + c  M(H + h) for
+
+all   R, satisfying properties for a lower bound whose optimal
+
+solution improves M (See [5]).
+
+Setting
+
+d d
+
+(,
+
+h,
+
+H
+
+)
+
+=
+
+0
+
+and
+
+solving for  gives us our closed form solution.
+
+3We only show TD2003 here due to space constraints; full results
+
+are reported in the full poster
+
+TD2003
+0.44
+
+0.4
+
+NDCG@n
+
+0.36
+
+0.32
+
+0.28
+
+0.24 CBoost@1 AdaRank-NDCG FRank
+
+SVM-MAP
+
+AdaRank-MAP RankBoost
+
+ListNet
+
+RankSVM
+
+CBoost parameters are:  = 1,  = 0.4, T = 100
+
+Figure 2: Experiment results on TD2003.
+
+stumps as our weak learners and selected the best parameters as rated against the validation set. For the purpose of comparison, we report NDCG figures instead of U on the Letor3.0 data set, and we report U on the Digg.com data set.
+On both data sets, we see across-the-board improvements for NDCG@1 with our method. For NDCG@2 and beyond, our algorithm is comparable to the baselines, however, rarely improving upon them. On the Digg.com data set, our approach yields a utility score of 0.393, much better than a tuned svm rank[4] (0.365).
+
+4. CONCLUSIONS AND FUTURE WORK
+This paper studies the problem of best document selection using a machine learning algorithm. Instead of using existing ranking algorithms, we propose a boosting algorithm that optimizes explicitly for the top rank. The strength of this approach is that it greatly simplifies the required objective function and allows us to use a tighter, more accurate approximation than before. We also demonstrate that our algorithm does out-performs a number of baselines on a benchmark ranking data set LETOR3.0 and a new Digg.com data set where best document selection problem is well motivated. As part of future work, we plan on investigating scalable, distributed best document selection algorithms.
+
+5. REFERENCES
+[1] Eugene Agichtein, Carlos Castillo, Debora Donato, Aristides Gionis, and Gilad Mishne. Finding high-quality content in social media. In Proceedings of the international conference on Web search and web data mining, WSDM '08, pages 183­194, New York, NY, USA, 2008. ACM.
+[2] Yoav Freund, Raj Iyer, Robert E. Schapire, and Yoram Singer. An efficient boosting algorithm for combining preferences. J. Mach. Learn. Res., 4:933­969, 2003.
+[3] Yoav Freund and Robert E. Schapire. A decision-theoretic generalization of on-line learning and an application to boosting, 1995.
+[4] Thorsten Joachims. Optimizing search engines using clickthrough data. In Proceedings of the eighth ACM SIGKDD international conference on Knowledge discovery and data mining, KDD '02, pages 133­142, New York, NY, USA, 2002. ACM.
+[5] Ruslan Salakhutdinov, Sam Roweis, and Zoubin Ghahramani. On the convergence of bound optimization algorithms. In in: Proc. 19th Conference in Uncertainty in Artificial Intelligence (UAI '03, pages 509­516. Morgan Kaufmann, 2003.
+
+1216
+
+

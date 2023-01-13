@@ -1,0 +1,680 @@
+Efficiently Collecting Relevance Information from Clickthroughs for Web Retrieval System Evaluation
+
+Jing He, Wayne Xin Zhao, Baihan Shu, Xiaoming Li, Hongfei Yan
+Department of Computer Science and Technology, Peking University, China State Key Lab of Virtual Reality Technology and Systems, Beihang University, China
+{hj,zhaoxin,sbh,yhf}@net.pku.edu.cn lxm@pku.edu.cn
+
+ABSTRACT
+Various click models have been recently proposed as a principled approach to infer the relevance of documents from the clickthrough data. The inferred document relevance is potentially useful in evaluating the Web retrieval systems. In practice, it generally requires to acquire the accurate evaluation results within minimal users' query submissions. This problem is important for speeding up search engine development and evaluation cycle and acquiring reliable evaluation results on tail queries. In this paper, we propose a reordering framework for efficient evaluation problem in the context of clickthrough based Web retrieval evaluation. The main idea is to move up the documents that contribute more for the evaluation task. In this framework, we propose four intuitions and formulate them as an optimization problem. Both user study and TREC data based experiments validate that the reordering framework results in much fewer query submissions to get accurate evaluation results with only a little harm to the users' utility.
+Categories and Subject Descriptors
+H.3.3 [Information Systems]: Information Search and Retrieval
+General Terms
+Algorithms, Experimentation
+Keywords
+Clickthrough Data, Evaluation, Click Model
+1. INTRODUCTION
+Evaluation of Web retrieval systems is critical for improving search techniques. So far, the dominant method for evaluation has been the Cranfield evaluation method. However, it may be not so fit for evaluating the Web retrieval systems due to two reasons: 1) judgments become extremely expensive for large and dynamic Web content and variant
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+information needs and 2) it is very difficult for the assessors to understand the needs behind the queries.
+It is a promising direction to automatically evaluate Web retrieval systems by using clickthrough data from users. Click models [9, 5, 8] have been validated to be effective to estimate the documents' relevance from the clickthrough data without human judges' effort. One potential application of click models is to evaluate the query-specific retrieval performance with the estimated documents' relevance information. The Web retrieval systems' overall performance can be aggregated by the query-specific performance.
+A quick solution [7] that utilizes click models to evaluate IR system on a query works as follows: First, it presents the unchanged ranking for all submissions of a query, and then it can collect the clicks from the users. With these clickthrough data, a click model can be utilized to infer the documents' relevance. The inferred relevance can be considered as an extended graded relevance score, and a graded relevance based IR metrics (such as DCG[12] and RBP[16]) can be used to measure the retrieval system's performance.
+However, there are two drawbacks of this quick solution: 1) It is difficult to get reliable evaluation result on tail queries. Besides the popular queries, the performance on tail queries are extremely important for the search engines due to long tail phenomenon [2]. Since a tail query is submitted infrequently, the retrieved documents, especially those ranked lowly, are seldom examined, leading to unreliable relevance estimation about them. Thus the evaluation results based on the unreliable inferred relevance may be questionable. 2) Even for the frequently submitted queries, it may take a long period to collect enough relevance information for the reliable evaluation result, and this slows down the development and evaluation cycle. Therefore, it needs a more efficient way to collect relevance information for evaluation.
+In this paper, we propose to study the efficient evaluation problem in the context of evaluating Web retrieval systems with clickthrough data. It is to evaluate systems accurately with minimal number of query submissions. For efficient evaluation, it aims at collecting more valuable relevance information to reduce the number of submissions required for accurate evaluation. Generally, retrieved documents contribute differently to Web retrieval evaluation in two aspects. First, the contribution of a document depends on its rank in the result list. For example, a highly ranked document plays a more important role in determining the performance of a Web retrieval system than those documents with lower ranks; Second, with increasing collected clickthrough data, the benefit of collecting more information about a document would change. For example, if the relevance of a document is reliably acquired, it is not so interesting to continue collecting more relevance information about this document.
+
+275
+
+Therefore, we can selectively collect the relevance information from the documents with most contribution for evaluation.
+In this paper, we propose a reordering documents framework to efficiently collect relevance information for Web retrieval evaluation. A key component in this framework is the reordering function, which determines how to present the retrieved documents. Generally, the design of reordering functions follows the intuitions of moving up the most contributing documents. However, the decisions based on various intuitions may be inconsistent. A big challenge in designing a reordering function is how these intuitions can be integrated together. To meet this challenge, we formulate these intuitions into an optimization problem. This optimization problem is solved approximately with a greedy algorithm.
+The selection of reordering functions depends on the specific evaluation task. There are two important tasks in Web retrieval evaluation: First, given a Web retrieval system, an interesting problem is to measure its performance by some metrics (one-system evaluation task), and the score can be compared with other or future systems (on the same query set); Second, it is also interesting to compare the relative performance of two Web retrieval systems directly (twosystem comparison task). In this paper, we propose reordering functions for these two tasks respectively.
+To validate our framework, we conduct a user study and the TREC data based experiments. The user study verifies that our proposed reordering framework can collect relevance information more efficiently for evaluation with little harm to the users' utility. To further analyze the performance of the reordering functions on large dataset and more informative scenarios, we conduct a study with TREC data (the submitted runs and the corresponding relevance judgments). The basic experiment shows that the reordering functions generally evaluate much more efficiently than the baselines with the similar user utility. Additional experiments show that the reordering functions are also robust for the performance of the evaluated system, the measure selection and the user click model selection.
+The contributions of this papers are:
+1. We propose a document reordering framework to solve the efficient evaluation problem in the context of Web retrieval evaluation using clickthrough data.
+2. We propose four intuitions that can help collecting relevance information more efficiently for evaluation.
+3. We integrate these intuitions in an optimization formulation and propose some reordering functions based on the intuitions.
+4. We run both real user study and TREC data based experiments to test the proposed method, and find it is very efficient to acquire accurate evaluation results and little harm to the users' utility.
+2. RELATED WORK
+2.1 IR Evaluation
+As a central research topic in Web retrieval, evaluation has been studied extensively. Web retrieval evaluation generally follows the Cranfield paradigm, using a gold standard test collection to evaluate retrieval systems with common retrieval performance measures such as MAP and nDCG [12]. In the context of Cranfield paradigm evaluation, some algorithms have been proposed for reducing the judges' effort,
+
+while keeping the evaluation results reliable. Yilmaz et al. [20] proposed to sample some documents for judgment and Carterette et al. [3] proposed to select documents that can distinguish systems best for judgment. We use the similar idea that focus on collecting relevance information of the most contributed documents. However, in the context of clickthrough based evaluation, we cannot ask the assessors to directly judge a document, but can just present a ranked document list to collect relevance information.
+Many studies have attempted to leverage implicit feedback information such as clickthroughs to evaluate Web retrieval systems. There are two main categories of methods based on "absolute metric" and "relative comparison test", respectively. In the first category, it predicts the absolute performance of a single Web retrieval system. It is either by inferring absolute relevance of retrieved documents from clickthrough data and then calculating the score for some traditional measures [4, 7], or by some new measures defined on the clickthrough pattern directly [19]. The methods of the second category [13, 18] attempt to compare two systems by leveraging clickthroughs. In this framework, [21] proposed a method to learn powerful test statistics for more efficiently comparing two retrieval systems. Our proposed method is different from [21] that we focus on query-specific evaluation and we can collect relevance information for efficiently estimating absolute metric score and relative comparison adaptively.
+2.2 Clickthrough Data Modeling
+A fundamental problem of using clickthrough data is that the clicking can not be mapped to relevance directly; for example, it was found that a user's clickthroughs have bias [14]. Some works [14, 1, 6] extract preference relationship between document pairs from query submissions and their corresponding clickthroughs. Radlinski and Joachims [17] proposed a method to actively collect preference relationship between documents by reordering the presented list. In this paper, we also propose a reordering method, but for retrieval evaluation purpose.
+Recently, some click models have been proposed to provide a principled approach to infer the document relevance from clickthrough data [9, 5, 8]. These methods model the documents' relevance, user behaviors and their relations in a probability directed graph model. They generally follow some hypotheses such as examination hypothesis (a document is clicked only if its snippet has been examined) and cascade hypothesis (the users examine the snippets in the up-down manner). Based on the clicking information of some sessions about one query, it can infer the distribution of documents' relevance to the corresponding query. Dupret et al. [7] also used click model to infer document relevance for retrieval system evaluation. However, to the best of our knowledge, there has been no work aiming at efficiently collecting document relevance for Web retrieval evaluation purpose based on these click models.
+3. EFFICIENT EVALUATION WITH CLICKTHROUGH DATA
+The users' click behaviors provide relevance information for the examined documents, and such information can potentially help us to evaluate the retrieval systems. Generally, the clickthrough is very valuable but sparse, so it needs a method to make good use of these clickthrough data to get a reliable evaluation result efficiently, especially for the tail queries. There are generally two styles of Web retrieval evaluation: one-system evaluation and two-system compari-
+
+276
+
+son. In both tasks, we expect a method to efficiently collect relevance information to get accuracy results.
+For one-system evaluation, it measures the performance of each systems by a score, and then these systems can be compared by their scores. This methodology is commonly used, especially in the test collection based evaluation (like TREC). In this methodology, a key problem is how to predict the absolute performance score of a retrieval system. Given a ranked list and the manual relevance judgments, it usually employs a metric such as MAP and DCG to calculate the score. In the context of evaluation based on clickthrough data, we need to efficiently collect relevance information for reliably predicting a retrieval system's performance. We define efficient one-system evaluation problem as follows.
+Problem 1. (Efficient One-system Evaluation Problem): Given a ranked list A and an IR metric S, the efficient onesystem evaluation problem is to collect relevance information for predicting A's S score accurately within minimal number of query submissions.
+For two-system comparison, it compares two Web retrieval systems directly. For example, a new invented ranking algorithm is supposed to be compared with the existing algorithms to check whether it can outperform and replace them. They can be compared by the absolute performance scores, but for direct comparison purpose, it usually can be done more efficiently. We define two-system comparison problem as follows.
+Problem 2. (Efficient Two-system Comparison Problem): Given two ranked list A, B and an IR metric S, the efficient two-system comparison problem is to collect relevance information for telling the S based comparison result between A and B accurately within minimal number of query submissions.
+4. REORDERING FUNCTIONS
+For efficient evaluation, it is supposed to collect more valuable relevance information at each query submission to reduce the number of submissions needed for accurate evaluation. Generally, retrieved documents contribute differently for evaluating Web retrieval systems, so we can select to collect the relevance information about those most contributed (valuable) documents. Intuitively, we can move them up so that they are more likely to be examined. We study the problem of how to reorder the retrieved documents for more efficiently collecting relevance information for Web retrieval evaluation.
+4.1 Framework and Terminology
+The reordering function attempts to interact with the retrieval systems and the users for more efficiently collecting relevance information for evaluation. It works as follows:
+1. For a query q, a search engine returns the ranked document list A.
+2. For a query submission by a user, a reordering function determines the new ranked document list l and presents the user the corresponding query impression (a ranked list of documents' snippet, URL, etc., following the terminology of Guo et al. [9]), based on the original ranked list and the clickthrough history about the query q.
+3. The user examines the query impression and clicks some documents (and read the content of document), and the clicks (a subset of the ranked list of documents) on this query impression is recorded.
+
+di R^i Ri Ei Ci A, B Ai, Bi S l,l
+
+Table 1: Terminology A retrieved document with identifier i
+di's actual relevance di's inferred relevance Whether di is examined or not Whether di is clicked or not Retrieved ranked lists di's rank in list A, B an IR evaluation metric a reordered list of the retrieval documents
+
+4. It updates the each document's inferred relevance to query q and utilize them for evaluation with a metric S.
+
+5. repeat 2-4 for each submission of the query q
+
+This procedure can be extended to reorder the documents retrieved by two search engines A and B, and thus these two systems can be compared by the collected relevance information. The terminology is summarized in Table 1 briefly.
+
+4.2 Intuitions
+
+The main idea of reordering framework is to move up the
+
+documents that are more valuable for evaluation, so that
+
+they have larger chance to be examined. In this section,
+
+we would detail four intuitions that affect the benefit of a
+
+document being examined: relevance uncertainty reduction,
+
+document's absolute rank, document's rank difference in t-
+
+wo lists, and relevance level for more examination. (In this
+
+paper, the "benefit" of a document being examined or of pre-
+
+senting a list are both discussed in terms of the contribution
+
+to evaluation)
+
+1. Relevance Uncertainty Reduction. The benefit of
+
+a document being examined is affected by its relevance un-
+
+certainty reduction. The uncertainty of document relevance
+
+is generally reduced when it is examined, but the reduc-
+
+tions for documents are different. For example, if we have
+
+been very confident about the relevance of a document, it
+
+may provide little relevance information by further examin-
+
+ing this document. Therefore, it is a good choice to move up
+
+the document with large relevance uncertainty reduction.
+
+2. Document Rank. A document's rank affects the
+
+benefit of the document being examined. The highly ranked
+
+documents usually contribute more to the overall perfor-
+
+mance score of a retrieval system. Most IR metrics model
+
+this rank weight in their formulas. For example, in (the most
+
+commonly used version of) DCG , the document at rank k
+
+can
+
+be weighted
+
+as
+
+log2
+
+1 (k+1)
+
+.
+
+Thus it
+
+generally requires
+
+to
+
+infer relevance of highly ranked document more accurately.
+
+With this intuition, it is supposed to keep the original rank-
+
+ing, i.e., keep the document ranked highly in the original list
+
+still ranked highly.
+
+3. Document Rank Difference. In the context of
+
+comparing two systems, retrieved documents have different
+
+effect on distinguishing two systems. For example, if a doc-
+
+ument is ranked at rank 1 by system A and is ranked 100 by
+
+another system B, its relevance information is very helpful
+
+to distinguish these two systems. On the contrary, collecting
+
+relevance information of a document that is ranked at the
+
+same positions by two systems may be not so interesting.
+
+Therefore, in addressing the comparison problem, it is sup-
+
+posed to move up the documents that are ranked differently.
+
+Carterette et al. [3] used the similar idea for retrieval system
+
+277
+
+comparison, but in the context of constructing minimal test collections for Cranfield paradigm evaluation.
+4. More Examination. It can collect more relevance information if encouraging the users to examine deeper. Document relevance information can be collected only if the document is examined, so we can collect more information if the users examine more documents. The users' examination persistence relies on the relevance of the examined documents. The users would generally stop examining when their information need has been satisfied by examining highly relevant documents. To encourage the users to examine deeper, one possible way is to delay the satisfaction by moving the relevant documents down. One concern of using this strategy is that it obviously harms the users' utility. We will carefully test its effect on users' utility and evaluation efficiency, and determine whether it should be used.
+These four intuitions are obviously useful for more efficiently collecting relevance information, but it is a challenge to integrate them together into one reordering function. Specifically, they are not consistent to each other well. For example, following intuition 4 requires to rank relevant document lower, but intuition 2 tell us to keep the original ranking, which generally ranks a relevant document highly. We will define the benefit of a document being examined with a document weight function, and formulate the document reordering into an optimization problem.
+
+4.3 Formulation
+The efficient evaluation problem is to find a method that can get accurate absolute or relative metric score of retrieval systems. In the reordering framework, we can estimate documents' relevance distribution. The overall metric score is integrated by relevance of documents in the ranking, so we can also estimate its distribution. Intuitively, the metric score is more reliable once the estimated distribution has a small variance. For each query submission, we would present the retrieved documents in an order so that the expected variance of performance metric score can be maximally reduced, i.e.,
+
+l = arg max V (S|h) - V (S|l, h)
+
+(1)
+
+l
+
+where l is a presented document list, S is the absolute metric score for one ranked list or metric score difference between two lists (e.g., DCG or DCG, etc.), and h is the clickthrough history about the specific query q. V (S|h) is the variance of the metric score S based on the existing clickthrough history h, and V (S|l, h) is the expected variance of the metric score S based on the history h and the relevance information newly collected from the clicks on the presented list l.
+We have discussed four intuitions that are potentially helpful for efficient evaluation problem. In this section, we will integrate them in the formulation of maximizing performance score variance reduction.
+
+4.3.1 Relevance Uncertainty Reduction
+The uncertainty of the metric score (V (S)) is determined by the uncertainty of the documents' relevance estimation (V (Ri)), so a document is valuable if its uncertainty can be largely reduced by a user's examination. We can formulate the inferred relevance variance reduction from examining a document di as follows:
+V (Ri) = P (Ci = 1|R^i)1V (Ri) + P (Ci = 0|R^i)0V (Ri) (2)
+
+where Ri is the inferred relevance and R^i is the actual relevance of di; P (Ci = 1|R^i) and P (Ci = 0|R^i) are its clicked and skipped probability given the actual relevance level R^i respectively. In most click models, it assumes that the clicking probability equals to the actual relevance level, i.e., P (Ci = 1|R^i = r) = r [9, 10]. Similarly, we use this linear translation assumption between click rate and relevance, and the real relevance can also be inferred from the click rate if other translation function is defined. 1V (Ri) and 0V (Ri) are variance reduction for clicking and skipping cases respectively. If we observe that di is clicked in the next query submission, the click model can update the relevance distribution for di and the new variance (denoted as V (Ri|Ci = 1, Ei = 1)) is available, so 1V (Ri) can be defined by the variance difference. The inferred relevance distribution can be usually formulated as a polynomial [9], so the variance can be calculated by numerical integration with multiple bins. 0V (Ri) can be defined in the similar way for the skipping case. Formally, they are defined as:
+1V (Ri) = V (Ri) - V (Ri|Ci = 1, Ei = 1)
+0V (R1) = V (Ri) - V (Ri|Ci = 0, Ei = 1)
+Unfortunately, the actual relevance level R^i is unknown, so we approximate it with a document weight function (denoted as w1) by substituting the actual relevance with the best of our current knowledge, i.e., expected value of inferred relevance distribution (denoted as R¯i). This document weight can reflect the benefit from examining this document in the aspect of document relevance uncertainty reduction.
+w1(di) = P (Ci = 1|R¯i)1V (Ri) + P (Ci = 0|R¯i)0V (Ri) (3)
+
+4.3.2 Document Rank
+For one-system evaluation problem, the benefit of a document being examined also depends on the document's rank. A higher ranked documents affects the metric score more. The rank effect differs for measures. In this paper, we take DCG as example (S = DCG). DCG measures the performance of a ranked list with graded relevance judgments [12]. Though nDCG is more commonly used in test collection based evaluation, we use its unnormalized version for two reasons: 1) the total number of relevant documents in real Web is usually dynamic and unknown, and 2) the precision-based metrics can reflect users' utility well in Web search [11, 16]. Since the inferred relevance is a real value, we extend DCG to handle relevance of real value from 0 to 1. Thus the DCG of a ranked list A can be formulated as
+
+DC GA
+
+=
+
+di A
+
+R^i log2(Ai
+
++
+
+1)
+
+Click models can infer a distribution of document relevance, so the expected value and variance of the DCG distribution can be expressed as (assuming the relevance between retrieved documents are independent):
+
+E (DC GA )
+
+=
+
+di A
+
+E(Ri) log2(Ai +
+
+1)
+
+V
+
+(DC GA )
+
+=
+
+di A
+
+V (Ri) log22(Ai +
+
+1)
+
+In one-system evaluation problem, we can reduce the uncertainty of the absolute metrics score. The contribution of
+
+278
+
+each document does not only depend on its variance reduc-
+tion but also its original rank. The weight of document at rank k is 1/ log22(k + 1). Combining both intuition 1 and 2, the benefit of examining document di (denoted as w1,2) is:
+
+w1,2(di)
+
+=
+
+w1(di) log22(Ai + 1)
+
+(4)
+
+4.3.3 Document Rank Difference
+For two-system comparison problem, the benefit a document being examined also relies on the relative rank difference between these two ranked lists. The documents ranked more differently can distinguish systems better. Again, we take difference between DCGs as example (S = DCG). The expected value and variance of DCG score difference from two ranked lists A and B can be expressed as:
+
+E(DCGA,B) =
+
+(WA(di) - WB(di))E(Ri)
+
+di AB
+
+V (DCGA,B) =
+
+(WA(di) - WB(di))2V (Ri)
+
+di AB
+
+WL(i) =
+
+1 log2 (Li +1)
+
+if di  L·
+
+0
+
+otherwise
+
+The positive E(DCGA,B) value indicates that the expected DCG score of list A is higher than that of list B, while negative value indicates that the expected DCG score of list B is higher. We expect to reduce the uncertainty of DCG value, so one document's contribution to the overall perfor-
+mance difference can be formulated as:
+
+w1,3(di) = (WA(di) - WB (di))2w1(di)
+
+(5)
+
+It is denoted as w1,3 for using intuition 1 and 3. The users are likely to examine the highly ranked docu-
+ments, so it can collect more valuable relevance information by presenting the more valuable documents higher. We can sort the documents according to their weight of w1,2 (Equation 4) for one-system evaluation and w1,3 (Equation 5) for two-system comparison. These two reordering functions are denoted as rf (1, 2) and rf (1, 3) respectively (rf is short for reordering function).
+
+4.3.4 More Examination
+The benefit of presenting a list can be calculated by aggregating the benefit of the documents in the list being examined, so we expect the users to examine more documents. In the DCG and DCG formulation, the reduction of metric uncertainty is equal to the sum of rank-weighted document relevance uncertainty reduction, so we can define list benefit by summing up the benefit of documents a user has examined.
+Assuming the ranked list is (d1, . . . , dn), the list benefit function w(d1, . . . , dn) can be defined as:
+
+w(d1, . . . , dn) =
+
+P (ei = 1)w(di)
+
+i{1,...,n}
+
+where w is a document benefit function (can be w1,2 or w1,3, for one-system evaluation and two-system comparison problem respectively). Generally, the users always examine the first ranked document, but the probability of examining deeper documents depends on the relevance of documents ranked above. The above document relevance factor can be plugged in the list benefit function.
+
+w(d1, . . . , dn) = w(d1) + P (E2 = 1|R^1)w(d2, . . . , dn)
+
+Where P (E2 = 1|R^1) is the probability of continuing examining document d2 given actual relevance R^1. Again, we don't know the actual relevance R^1, so we replace it with expected value of d1's relevance distribution.
+w(d1, . . . , dn) = w(d1) + P (E2 = 1|R¯1)w(d2, . . . , dn) (6)
+
+Obviously, an optimal presented document list is to maximize the list benefit function. In this way, we have aggregate all intuitions in this optimization framework. Unfortunately, this problem is intractable. We approximate it by a greedy algorithm: at each step, we assign each document a weight that can approximately reflect the benefit of selecting this document and append the document with the largest weight to the end of the presented list. As suggested by Equation 6, the benefit of selecting a document di is composed by two parts: the benefit from the document itself (w(di), can be w1,2 or w1,3) and the benefit from documents ranked below. The second part can be obtained by multiplying probability of continuing examining at current document and the expected benefit of examining the list below. However, the benefit from the below list is unknown since the below list has not determined when selecting the current document. We approximate the benefit of examining below by the maximal document benefit of the unselected documents. Thus, the weight of a document di in an unselected document set D can be formulated as:
+
+w(di) = w(di) + P (Ei+1|R¯i) max w(dj )
+
+(7)
+
+dj D
+
+i=j
+
+Here the probability of examination next document is also be defined in the click model (e.g., the click chain model defines P (Ei+1|Ri) = 2Ri + 3(1 - Ri). In this way, the document weight w(di) can be denoted as w1,2,4 (when w = w1,2 in Equation 7) and w1,3,4 (when w = w1,3 in Equation 7). With the weight function, the greedy algorithm is presented in Algorithm 1. We select the maximal weighted document from the unselected document set, append it to the presented list, until all documents have been selected or the length of the presented list is enough. This version of reordering functions with two different document benefit function (w1,2,4 and w1,3,4) are denoted as rf (1, 2, 4) and rf (1, 3, 4) respectively, for both using intuition 4. Since some click models have online version [9, 10], and the reordering function is fast (O(n) for rf (1, 2) and rf (1, 3), and O(n2) for rf (1, 2, 4) and rf (1, 3, 4)), it can work well online.
+
+Input: Document set D = {d1, . . . , dn}, list length n Output: Reordered Ranked List l begin
+l = list() while |D| > 0 do
+d^ = arg maxdiD w(di) l.append(d^) D = D - {d^} end return l end
+Algorithm 1: Reordering Algorithm
+
+5. PRELIMINARY USER STUDY
+We conducted a user study experiment and a simulation based experiment to verify the usefulness of document reordering framework. In this section, we introduce the user study experiment.
+
+279
+
+5.1 Experiment Setup
+The user study is designed to resemble the common search engine usage. We recruit 50 college students. The users were asked to answer 10 questions with the help of our system. These questions contain both open-information questions (with many answers) and close-information questions (with only one answer) and vary in difficulty and topic. For each question, we designed a query, submitted it to two commercial Web search engines and collected the top 10 results from both engines. The questions and queries were designed according to the guideline that: (1) at least one answer can be found in the results of each search engine; and (2) the performance of these two search engines can be distinguished (relative DCG score difference is larger than 0.1).
+In the user study, a user was presented with a question following ten ranked results in a page. The ten presented results are either from one single commercial search engine or interleaved from the two commercial search engines. The snippet of a document is generated by the search engine which returned the corresponding document. In the interleaving case, if these two search engines return an identical document (with the same URL), the snippet is randomly selected from those two corresponding snippets. The user was asked to answer this question with the help of the listed results and she can click the link for browsing the original document. She can continue to the next question once she can answer current question or she found that the presented results can not answer the current question. Since our study aims at the efficient query-specific Web retrieval evaluation, the experimental user interface is a little different from those real search engines that the users can not reformulate their queries for an information need.
+We implemented five reordering functions in our user study system: three of them are for one-system evaluation task, and two of them are for two-system comparison task. For one-system evaluation task, the baseline function is ebase (short for evaluation baseline) presents the results A unchanged. We tested two reordering functions rf (1, 2) and rf (1, 2, 4) in section 4.3 to reorder the documents from A. For two-system comparison task, the baseline function (cbase, short for comparison baseline) and the tested reordering function is rf (1, 3, 4). cbase presents all-A for half query submissions and all-B for other half, e.g., presents A at 2ith query submission and another at (2i + 1)th query submission (which list was presented at 2ith submission is randomly determined for each query). The baselines and tested reordering functions are summarized in Table 2 (it also contains two other reordering functions balance and rf (1, 3) for two-system comparison task, used in TREC based experiments). Each user submitted a query once, so we can collect 50 submissions for each query. There are 5 tested reordering functions, so each reordering function receives (50 query submissions/5 functions) = 10 submissions of each query. Within the 10 questions each user answers, every reordering function would provide the results of 2 questions to avoid the user bias.
+The proposed reordering functions need a click model to estimate the relevance distribution of the retrieved documents. In this experiments, we adopted click chain model [9], which is a state-of-art Bayesian click model for relevance inference. In the model, the parameters were learned from 1M sampled click logs of a commercial search engine: 1 = 0.97, 2 = 0.34, 3 = 0.23.
+5.2 Performance Metrics
+The performance of a reordering function can be mea-
+
+Type
+
+Table 2: Reordering Functions Function Interpretation
+
+Onesystem Evaluation
+
+ebase
+
+presenting A
+
+rf (1, 2) using intuition 1, 2
+
+rf (1, 2, 4) using intuition 1, 2, 4
+
+Twosystem Comparison
+
+cbase balance rf (1, 3) rf (1, 3, 4)
+
+presenting A, B alternatively balanced strategy [13] using intuition 1, 3 using intuition 1, 3, 4
+
+sured in two dimensions: the evaluation efficiency and the users' utility. For evaluation, as defined in efficient evaluation problem, a "good" reordering function is supposed to get the accurate evaluation result with minimal number of query submissions. On the other hand, as discussed in Section 4, the reordering function (especially with intuition 4 ­ more examination intuition) moves up the documents ranked lower by a retrieval system, so it may harm the users' utility. A search engine usually uses only a small volume of traffic for evaluation. Nevertheless, a good reordering function should not hurt the users' utility too much. Therefore, we also need to measure the users' utility of using a reordering function.
+In our experiment, we asked three assessors to judge of the results' relevance. They judged the results by assigning each of them a relevance level between 0 and 5. We find that the they agree to each other very well (the disagreement is 0.11, according to the disagreement for scalar judgment defined in [15]), and we use the average score as the gold relevance level. The search engine's real performance on a query can be measured by DCG based on the actual relevance judgments (denoted as DC^ G).
+Evaluation Efficiency. A more efficient evaluation method can get more accurate result with same number of query submissions. So we use evaluation accuracy at N submissions of a query q to measure the efficiency of an evaluation method. The accuracy can be measured by comparing real metric score (denoted as DC^ G) calculated by manual judgment and the inferred metric score (denoted as DCG) by estimated document relevance.
+Since DC^ G and DCG are of the different value scales, we linearly transform estimated DCG using DCG = aDCG+b. For the two-system comparison task, such transformation would not change the comparison result, because it affects two systems scores in the same way. In the one-system evaluation task, though it tries to get an absolute score for a retrieval system, the score is also used for comparing with the score of other or future systems. In conclusion, the transformation can rescale the score values, but it will not change the evaluation result.
+For one-system evaluation task, we expect to predict the metric score of a retrieval system. If the performance score from inferred relevance is close to the real performance score, it indicates that the evaluation is accurate. The closeness can be measured by relative difference (denoted as rdif f ) between DC^ G and DCG (see Equation 8). The linear transformation parameters can affect the rdif f value. For each reordering function, we set the parameters a and b to minimize the average relative difference on all queries.
+
+rdif fA
+
+=
+
+|DCGA - DC^ GA| DC^ GA
+
+(8)
+
+For two-system comparison task, we check the correctness of comparison between two retrieval systems. It raises an
+
+280
+
+Eval. Comp.
+
+Table 3: User Study Results
+
+Func. cbase rf (1, 2) rf (1, 2, 4)
+
+Relative Diff.
+0.34 0.14(-58.8%) 0.18(-47.1%)
+
+Utility
+1.00 0.95(-5%) 0.92(-8%)
+
+Func.
+
+Error Ratio
+
+Utility
+
+cbase
+
+0.30
+
+1.00
+
+rf (1, 3, 4) 0.00(-100.0%) 0.89(-11%)
+
+error when the sign symbol of the predicted DCGA,B does not conform to that of real DC^ GA,B, i.e., DCGA,B · DC^ GA,B < 0. They can be integrated to get the error ratio by comparing the predicted comparison results and
+real comparison results, i.e.,
+
+error ratio =
+
+(A,B) 1(DCGA,B · DC^ GA,B < 0) (9) (A,B) 1
+
+where 1 is an indicative function, returning 1 if the input is true and 0 otherwise.
+Users' Utility. It is to measure how the users' utility affected by using a reordering function, so we compare the users' utility from the reordered list and that from original list. In our experiment, we measure the users' utility by the relative DCG score. For one-system evaluation (for A), the users' utility is defined as:
+
+Utility
+
+=
+
+DC^ GL DC^ GA
+
+(10)
+
+where DC^ GL is the average of real DCG value for reordered lists for the query submissions, and DC^ GA is the real DCG score for original retrieved result A. For two-system comparison (between A and B), the users' utility is defined as the ratio between average DCG score of reordered lists and average DCG score of two compared lists:
+
+Utility
+
+=
+
+2DC^ GL DC^ GA + DC^ GB
+
+(11)
+
+5.3 Results
+The results from the user study is presented in Table 3. In the table, row 2-4 (ebase, rf (1, 2) and rf (1, 2, 4)) show the results for one-system evaluation and row 5-6 (cbase and rf (1, 3, 4)) show the results for two-system comparison. The second column is the accuracy results: relative difference for one-system evaluation and error ratio for two-system comparison. The third column is the users' utility results (relative utility to that from original list(s)). The numbers in the brackets are the relative percentage difference compared that of baselines.
+In the one-system evaluation results, we can find that the both rf (1, 2) and rf (1, 2, 4) perform much more efficiently than ebase. In this experiment, we find that rf (1, 2) performs even better than rf (1, 2, 4), though the improvement is not so obvious on such small dataset. For users' utility, both two reordering functions decrease users' utility, and rf (1, 2) harms much less than rf (1, 2, 4).
+In the two-system comparison results, we find that rf (1, 3, 4) can distinguish two search engines accurately on all questions but cbase can distinguish accurately on only 7 of the 10 questions, and the reordering function has little harm to the users' utility.
+
+6. EXPERIMENTS ON TREC DATASET
+The preliminary user study shows that reordering functions can more efficiently collect relevance information for Web retrieval evaluation. We further deploy a large scale experiment on the TREC dataset, which contains various types of queries, system retrieval results (runs) and the relevance judgments. We can simulate a user's behavior on the retrieved results of TREC submitted runs, and analyze the performance of reordering functions in multiple scenarios according to retrieval result quality, system similarity, etc.
+6.1 Basic Experiment
+In the experiment, we need two types of data: 1) the queries, corresponding retrieval results and the relevance judgments, and 2) users' examination and click behavior.
+In our experiment, we use the queries, results and judgments of TREC terabyte06 dataset. It contains 50 queries (801-850), 71 runs' results, and three-way scale judgments. In addition, we use the same click chain model [9] as that used in the user study to simulate the users' behavior. Users' behavior is also affected by the documents' relevance. In our basic experiments, we present the results with the empirical setting of R = 0.9 for highly relevant documents, R = 0.6 for relevant documents, and R = 0.2 for non-relevant documents.
+The experiment works as follows: 1) For a simulated query submission, a reordering function determines the presented ranking of retrieved documents (from one or two runs); 2) The simulated users would examine and click on the presented results; 3) The estimated relevance information is updated based the collected clickthrough data. 4) The performance of the reordering function is measured by the utility from the presented ranking and the accuracy of the systems' estimated performance. We will reuse the metrics defined in section 5.2.
+Besides the reordering functions tested in the user study, we also test balance and rf (1, 3) in the TREC based experiments (see Table 2). balance reordering function was proposed to compare two retrieval systems by Joachims [13], and Radlinski et al.[18] showed that it works better than the methods solely relying on the features of users' implicit feedback. rf (1, 3) uses intuition 1 and 3 for reordering the retrieved documents (see Section 4.3).
+6.1.1 Results
+We present the evaluation efficiency and users' utility results for one-system evaluation in Figure 1 and Figure 2 respectively.
+In Figure 1, we find that both rf (1, 2) and rf (1, 2, 4) are much more efficient than ebase. rf (1, 2, 4) performs only a little better than rf (1, 2). ebase performs similarly as the reordering function at the first few query submissions, because all these functions emphasize the top ranked documents for the first few submissions. However, as the query submission number increases, the benefit of presenting the original ranked list becomes little, because we have collected enough relevance information about the top documents.
+In Figure 2, we find that both rf (1, 2) and rf (1, 2, 4) provide similar users' utility as ebase for the first few query submissions, and then the utility stays in a little worse level. Users' utility decreases only about 2% by rf (1, 2), and 3.5% by rf (1, 2, 4). Since rf (1, 2) provides similar evaluation efficiency as rf (1, 2, 4) but hurts users' utility much less, rf (1, 2) is supposed to be a better choice in practice. In the experiments below, we use rf (1, 2) only.
+
+281
+
+Figure 1: One-system Evaluation: Relative Difference
+
+Figure 3: Two-system Comparison: Error Ratio
+
+Figure 2: One-system Evaluation: Users' Utility
+The accuracy and users' utility results for two-system comparison task is presented in Figure 3 and Figure 4 respectively.
+In Figure 3, we find that rf (1, 3, 4) works best for most cases, rf (1, 3) is only a little worse than rf (1, 3, 4), and both reordering functions work better than the two baselines. balance performs better than cbase for first few submissions, because it more emphasizes the highly ranked documents. This result is consistent with Radlinski et al.[18]. [18] reported that balance strategy can reflect the retrieval systems' performance better than absolute user feedback across the queries. Their experiments were based on the arXiv.org query log, in which each query string should be submitted very few on average. Our results also show that balance performs not so well when the query submissions are more because it only collects the top ranked documents' information.
+Figure 4 also shows that balance can provide a better users' utility than the average of two lists, because each list may miss some relevant documents at the top, but the other contains. rf (1, 3) decreases utility by about 2%, and rf (1, 3, 4) decrease by about 6%. The experimental results suggest that balance is a good strategy for better users' utility, and rf (1, 3) can evaluate efficiently with little harm.
+In conclusion, our findings from the basic experiment are as follows: 1) the reordering functions perform much efficiently than the baselines for both one-system evaluation and two-system comparison task; 2) When using intuition
+
+Figure 4: Two-system Comparison: Users' Utility
+4, it hurts the users' utility more but the efficiency improvement is not so much, so it suggests to use rf (1, 2) for onesystem evaluation and rf (1, 3) for two-system comparison.
+6.2 Multiple Scenarios
+The above experimental results show that the proposed reordering functions can perform well on average. The usefulness of the reordering functions may be affected by some other factors such as performance of the evaluated retrieval systems, the measure used for evaluation and click model that employed in the reordering functions. In this section, we explore how these factors affect the efficiency and users' utility of the reordering functions.
+6.2.1 Effect of Retrieval Systems' Performance
+It would be more informative and useful to compare the performance of reordering functions in various scenarios, such as bad vs. good retrieval performance, and comparing two systems that differ much vs. comparing two similar systems. Thus each such possible scenario should be tested separately to understand the relative strength and weakness of the reordering functions. The following are the different scenarios that we would test in our experiments:
+bad vs. good retrieval performance: This can be simulated by controlling the (average) metric (DCG is used) score of the ranked list(s).
+Comparison of systems with similar or different retrieval performance: This can be simulated by regulating the relative difference in retrieval performance. In
+
+282
+
+Table 4: Summary of Validation Scenarios
+
+Scenarios Variation Parameter Setting
+
+Retrieval
+
+Good
+
+DCG > 1.5
+
+Performance Bad
+
+DCG  1.5
+
+System
+
+High
+
+RDCG  0.3
+
+Similarity Low
+
+RDCG > 0.3
+
+Table 5: One-system Evaluation: Scenarios
+
+Sys. Q.
+
+Rel. Diff.
+
+Utility
+
+Perf. Freq. ebase rf (1, 2) rf (1, 2)
+
+20 Good 100
+20 Bad 100
+
+0.12 0.07(-41.7%) -2.2% 0.08 0.03(-62.5%) -2.0% 0.49 0.37(-24.5%) -1.7% 0.45 0.19(-47.8%) -1.5%
+
+the experiments, we use the relative difference of DCG score (denoted as RDCG, defined in Equation 12 to measure the performance difference, and this conforms to our intuition very well.
+
+RDCG(A, B)
+
+=
+
+|DCG(A) - DCG(B)| min(DCG(A), DCG(B))
+
+(12)
+
+Variations of parameters and the corresponding scenarios are summarized in Table 4. The experimental results are presented in Table 5 and Table 6. The numbers in brackets of error ratio or relative difference column are relative percentage changes of these values compared to the baseline. In the utility column, the values are relative percentage change compared to the utility of original retrieval result(s).
+Our findings are as follows: 1) the proposed reordering functions outperform the baselines in the presented scenarios; 2) Both one-system evaluation and two-system comparison are more difficult for those hard queries. For those queries, the relevant documents are not be highly ranked by the system, so it makes such relevant documents unlikely to be examined. The users' relative utility of reordering function on hard topics are higher. For those hard topics, the original list may rank the relevant documents lower, so the reordering function probably move up those documents and improve the users' utility; 3) The results indicate that two-system comparison problem is quite easy for those very different system pairs, which conforms to the intuition.
+
+6.2.2 Effect of Measures
+The inferred relevance information can be interpreted as graded relevance judgment by extending its value range from 0 to 1. We have studied DCG as an IR metric for evaluating retrieval systems. We would further study the effect of other measures.
+
+Table 6: Two-system Comparison: Scenarios
+
+Sys. Perf Q.
+
+Err. Ratio
+
+Perf. Sim. Freq. cbase rf (1, 3)
+
+Utility rf (1, 3)
+
+20 Good Low 100
+20 High 100
+20 Bad Low 100
+20 High 100
+
+0.22 0.14(-36.4%) -2.5% 0.10 0.05(-50.0%) -2.0% 0.08 0.02(-75.0%) -1.8% 0.02 0.00(-100%) -1.5% 0.42 0.20(-52.4%) -8.2% 0.25 0.07(-72.0%) -8.5% 0.18 0.10(-44.4%) -3.5% 0.05 0.01(-80.0%) -3.0%
+
+Table 7: One-system Evaluation: Measures
+
+Measures Q.
+
+Rel. Diff.
+
+Utility
+
+Freq. ebase
+
+rf (1, 2)
+
+rf (1, 2)
+
+20 RBP(0.6) 100
+20 RBP(0.95) 100
+
+0.13 0.12(-7.7%) -2.1% 0.07 0.06(-14.3%) -2.0% 0.26 0.16(-38.5%) -1.0% 0.23 0.09(-60.9%) -0.9%
+
+Table 8: Two-system Comparison: Measures
+
+Measures Q.
+
+Err. Ratio
+
+Utility
+
+Freq. cbase rf (1, 3) rf (1, 3)
+
+20 RBP(0.6) 100
+20 RBP(0.95) 100
+
+0.32 0.27(-15.6%) -2.0% 0.18 0.14(-22.2%) -2.0% 0.33 0.13(-60.6%) -2.0% 0.20 0.06(-70.0%) -2.2%
+
+Besides DCG, there are also some other IR metrics based on graded relevance judgments. For example, RBP is a recently proposed graded relevance metric [16] expressed as Equation 13. RBP has no recall component and can adapt to different retrieval applications by adjusting the parameter p.
+
+RBP = (1 - p) Ri · pi-1
+
+(13)
+
+i
+
+We would test whether the reordering functions can per-
+form well for predicting score of RBP . To adapt the reordering functions to RBP , we also need to replace the benefit function w1,2 and w1,3 with the new formulation w1,2 and w1,3, defined in Equation 14 and 15. The derivation is similar to that of DCG.
+
+w1,2(di) = p2(Ai-1)V (ri) w1,3(di) = (pAi-1 - pBi-1)2V (ri)
+
+(14) (15)
+
+We conduct two experiments, respectively setting p as 0.95 and 0.6, which have different effects on the ranks. The results are presented in Table 7 and 8 respectively. The results of RBP (0.95) and those of DCG are very similar due to the similar rank weight of DCG and RBP (0.95). However, the performance pattern of using RBP (0.6) is quite different from that of using DCG and RBP (0.95). With RBP (0.6), it benefits less in using the proposed reordering functions compared to the baselines. The metric RBP (0.6) weights very heavily on the top documents, so both the reordering functions and the baseline methods would keep the documents that highly ranked in the original list highly for the query submissions.
+From the results, we find that the reordering functions work consistently well with different metrics (with parameter setting) used.
+
+6.2.3 Effect of Click Models
+In the reordering framework, a very important component is the click model. First, the document benefit is estimated based on the document relevance inferred by the click model; second, the inferred document relevance is utilized to predict the system performance score directly.
+However, different users and their information needs may lead variant clicking behaviors. In practice, a click model used in a search engine may not match the real users' search behavior so well. In this section, we would check whether the proposed reordering functions are robust with a mis-
+
+283
+
+Table 9: One-system Evaluation: User Models
+
+Click Model Q.
+
+Rel. Diff.
+
+Utility
+
+Freq. ebase rf (1, 2) rf (1, 2)
+
+20
+
+DCM
+
+100
+
+CCM
+
+20
+
+(0.97,0.5,0.15) 100
+
+0.22 0.16(-27.3%) -1.8% 0.19 0.09(-52.6%) -2.2% 0.23 0.17(-26.1%) -2.5% 0.19 0.10(-47.4%) -1.5%
+
+Table 10: Two-system Comparison: User Models
+
+Click Model Q.
+
+Err. Ratio
+
+Utility
+
+Freq. cbase rf (1, 3) rf (1, 3)
+
+20
+
+DCM
+
+100
+
+CCM
+
+20
+
+(0.97,0.5,0.15) 100
+
+0.36 0.16(-55.6%) -3.0% 0.21 0.06(-71.4%) -1.9% 0.34 0.15(-55.9%) -2.0% 0.19 0.06(-68.4%) -1.8%
+
+matched click model, i.e., the real users' behavior is more like model Muser, but we use a mismatched model Mreorder in the reordering framework.
+In the experiments, we still use the click chain model with parameters 1 = 0.97, 2 = 0.34, 3 = 0.23 to simulate the users' click (Muser) exactly same as that used in above experiments, but use another click model (Mreorder) in the reordering framework to infer the document relevance for reordering documents and evaluating system performance. We use DCM and CCM(0.97,0.5,0.15) as two tested click models (Mreorder). DCM's parameters are also learned from the same 1M sample of click logs. CCM's parameters are set as 1 = 0.97, 2 = 0.5, 3 = 0.15. The results from these two models are presented in Table 9 and 10. Comparing the results with the basic results, we find the metric scores are very similar, indicating that the reordering functions are robust with various click models.
+7. CONCLUSION
+In this paper, we propose a document reordering framework to solve the efficient evaluation problem in the context of Web retrieval evaluation based on clickthrough data. Four intuitions are proposed to speed up the relevance information collecting for evaluation purpose, and they are integrated together in an optimizing function. Both our user study and TREC based experiments validate that the reordering framework can efficiently collect relevance information for one-system evaluation and two-system comparison, with little harm to the users' utility. For the reordering functions, the experimental results suggest to use rf (1, 2) for one-system evaluation task and rf (1, 2, 4) for two-system comparison task.
+Acknowledgement
+This work is supported by NSFC Grant (60933004, 70903008, 61073082) and HGJ Grant 2011ZX01042-001-001.
+8. REFERENCES
+[1] Agichtein, E., Brill, E., Dumais, S., and Ragno, R. Learning user interaction models for predicting web search result preferences. In SIGIR '06, pp. 3­10.
+[2] Baeza-Yates, R., Gionis, A., Junqueira, F. P., Murdock, V., Plachouras, V., and Silvestri, F. Design trade-offs for search engine caching. ACM Trans. Web 2, 4 (2008), 1­28.
+
+[3] Carterette, B., Allan, J., and Sitaraman, R. Minimal test collections for retrieval evaluation. In SIGIR '06, pp. 268­275.
+[4] Carterette, B., and Jones, R. Evaluating search engines by modeling the relationship between relevance and clicks. In NIPS '07.
+[5] Chapelle, O., and Zhang, Y. A dynamic bayesian network click model for web search ranking. In WWW '09 , pp. 1­10.
+[6] Dou, Z., Song, R., Yuan, X., and Wen, J.-R. Are click-through data adequate for learning web search rankings? In CIKM '08 , pp. 73­82.
+[7] Dupret, G., Murdock, V., and Piwowarski, B. Web search engine evaluation using clickthrough data and a user model. In Query Log Analysis: Social And Technological Challenges. A workshop at WWW '07).
+[8] Dupret, G. E., and Piwowarski, B. A user browsing model to predict search engine click data from past observations. In SIGIR '08, pp. 331­338.
+[9] Guo, F., Liu, C., Kannan, A., Minka, T., Taylor, M., Wang, Y.-M., and Faloutsos, C. Click chain model in web search. In WWW '09 , pp. 11­20.
+[10] Guo, F., Liu, C., and Wang, Y. M. Efficient multiple-click models in web search. In WSDM '09, pp. 124­131.
+[11] Huffman, S. B., and Hochster, M. How well does result relevance predict session satisfaction? In SIGIR '07, pp. 567­574.
+[12] Ja¨rvelin, K., and Keka¨la¨inen, J. Cumulated gain-based evaluation of ir techniques. ACM Trans. Inf. Syst. 20, 4 (2002), 422­446.
+[13] Joachims, T. Unbiased evaluation of retrieval quality using clickthrough data. In SIGIR Workshop on Mathematical/Formal Methods in Information Retrieval (2002).
+[14] Joachims, T., Granka, L., Pan, B., Hembrooke, H., Radlinski, F., and Gay, G. Evaluating the accuracy of implicit feedback from clicks and query reformulations in web search. ACM Trans. Inf. Syst. 25, 2 (2007).
+[15] Mizzaro, S. Measuring the agreement among relevance judges. In MIRA '99.
+[16] Moffat, A., and Zobel, J. Rank-biased precision for measurement of retrieval effectiveness. ACM Trans. Inf. Syst. 27, 1 (2008), 1­27.
+[17] Radlinski, F., and Joachims, T. Active exploration for learning rankings from clickthrough data. In KDD '07 , pp. 570­579.
+[18] Radlinski, F., Kurup, M., and Joachims, T. How does clickthrough data reflect retrieval quality? In CIKM '08 , pp. 43­52.
+[19] Wang, K., Walker, T., and Zheng, Z. Pskip: estimating relevance ranking quality from web search clickthrough data. In KDD '09 , pp. 1355­1364.
+[20] Yilmaz, E., Kanoulas, E., and Aslam, J. A. A simple and efficient sampling method for estimating ap and ndcg. In SIGIR '08 , pp. 603­610.
+[21] Yue, Y., Gao, Y., Chapelle, O., Zhang, Y., and Joachims, T. Learning more powerful test statistics for click-based retrieval evaluation. In SIGIR '10, pp. 507­514.
+
+284
+
+

@@ -1,0 +1,817 @@
+,sentence,label,data
+,,,
+0,Pseudo Test Collections for Training and Tuning Microblog Rankers,null,null
+,,,
+1,Richard Berendsen r.w.berendsen@uva.nl,null,null
+,,,
+2,Manos Tsagkias e.tsagkias@uva.nl,null,null
+,,,
+3,Wouter Weerkamp w.weerkamp@uva.nl,null,null
+,,,
+4,Maarten de Rijke derijke@uva.nl,null,null
+,,,
+5,"ISLA, University of Amsterdam, Amsterdam, The Netherlands",null,null
+,,,
+6,ABSTRACT,null,null
+,,,
+7,"Recent years have witnessed a persistent interest in generating pseudo test collections, both for training and evaluation purposes. We describe a method for generating queries and relevance judgments for microblog search in an unsupervised way. Our starting point is this intuition: tweets with a hashtag are relevant to the topic covered by the hashtag and hence to a suitable query derived from the hashtag. Our baseline method selects all commonly used hashtags, and all associated tweets as relevance judgments; we then generate a query from these tweets. Next, we generate a timestamp for each query, allowing us to use temporal information in the training process. We then enrich the generation process with knowledge derived from an editorial test collection for microblog search.",null,null
+,,,
+8,"We use our pseudo test collections in two ways. First, we tune parameters of a variety of well known retrieval methods on them. Correlations with parameter sweeps on an editorial test collection are high on average, with a large variance over retrieval algorithms. Second, we use the pseudo test collections as training sets in a learning to rank scenario. Performance close to training on an editorial test collection is achieved in many cases. Our results demonstrate the utility of tuning and training microblog search algorithms on automatically generated training material.",null,null
+,,,
+9,Categories and Subject Descriptors,null,null
+,,,
+10,H.3.3 [Information Search and Retrieval]: Retrieval Models,null,null
+,,,
+11,Keywords,null,null
+,,,
+12,"Simulation, pseudo test collections, learning to rank, microblog retrieval",null,null
+,,,
+13,1. INTRODUCTION,null,null
+,,,
+14,"Modern information retrieval (IR) systems have evolved from single model based systems to intelligent systems that learn to combine uncertain evidence from multiple individual models [10, 22]. The effectiveness and flexibility of such systems has led to wide adoptation in IR research. A key contributor to the success of such systems is the learning phase, i.e., the training set they are given for",null,null
+,,,
+15,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'13, July 28­August 1, 2013, Dublin, Ireland. Copyright 2013 ACM 978-1-4503-2034-4/13/07 ...$15.00.",null,null
+,,,
+16,"learning. Training sets have to be tailored to the task at hand and, in contrast to the systems themselves, do not generalize to other tasks. This characteristic requires compiling task-specific training sets, which is a time consuming and resource intensive process, as it usually involves human labor. Automating the process of compiling training sets has obvious advantages in reducing costs, while it simultaneously increases the size of the training set. This observation has led to a persistent interest in finding ways for generating so-called pseudo test collections, which consist of a set of queries, and for each query a set of relevant documents (given some document set). In this paper, we consider the problem of generating pseudo test collections for microblog search.",null,null
+,,,
+17,"Microblog search is the task of finding information in microblogs, such as Facebook status updates, Twitter posts, etc. The task became popular with the advent of social media and is distinct from web search and from blog search due mainly to its real-time nature, the very limited length of microblog posts and the use of ""microblog language,"" e.g., hashtags, mentions, which can provide useful information for retrieval purposes. In 2011 the Text REtrieval Conference (TREC) launched the Microblog track aimed at developing a test collection from Twitter data and evaluating systems' performance on retrieving--given a query and time-stamp--relevant and interesting tweets in a simulated real-time scenario. Several participants approached the task using learning to rank methods for combining evidence from multiple rankers [21]. This approach to microblog search comes natural because of the many dimensions available for ranking microblog posts, e.g., recency, user authority, content, existence of hyperlinks, hashtags, retweets. For training a learning to rank-based system at the TREC 2011 Microblog track, participants used a traditional supervised method: many manually labeled data for compiling a training set. What if we could generate the required training sets automatically? In 2012 a second edition of the Microblog track was organized. This gives us the opportunity to compare what yields better learning to rank performance: training on the 2011 relevance assessments, or training on automatically generated ground truth?",Y,null
+,,,
+18,"Our starting point is the following intuition, based upon the observation that hashtags tend to represent a topic in the Twitter domain: From tweets Th associated with a hashtag h, select a subset of tweets Rh  Th that are relevant to an unknown query qh related to h. We build on this intuition for creating a training set for microblog rankers. To this end, we take several steps, each raising research questions. First, we select hashtags h and associated relevant tweets Rh. Can we just select all hashtags and use all their associated tweets? In microblog search, time is important: what is considered relevant to a query may change rapidly over time. A",null,null
+,,,
+19,53,null,null
+,,,
+20,"microblog query, then, has a timestamp, and relevant tweets must occur prior to this timestamp. As for a query, the topic a hashtag is associated with may change over time. Can we exploit this analogy, and label hashtags with a timestamp, regarding tweets prior to this timestamp as relevant? Another well-known aspect of microblog posts is that they often contain casual conversation that is unlikely to be relevant to a query. Can we improve generated training sets by selecting interesting tweets and hashtags associated with such tweets? Once we have selected a hashtag h and a set of tweets Rh, how do we generate a query qh related to h?",null,null
+,,,
+21,"The main contribution of this paper is a set of methods for creating pseudo test collections for microblog search. These collections are shown to be useful as training material for tuning well-known retrieval methods from the literature, and for optimizing a learning to rank method. In particular, we contribute: (1) unsupervised pseudo test collection generation methods; (2) a supervised pseudo test collection generation method, where we learn what are interesting tweets from TREC Microblog track assessments; (3) insights into the sensitivity of our methods to parameter settings.",null,null
+,,,
+22,2. PROBLEM DEFINITION,null,null
+,,,
+23,"Below, we consider a number of instantiations of our pseudo test collection generator. For the purposes of the TREC Microblog track, a test collection for microblog search consists of queries with timestamps and a set of relevant documents for these queries. A pseudo test collection for microblog search consists of a set of queries Q, in which each query q  Q is associated with a timestamp qt and a set of relevant documents Rq. Given this definition, there are three main steps for generating a pseudo test collection for microblog search: generating (a) the query; (b) the query timestamp; and (c) a set of relevant tweets for the query.",Y,null
+,,,
+24,"We start from the following intuition: From the tweets Th that contain a hashtag h, we can select tweets Rh that are relevant to an unknown query qh related to h. In the next section, we present three methods to generate a pseudo test collection. Each method selects hashtags and for every hashtag h it selects tweets Rh from Th that will act as relevant tweets to a suitable query related to h. In §4, we present a technique for generating queries from Rh.",null,null
+,,,
+25,3. SELECTING HASHTAGS AND TWEETS,null,null
+,,,
+26,"We propose four solutions to selecting hashtags and tweets for inclusion in a pseudo test collection. (A) Random: A sanity check baseline against our hypothesis that hashtags are good sources for generating pseudo test collections. Collections are created by randomly sampling a set of relevant tweets for each topic, without replacement. All these random collections are of a fixed size, equal to our largest hashtag-based pseudo test collection. (B) Hashtags: A naive method that serves as baseline in our experiments and that considers all hashtags and tweets to be equally important (§3.1). (C) Hashtags-T: A method that creates a test collection in the microblog retrieval sense, in which queries have timestamps (§3.2). (D) Hashtags-TI: A method that aims at capturing interestingness in tweets. Interesting tweets should contain good candidate terms for a query. We present a method with which we can estimate from example queries and relevant tweets the probability of interestingness of a tweet (§3.3).",null,null
+,,,
+27,"3.1 Hashtags: All hashtags, tweets are equal",null,null
+,,,
+28,"We select all hashtags, with a single requirement: that they are mentioned in a reasonable amount of tweets, m (Algorithm 1). There are three reasons for this lower bound: (i) it reflects a certain consensus about the meaning of a hashtag; (ii) we generate",null,null
+,,,
+29,Algorithm 1: Generating collection Hashtags,null,null
+,,,
+30,"H - {h : |Th| >, m}; for h  H do",null,null
+,,,
+31,Rh - Th; Generate query qh from Rh; end,null,null
+,,,
+32,// See §4,null,null
+,,,
+33,"our queries based on word distributions in these tweets: for this to work reliably, we need a reasonable amount of tweets, see §4; (iii) we train a learning to rank retrieval algorithm on our pseudo test collection; we hypothesize that it would benefit from a relative large set of positive training examples, see §5. We normalize hashtags by lowercasing them and removing any non-alphanumeric characters. In all our experiments, we set m , 50. The pseudo test collection generated by Algorithm 1 is called Hashtags.",null,null
+,,,
+34,3.2 Hashtags-T: Generating timestamps,null,null
+,,,
+35,"Microblog search is sensitive to the query issue time because of the real time nature of tweets. To generate a timestamp for a query related to a hashtag h, we make an analogy between search volume over time for a query and publishing volume over time for tweets with h. Our assumption is that users often issue queries for trending topics because they want to monitor developments, similar to certain types of blog search [28]. We generate a timestamp for hashtag h just after peaks in publishing volume. In this way, our generated queries will be about trending topics. In addition, we keep a large amount of tweets from Th, while discarding a limited number, after h stops trending. In collections that span a considerable period of time, re-occurring topics, such as Christmas or Super Bowl, may quite likely be observed. In this case, one may want to assign multiple issue times for a query, depending on the number of observed peaks. Our corpus (see §5) covers a relatively short period, and we assign only one issue time to every query sampled.",null,null
+,,,
+36,"In detail, our query issue time generation works as follows. First, we group the time span of the collection in 8-hours bins. Then, for each hashtag, we count how many relevant documents belong to each bin; this results in generating the hashtag's timeseries. In our setting, timeseries are short and sparse; our peak detection method aims at coping with this challenge. We find the bin with the most counts and resolve ties by taking the earliest date. This approach allows us to return a peak even for very sparse timeseries. We call the pseudo test collection generated by Algorithm 2: Hashtags-T.",null,null
+,,,
+37,3.3 Hashtags-TI: Selecting interesting tweets,null,null
+,,,
+38,"Consider the following tweet: ""Hey follow me here #teamfollowback #justinbieber."" We hypothesize that this tweet would not be useful for sampling terms for topics labeled #teamfollowback or #justinbieber or as a relevant document for these topics. To avoid selecting such tweets, we rank tweets by their probability of interestingness and keep the best X percent. We think of a tweet",null,null
+,,,
+39,Algorithm 2: Generating collection Hashtags-T,null,null
+,,,
+40,H - {h : |Th|  m};,null,null
+,,,
+41,for h  H do,null,null
+,,,
+42,Generate timestamp t(h);,null,null
+,,,
+43,// See §3.2,null,null
+,,,
+44,Rh - { :   Th and t( )  t(h)};,null,null
+,,,
+45,end,null,null
+,,,
+46,H - {h : h  H and |Rh|  m};,null,null
+,,,
+47,for h  H do,null,null
+,,,
+48,Generate query qh from Rh;,null,null
+,,,
+49,// See §4,null,null
+,,,
+50,end,null,null
+,,,
+51,54,null,null
+,,,
+52,as interesting if it carries some information and could be relevant to a query. We use a set of criteria to capture interestingness and present a method to learn from example queries and relevant documents from an editorial collection.,null,null
+,,,
+53,"Let C1, C2, . . . , Cn be random variables associated with the criteria and let I :, I( ) , 1 be the event that a tweet is interesting. We estimate P (I |C1 ,"" c1, . . . , Cn "","" cn), or, shorthand: P (I |c1, . . . , cn). Following Bayes' rule, we have""",null,null
+,,,
+54,"P (I |c1, . . . , cn)",null,null
+,,,
+55,",",null,null
+,,,
+56,"P (c1, . . . , cn|I )P (I ) , P (c1, . . . , cn)",null,null
+,,,
+57,-1,null,null
+,,,
+58,"where P (I ) is the a-priori probability that a tweet is interesting, P (c1, . . . , cn|I ) is the likelihood of observing the evidence given that a tweet is interesting, and P (c1, . . . , cn) is the probability of observing the evidence. The crucial step is to estimate P (c1, . . . , cn|I ). We hypothesize that tweets that are known to be relevant to a query are interesting and estimate P (c1, . . . , cn|I ) with P (c1, . . . , cn|R ), where R is the event that a tweet is relevant to a query in an editorial collection. We use the TREC Microblog 2011 qrels for this estimation. Since we do not have enough relevant tweets to estimate the full joint probability, we assume conditional independence of ci given that a tweet is relevant:",null,null
+,,,
+59,"P (I |c1, . . . , cn) ",null,null
+,,,
+60,"i P (ci|R ) P (I ) . P (c1, . . . cn)",null,null
+,,,
+61,-2,null,null
+,,,
+62,"Since we rank tweets by interestingness we do not have to estimate P (I ). Instead, we have:",null,null
+,,,
+63,"rank (P (I |c1, . . . , cn)) , rank",null,null
+,,,
+64,"i log(P (ci|R )) . (3) P (c1, . . . , cn)",null,null
+,,,
+65,"Most of the criteria we use have discrete distributions. For those that do not, we bin their values in B bins; we set B ,"" 10. To avoid rejecting a tweet on the basis of one measurement that did not occur in any of the relevant tweets, we add one observation to every bin of every P (ci|R ) distribution. For P (c1, . . . , cn) we use the empirical distribution of all tweets in the collection. After selecting the best X percent of tweets, we again filter out hashtags that have less than 50 interesting tweets. We build this method on top of our pseudo test collection Hashtags-T, only ranking the tweets in this collection and keeping the best 50% of them. We call the pseudo test collection generated by Algorithm 3 Hashtags-TI.""",null,null
+,,,
+66,Algorithm 3: Generating collection Hashtags-TI,null,null
+,,,
+67,H - {h : |Th|  m}; for h  H do,null,null
+,,,
+68,Generate timestamp t(h);,null,null
+,,,
+69,// See §3.2,null,null
+,,,
+70,"Th,t - { :   Th and t( )  t(h)};",null,null
+,,,
+71,end,null,null
+,,,
+72,"H - {h : h  H and |Th,t|  m}; T - hH Th,t;",null,null
+,,,
+73,// Rank tweets by probability of being,null,null
+,,,
+74,interesting,null,null
+,,,
+75,"Rank T by P (I |c1, . . . , cn( ));",null,null
+,,,
+76,// See eq. 3,null,null
+,,,
+77,Let TI be the top X percent of this ranking;,null,null
+,,,
+78,for h  H do,null,null
+,,,
+79,"Rh - Th,t  TI ; end",null,null
+,,,
+80,H - {h : h  H and |Rh|  m}; for h  H do,null,null
+,,,
+81,Generate query q from Rh; end,null,null
+,,,
+82,// See §4,null,null
+,,,
+83,"The criteria we use build on textual features (density and capitalization) and microblog features (links, mentions, recency). Each criterion is discussed below. The marginal distributions P (ci|R ) of three criteria are shown in Fig. 1 as white histograms. They overlap with black histograms of all tweets in our Hashtags pseudo test collection. These criteria have different distributions over relevant tweets and over tweets that have a hashtag, which motivates our idea to keep tweets with high probability of interestingness.",null,null
+,,,
+84,"Links. The existence of a hyperlink is a good indicator of the content value of a tweet. TREC Microblog 2011 defines interestingness of a tweet as whether a tweet contains a link [21]. Also, a large fraction of tweets are pointers to online news [19]. Tweets with links are likely to include terms that describe the linked web page, rendering them good surrogates for query terms [5].",Y,null
+,,,
+85,"Mentions. Tweets with mentions (@username) signify discussions about the hashtag's topic. This type of tweet is likely to be noisy because of their personal character. They may, however, bring in query terms used by a niche of people.",null,null
+,,,
+86,"Tweet length. Document length has been shown to matter in retrieval scenarios [35]. Short tweets are less likely to contain terms useful for query simulation, see Fig. 1 (Center) for the distribution of tweet length.",null,null
+,,,
+87,"Density. A direct measure for probing a tweet's content quality is the density score [20]. Density is defined as the sum of tf-idf values of non-stopwords, divided by the number of stopwords they are apart, squared:",null,null
+,,,
+88,Density( ),null,null
+,,,
+89,",",null,null
+,,,
+90,K K-,null,null
+,,,
+91,1,null,null
+,,,
+92,"K-1 k,1",null,null
+,,,
+93,"weight(wk) + weight(wk+1 distance(wk, wk+1)2",null,null
+,,,
+94,),null,null
+,,,
+95,",",null,null
+,,,
+96,"where K is the total number of non-stopwords terms in tweet  , wk and wk+1 are two adjacent keywords in  . weight(·) denotes the term's tf-idf score, and distance(wk, wk+1) denotes the distance between wk and wk+1 in number of stopwords. Fig. 1 (Left) shows the distribution of density scores of tweets.",null,null
+,,,
+97,Capitalization. The textual quality of tweets can partially be captured through the use of capitalization [41]. Words in all capitals are considered shouting and an indication of low quality. The ratio of capitals may indicate the quality of the text. Fig. 1 (Right) shows the distribution of the fraction of capital letters over tweet length.,null,null
+,,,
+98,"Direct. A tweet is direct if it is meant to be a ""private"" message to another user (i.e., the tweets starts with @user).",null,null
+,,,
+99,4. GENERATING QUERIES,null,null
+,,,
+100,"Sampling query terms is a challenging step in the process of automatically generating pseudo test collections. Azzopardi et al. [3] propose several methods for sampling query terms from web documents for known-item search, while Asadi et al. [2] avoid the problem by using anchor texts. Neither approach is applicable in the microblog setting due to a lack of both redundancy in the tweets and anchor texts. Terms in tweets usually occur at most once, but if not, this is often a signal for spam [26]. Probabilistic sampling methods that boost terms occurring with high probability are less likely to return good candidates for query terms. Tf-idf methods emphasize rare terms, which are likely to be spelling mistakes or descriptive of online chatter (e.g., ""looooool"") in our setting.",null,null
+,,,
+101,The log-likelihood ratio (LLR) is suitable for our problem of sampling terms from (tweets associated with) a given hashtag [25]. LLR is defined as the symmetric Kullback-Leibler divergence of the expected and observed term probabilities in two corpora. Terms are ranked by how discriminative they are for both corpora. For,null,null
+,,,
+102,55,null,null
+,,,
+103, Th(447957)  Rq(2388),null,null
+,,,
+104, Th(447957)  Rq(2388),null,null
+,,,
+105, Th(447957)  Rq(2388),null,null
+,,,
+106,0,null,null
+,,,
+107,100,null,null
+,,,
+108,200,null,null
+,,,
+109,300,null,null
+,,,
+110,0 20 40 60 80 100 120 0.0,null,null
+,,,
+111,0.2,null,null
+,,,
+112,0.4,null,null
+,,,
+113,0.6,null,null
+,,,
+114,0.8,null,null
+,,,
+115,1,null,null
+,,,
+116,density,null,null
+,,,
+117,length,null,null
+,,,
+118,capital,null,null
+,,,
+119,"Figure 1: Distribution of (Left) density scores, (Center) tweet length, and (Right) capitalization. Where the histograms for the tweets associated with hashtags (dark grey) and for the TREC MB 2011 relevant tweets (white) overlap, the color is light grey.",null,null
+,,,
+120,"our purposes, we set one corpus to be a set of tweets associated with hashtag h and the other to consist of the rest of the tweets in the collection. Stopwords, spam terms, or terms indicative of online chatter will rank lower because they occur in both corpora with roughly the same frequency.",null,null
+,,,
+121,"Let T be a collection of tweets  , Rh a set of relevant tweets associated with a hashtag h resulting from one of the sampling methods described in §3, and w a term in  . For every w  Rh  we compute LLR(w), given corpora Rh and B , T \ Rh:",null,null
+,,,
+122,"LLR(w) ,",null,null
+,,,
+123,2·,null,null
+,,,
+124,ORh (w) log,null,null
+,,,
+125,ORh (w) ERh (w),null,null
+,,,
+126,+,null,null
+,,,
+127,OB(w) log,null,null
+,,,
+128,OB (w) EB (w),null,null
+,,,
+129,",",null,null
+,,,
+130,"where ORh (w) ,"" tf (w, Rh) and OB(w) "","" tf (w, B) are the observed term frequencies of w in Rh and B, respectively. ERh (w) and EB(w) are the expected values of the term frequency of w in Rh and B, respectively.""",null,null
+,,,
+131,"For every hashtag h, terms are ranked in descending order of their log-likelihood ratio score. We remove terms if one of the following pertains: (1) The term is equal to the hashtag up to the `#' character. In this case, all tweets in Th contain the hashtag, making the query very easy for all rankers, which then leads to a learning to rank method having a hard time distinguishing between rankers. (2) The term occurs in fewer than 10 documents. We generate queries that consist of the top-K ranked terms. For all pseudo test collections described in §3 we set K ,"" 10. For our most promising method, we examine the impact of this parameter by generating queries of length 1, 2, 3, 5, and 20.""",null,null
+,,,
+132,5. EXPERIMENTAL SETUP,null,null
+,,,
+133,The main research question we aim to answer is: What is the utility of our test collection generation methods for tuning retrieval approaches and training learning to rank methods?,null,null
+,,,
+134,"Parameter tuning. We do parameter sweeps for some retrieval runs on different (pseudo) test collections, see Table 1 for details. We ask: (a) What is better in terms of retrieval performance: tuning on a different editorial test collection or tuning on a pseudo test collection? We answer by calculating how far performance obtained by tuning on either collection is from optimal performance for each retrieval model. (b) Do scores between a pseudo test collection and an editorial test collection correlate better than scores between edi-",null,null
+,,,
+135,torial test collections? We answer by calculating Kendall's tau and expected loss in effectiveness.,null,null
+,,,
+136,"Learning to rank. We compare the utility of test collections as training material for a learning to rank algorithm. We ask: (a) What is better in terms of retrieval performance: training on a different editorial test collection, or training on a pseudo test collection? We answer by calculating the difference in retrieval performance between training on each. (b) Which of our pseudo test collections is most useful? (c) Do learning to rank algorithms trained on pseudo test collections outperform the best individual feature?",null,null
+,,,
+137,"Parameter sensitivity. We also analyze parameter sensitivity of our methods, focusing on two parameters. First, in generating Hashtag-TI (§3), we keep the best X ,"" 50% percent of tweets. How sensitive are our results to this method to different values for X? We try these values: 20, 40, 60, and 80. In all our experiments,""",null,null
+,,,
+138,"Algorithm 4: Training an LTR system on a pseudo test collection, and testing it on an editorial collection",null,null
+,,,
+139,"for i ,"" 1  N do // -- Training phase: -Generate the pseudo test collection; for each ranker do Sweep parameters on the pseudo test collection; Randomly sample parameter vector to use from winners; end for q  Q do Merge the ranked lists into Mq; Let positive training examples  Rq,h  Mq; Randomly sample |Rq,h| negative training examples from Mq \ Rq,h; end Learn a LTR model on the training set; // -- Testing phase: -for each ranker do Run on test topics using the sampled parameter vector; end Run the learned LTR model on the test set;""",null,null
+,,,
+140,end,null,null
+,,,
+141,56,null,null
+,,,
+142,Indri 5.1,null,null
+,,,
+143,Ranker LM Tf-idf,null,null
+,,,
+144,Okapi,null,null
+,,,
+145,BOW BUW Tf-idf PL2 DFR-FD,null,null
+,,,
+146,QE,null,null
+,,,
+147,Table 1: Retrieval algorithms tuned.,null,null
+,,,
+148,Description,null,null
+,,,
+149,Parameter,null,null
+,,,
+150,Language modeling with Dirichlet smoothing Indri's implementation of tf-idf,null,null
+,,,
+151,"Okapi, also known as BM25 [35] Boolean ordered window Boolean unordered window",null,null
+,,,
+152,µ k1 b k1 b k3 Window size Window size,null,null
+,,,
+153,Terrier's implementation of tf-idf A Divergence from Randomness (DFR) model [1] Terrier's DFRee model with a document score modifier that takes into account co-occurence within a window,null,null
+,,,
+154,Terrier's implementation of query expansion,null,null
+,,,
+155,b c Window size,null,null
+,,,
+156,No. documents No. terms,null,null
+,,,
+157,Values,null,null
+,,,
+158,"{50, 150, . . . , 10050} {0.2, 0.4, . . . , 3} {0, 0.05 . . . , 1} {0, 0.2, . . . , 3} {0, 0.05 . . . , 1} {0} {1, 2 . . . , 15, inf} {1, 2 . . . , 15, inf}",null,null
+,,,
+159,"{0, 0.05 . . . , 1} {0.5, 1, 5, 10} {2, 3 . . . , 15}",null,null
+,,,
+160,"{1, 5, 10, 20, 30, 50} {1, 5, 10, 20, 30, 50}",null,null
+,,,
+161,cf. Literature [42] [33],null,null
+,,,
+162,[33],null,null
+,,,
+163,[33] [9] [31],null,null
+,,,
+164,[23],null,null
+,,,
+165,Terrier 3.5,null,null
+,,,
+166,"when we generate queries, we keep the top 10 terms of the ranking produced by LLR (§4). For our best pseudo test collection, we ask how parameter tuning results and learning to rank performance is influenced by different query length. We try query lengths 1, 2, 3, 5, and 20.",null,null
+,,,
+167,5.1 Dataset and preprocessing,null,null
+,,,
+168,"We use the publicly available dataset from the TREC 2011 and 2012 Microblog tracks. It covers two weeks of Twitter data, from January 24, 2011­February 8, 2011, consisting of approximately 16 million tweets. We perform a series of preprocessing steps on the content of tweets. We discard non-English tweets using a language identification method for microblogs [6]. Exact duplicates are removed; among a set of duplicates the oldest tweet is kept. Retweets are discarded; in ambiguous cases, e.g., where comments were added to a retweet, we keep the tweet. Punctuation and stop words are removed using a collection-based stop word list, but we keep hashtags without the `#' character. After preprocessing we are left with 4,459,840 tweets, roughly 27% of all tweets. Due to our aggressive preprocessing, we miss 19% of the relevant tweets per topic, on average. Our 10 retrieval models avoid using future evidence by using per topic indexes. For completeness, we note that our stopword list and the idf-weights in the density feature were computed on the entire collection. Pseudo test collections and both TREC microblog test collections also contain tweets from the entire collection. For generating queries, we index the collection with Lucene without stemming or stopword removal.",Y,null
+,,,
+169,"Table 2 lists statistics of the pseudo test collections generated with the methods described in §3, as well as statistics of the collec-",null,null
+,,,
+170,Table 2: Statistics for pseudo test collection generated from our methods and the TREC Microblog 2011 track.,Y,null
+,,,
+171,Collection,null,null
+,,,
+172,Topics # Max Min Avg.,null,null
+,,,
+173,length,null,null
+,,,
+174,Relevant documents # Max Min Avg.,null,null
+,,,
+175,TREC MB 2011 49 6 1 3.4 TREC MB 2012 59 7 1 2.9,Y,null
+,,,
+176,"2,965 178 1 60.5 6,286 572 1 106.5",null,null
+,,,
+177,Random-1 Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+178,"1,888 10 10 10 462560 245 245 245.0 1,888 10 10 10 462,013 16,105 50 244.7",null,null
+,,,
+179,"891 10 10 10 212,377 9,164 50 238.4 481 10 10 10 98,586 4,949 50 205.0",null,null
+,,,
+180,H-TI-X20 H-TI-X40 H-TI-X60 H-TI-X80,null,null
+,,,
+181,"175 10 10 10 32,221 3661 50 184.1 392 10 10 10 75,287 4804 50 192.1 576 10 10 10 121,639 5277 50 211.2 740 10 10 10 166,489 6956 50 225.0",null,null
+,,,
+182,"tions generated by choosing different values for X. The HashtagsTI-QL{1,2,3,5,20} pseudo test collections are of the same proportions as Hashtags-TI, apart from the query length. We have listed only one of fifteen Random collections, but these are all of the same proportions: about as large as the Hashtags collection.",null,null
+,,,
+183,5.2 Learning to rank,null,null
+,,,
+184,"We follow a two-step approach to learning to rank, outlined in Algorithm 4. First, we run several retrieval algorithms, then we rerank all retrieved tweets. For retrieval, we use the retrieval algorithms listed in Table 1, optimized for MAP [24, 34] after tuning on a training collection. In case of ties among parameter vectors for a ranker, we randomly sample a parameter vector. We also use a parameter free retrieval algorithm, DFRee [1]. For re-ranking, we compute three groups of features.",null,null
+,,,
+185,"Query-tweet features. These are features that have different values for each query-tweet pair. We subdivide these as follows. Rankers: the raw output of each retrieval algorithm. For LM, BOW and BUW we transform the raw output X by taking the exponent: exp(X). Ranker meta features: the number of rankers that retrieved the tweet, the maximal, average, and median reciprocal rank of the tweet over all rankers. Recency: query-tweet time difference decay, computed as exp(t( ) - qt), where t( ) is the timestamp of the tweet and qt the timestamp of the query. We linearly normalize query-tweet features over all retrieved tweets for the query.",null,null
+,,,
+186,"Query features. These are features which have the same value for every retrieved tweet within the same query. We use Query clarity, a method for probing the semantic distance between the query and the collection [11]. We linearly normalize query features over the set of retrieved tweets for all queries.",null,null
+,,,
+187,"Tweet features. These are features that have the same value for each tweet independent of the query. We use the Quality criteria listed in §3: link, mentions, tweet length, density, capitalization, and direct. We linearly normalize tweet features over the set of retrieved tweets for all queries.",null,null
+,,,
+188,"To build a training set, one needs positive and negative training examples. Let q  Q be a query from the training collection, Rq the set of relevant tweets for query q, and Mq the set of all retrieved tweets for q. Then, for each query in the training collection we use Rq  Mq as positive examples. To have a balanced training set, we randomly sample |Rq| tweets as negative training examples from Mq \ Rq.",null,null
+,,,
+189,57,null,null
+,,,
+190,"Next, we feed the training set to four state of the art learners: (a) Pegasos SVM1 [36, 37], (b) Coordinate ascent [27], (c) RankSVM [17], and (d) RT-Rank [29]. We set Pegasos SVM to optimize the area under the ROC curve using indexed sampling of training examples, with regularization parameter  ,"" 0.1 for a maximum of 100,000 iterations. We set coordinate ascent to optimize for MAP with "","" 0.0001 and maximum step size of 3. We use line search to optimize each feature with uniform initialization and consider only positive feature weights without projecting points on the manifold. For RankSVM we set the cost parameter to 1 per query. In preliminary experiments, RT-Rank performed poorly and therefore we choose to leave it out from our report.""",null,null
+,,,
+191,"Recall that training sets are compiled using tuned rankers and that in case of ties between different parameter vectors for a ranker, a random vector is selected. When compiling test sets for TREC MB 2011 and TREC MB 2012 to evaluate the utility of a training set, we use the exact same parameter vectors, so that the same set of features are used for training and testing.",Y,null
+,,,
+192,"Algorithm 4 has randomness in several stages: (i) when generating the pseudo test collection (only in the case of the Random collections), (ii) when sampling a winning parameter setting for each feature, (iii) when randomly sampling negative training examples, and (iv) during model learning. To obtain a reliable estimate of of the performance when training on a pseudo test collection, this procedure is repeated N ,"" 10 times, each time generating a new pseudo test collection (in the case of the Random test collection), selecting random parameter vectors, selecting random negative training examples, and training an LTR model.""",null,null
+,,,
+193,5.3 Evaluation,null,null
+,,,
+194,"We report on precision at 30 (P30) on binary relevance judgments. We choose P30 because it has been one of the main metrics in both the TREC 2011 and 2012 Microblog track. We also report on MAP, as it is a well understood and commonly used evaluation metric in information retrieval, allowing us to better understand the behavior of our pseudo test collections. Note that in the 2011 task, tweets had to be ordered by their publication date instead of by their relevance. Many top performing systems treated the task as normal relevance ranking and cut off their ranked lists at rank 30 [21]. In the 2012 track organizers decided to focus on ranking by relevance again, which is what we will focus on.",Y,null
+,,,
+195,"Testing for statistical significance. For each training collection, we run Algorithm 4 N ,"" 10 times, giving rise to N scores for each topic, for each collection. We report average performance and sample standard deviation over these iterations. To also gain insight if any differences between a pair of training collections would be observed on different microblog topics from the same hypothetical population of topics, we proceed as follows. We pick for each collection the iteration of Algorithm 4 which had the smallest training error on that collection. Then, we do a paired t-test over differences per topic as usual and report the obtained p-values. Statistically significant differences are marked as (or ) for significant differences for  "","" .001, or (and ) for  "", .05.",null,null
+,,,
+196,6. RESULTS AND ANALYSIS,null,null
+,,,
+197,"First, we report on our parameter tuning results; then on our learning to rank results. We also analyze parameter sensitivity with regard to the percentage of interesting tweets kept and query length.",null,null
+,,,
+198,6.1 Parameter tuning results,null,null
+,,,
+199,"The main outcomes in this section will be correlations, to an-",null,null
+,,,
+200,1http://code.google.com/p/sofia-ml/,null,null
+,,,
+201,"swer the question whether relative performance of parameter values on pseudo test collections correlates with relative performance of the same values on an editorial collection. We begin with two case studies to gain a better understanding of the behavior of our pseudo text collections. We sweep (a) the document length normalization parameter b for Terrier's tf-idf implementation (Fig. 2(a)), and (b) µ for Indri's implementation of language modeling with Dirichlet smoothing (Fig. 2(b)). We only include one of our ten random pseudo test collections; all random collections behave similarly, for all retrieval systems and metrics.",null,null
+,,,
+202,"Fig. 2(a) shows that on the TREC MB 2011 collection there is a general trend to prefer lower values of b, possibly because of the very small average document length, which, in turn, renders the deviation from the average length close to one. All pseudo test collections capture this trend, including the Random-1 pseudo test collection. The curves of the pseudo test collections are smoother than the curve obtained when tuning on the TREC MB 2011 topics; this is because the pseudo test collections have far more test topics. Pseudo test collections show differences in absolute scores, but most importantly, we are interested in whether pseudo test collection predictions that one parameter vector is better than another correlate to such predictions of editorial collections. Kendall's tau expresses exactly that correlation, see Table 3. In addition, we want to know the following: if we sample a random parameter vector from those predicted to yield optimal performance on a pseudo test collection, what will be the expected loss with regard to optimal performance on an editorial collection? Table 5 provides these quantities. Correlations are high across the board, and expected loss is low. All pseudo test collections can be used to reliably tune the b parameter of Terrier's TF-IDF, even the Random-1 collection.",Y,null
+,,,
+203,"Turning to a second case study, Indri's language modeling algorithm with Dirichlet smoothing, we see a different picture (Fig. 2(b)). The TREC MB 2011 topics show a slightly decreasing trend for larger µ values. We believe this is due to the short document length; tweets after processing are few terms long, and therefore even small µ values overshadow the document term probability with the background probability. This trend is not entirely captured by the pseudo test collections. All have a short increase for low values of µ which is much less pronounced in the TREC MB 2011 curve. After that, all except the Random-1 collection show a decline, if only in the third digit. Correlations are fair (Table 4), but the Random-1 collection fails here. Expected loss is low across the board (Table 6).",null,null
+,,,
+204,"Looking at the big picture, we average the correlations and expected loss figures in Tables 7 and 8 over all nine retrieval models from Table 1. For the hashtag based collections, correlations are high, with a large variance over systems. Expected loss is low. This indicates that pseudo test collections can be used to reliably and profitably tune parameters for a variety of well established retrieval algorithms, with more or less success depending on which model is being tuned. Tuning retrieval models on all hashtag based pseudo test collections is about as reliable as tuning on editorial test collections. For most retrieval algorithms, a Random collection cannot be recommended for tuning. Thus, the idea of grouping tweets by hashtag has value for creating pseudo test collections for tuning retrieval algorithms.",null,null
+,,,
+205,6.2 Learning to rank results,null,null
+,,,
+206,"In this section we evaluate the usefulness of our pseudo test collections (PTCs) by training several learning to rank algorithms on them. In Tables 9 and 10, we report P30 and MAP performance on the TREC 2011 Microblog track topics. We compare training on our PTCs with training on the TREC 2012 Microblog track top-",Y,null
+,,,
+207,58,null,null
+,,,
+208,P30 0.0 0.2 0.4 0.6 0.8 1.0,null,null
+,,,
+209,P30 0.0 0.2 0.4 0.6 0.8 1.0,null,null
+,,,
+210,Tf-idf (Terrier),null,null
+,,,
+211,TREC-MB-2011 Hashtags Hashtags-T Hashtags-TI Random-1,Y,null
+,,,
+212,LM,null,null
+,,,
+213,TREC-MB-2011 Hashtags Hashtags-T Hashtags-TI Random-1,Y,null
+,,,
+214,0.0 0.2 0.4 0.6 0.8 1.0,null,null
+,,,
+215,0 2000 4000 6000 8000 10000,null,null
+,,,
+216,b,null,null
+,,,
+217,mu,null,null
+,,,
+218,"Figure 2: Sweeping the b parameter of Tf-idf (Terrier) (2(a)) and the µ parameter of LM (2(b)). The x-axes have parameter values, the y-axes average P30 over the topics of the respective tuning collection.",null,null
+,,,
+219,"Table 3: For Tf-idf (Indri), and P30, Kendall's tau correlations of parameter sweeps on several pseudo test collections with sweeps on TREC MB 2011 and 2012 collections. Kendall's tau between sweeps over TREC MB 2011 and 2012 is 0.85.",null,null
+,,,
+220,Tune on TREC MB 2011 TREC MB 2012,Y,null
+,,,
+221,Random-1,null,null
+,,,
+222,0.18,null,null
+,,,
+223,0.2,null,null
+,,,
+224,Hashtags,null,null
+,,,
+225,0.87,null,null
+,,,
+226,0.86,null,null
+,,,
+227,Hashtags-T,null,null
+,,,
+228,0.9,null,null
+,,,
+229,0.86,null,null
+,,,
+230,Hashtags-TI,null,null
+,,,
+231,0.9,null,null
+,,,
+232,0.86,null,null
+,,,
+233,"Table 4: For language modeling (LM), and P30, Kendall's tau correlations of parameter sweeps on several pseudo test collections with sweeps on TREC MB 2011 and 2012 collections. Kendall's tau between sweeps over TREC MB 2011 and 2012 is 0.61.",Y,null
+,,,
+234,Tune on TREC MB 2011 TREC MB 2012,Y,null
+,,,
+235,Random-1 Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+236,-0.87 0.65 0.69 0.58,null,null
+,,,
+237,-0.65 0.78 0.77 0.79,null,null
+,,,
+238,"ics and indicate significant differences. In Tables 11 and 12, we report P30 and MAP performance on the TREC 2012 Microblog track topics, and compare training on our PTCs with training on the TREC 2011 Microblog track topics.",Y,null
+,,,
+239,"A first brief glance at all four tables tells us that training on an editorial test collection is in most cases (but not all) the best strategy. Still, if training on a PTC is not substantially and significantly worse, we may conclude that in the abscence of training data, pseudo test collections are a viable alternative.",null,null
+,,,
+240,"A second glance at all four tables shows us that training on the Random PTC is always significantly outperformed by training on editorial collections. Still, in most cases, there is a hashtag based PTC on which training yields performance on par with training on editorial collections. This shows that there is added value in our idea of using hashtags to group tweets by topic.",null,null
+,,,
+241,"Another phenomenon we can observe in all tables is that Pegasos has remarkably stable performance over pseudo test collections, compared to the other two learning to rank algorithms. With the exception of Hashtags-TI-QL1 and Random, it seems to be able to exploit the structure in any PTC to learn a function that yields performance comparable to a function learned on editorial training data. RankSVM, on the other hand, has unstable performance. Especially in Table 12 it refuses to work on anything but manually obtained ground truth. Coordinate Ascent, a remarkably simple learning to rank algorithm holds the middle ground. When queries are",null,null
+,,,
+242,"Table 5: For Tf-idf (Indri), expected loss in P30 performance of parameter sweeps on several training collections compared to optimal performance on TREC MB 2011 and 2012 collections.",Y,null
+,,,
+243,Tune on,null,null
+,,,
+244,TREC MB 2011 TREC MB 2012,Y,null
+,,,
+245,TREC MB 2011 TREC MB 2012 Random-1 Hashtags Hashtags-T Hashtags-TI,Y,null
+,,,
+246,0.006±0.005 (3) 0.029 0.012±0.002 (2) 0.002 0.002,null,null
+,,,
+247,0.003 0.024 0.002±0.002 (2) 0.000 0.000,null,null
+,,,
+248,"Table 6: For language modeling (LM), expected loss in P30 performance of parameter sweeps on several training collections compared to optimal performance on TREC MB 2011 and 2012 collections.",null,null
+,,,
+249,Tune on,null,null
+,,,
+250,TREC MB 2011 TREC MB 2012,Y,null
+,,,
+251,TREC MB 2011 TREC MB 2012 Random-1 Hashtags Hashtags-T Hashtags-TI,Y,null
+,,,
+252,0.006 0.039±0.001 (11) 0.010 0.013±0.004 (2) 0.014,null,null
+,,,
+253,0.010 0.014±0.001 (11) 0.001 0.001±0.001 (2) 0.002,null,null
+,,,
+254,"too short, as in Hashtags-TI-QL1, Hashtags-QL2 and Hashtags-TIQL3 performance detoriates. When subsamples of tweets become too small (Hashtags-TI-X20) the same happens.",null,null
+,,,
+255,"So which PTC is the best? All PTCs are significantly outperformed by training on an editorial collection in at least one of the conditions. Hashtags-TI-X60 and Hashtags-TI-X80 both yield best results in one case. Also, like Hashtags, Hashtags-T and HashtagsTI are significantly outperformed in only a small number of cases.",null,null
+,,,
+256,Learning to rank only makes sense if improvements over individual retrieval algorithms can be obtained. Tables 13 and 14 show performance of the retrieval models we use as features. In the great majority of cases our hashtag based PTCs outperform the best feature. The Random collection never achieves this.,null,null
+,,,
+257,7. RELATED WORK,null,null
+,,,
+258,We describe two types of related work: (i) searching microblog posts and (ii) pseudo test collections.,null,null
+,,,
+259,"Searching microblog posts. Microblog search is a growing research area. The dominant microblogging platform that most research focuses on is Twitter. Microblogs have characteristics that introduce new problems and challenges for retrieval [12, 40]. Massoudi et al. [26] report on an early study of retrieval in microblogs, and introduce a retrieval and query expansion method to account for",null,null
+,,,
+260,59,null,null
+,,,
+261,"Table 7: For all systems, and P30, Kendall's tau correlations of parameter sweeps on several pseudo test collections with sweeps on TREC MB 2011 and 2012 collections. Kendall's tau between sweeps over TREC MB 2011 and 2012 is 0.80.",null,null
+,,,
+262,Tune on TREC MB 2011 TREC MB 2012,null,null
+,,,
+263,Random-1 Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+264,0.27±0.62 (2 NA) 0.78±0.20 (1 NA) 0.80±0.20 (1 NA) 0.75±0.26 (1 NA),null,null
+,,,
+265,0.32±0.56 (1 NA) 0.70±0.35 (1 NA) 0.78±0.30 (1 NA) 0.81±0.23 (1 NA),null,null
+,,,
+266,"Table 8: Over all retrieval models, average expected loss in P30 performance of parameter sweeps on several training collections compared to optimal performance on TREC MB 2011 and 2012 collections.",null,null
+,,,
+267,Tune on,null,null
+,,,
+268,TREC MB 2011 TREC MB 2012,null,null
+,,,
+269,TREC MB 2011 TREC MB 2012 Random-1 Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+270,0.003±0.003 0.021±0.021 0.005±0.006 0.004±0.005 0.004±0.005,null,null
+,,,
+271,0.003±0.006 0.013±0.012 0.004±0.006 0.002±0.005 0.002±0.005,null,null
+,,,
+272,microblog search challenges. Efron and Golovchinsky [13] investigate the temporal aspects of documents on query expansion using pseudo relevance feedback. Naveed et al. [30] develop a retrieval model that takes into account document length and interestingness defined over a range of features.,null,null
+,,,
+273,"In 2011, TREC launched the microblog search track, where systems are asked to return relevant and interesting tweets given a query [21]. The temporal aspect of Twitter and its characteristics, e.g., hashtags and existence of hyperlinks, were exploited by many participants, for query expansion, filtering, or learning to rank [21]. Whereas teams depended on self-constructed training data to train learning to rank systems during TREC 2011, most of these systems were successfully trained on the 2011 queries during TREC 2012. Teevan et al. [40] find that over 20% of Twitter queries contain a hashtag, an indication that hashtags may be good topical surrogates, which can be leveraged for building pseudo test collections.",null,null
+,,,
+274,"Pseudo test collections. The issue of creating and using pseudo test collections is a longstanding and recurring theme in IR, see, e.g., [38, 39]. Several attempts have been made to either simulate human queries or generate relevance judgments without the need of human assessors for a range of tasks. Azzopardi et al. [3] simulate queries for known-item search and investigate term weighting methods for query generation. Their main concern is not to develop training material, but to determine whether their pseudo test collection generation methods ultimately give rise to similar rankings of retrieval systems as manually created test collections. Kim and Croft [18] generate a pseudo test collection for desktop search. Huurnink et al. [15] use click-through data to simulate relevance assessments. Later, they evaluate the performance of query simulation methods in terms of system rankings [16] and they find that incorporating document structure in the query generation process results in more realistic query simulators. Hofmann et al. [14] try to smooth noise from click-through data from an audio-visual archive's transaction log using purchase information of videos. We extend previous work on pseudo test collection generation [4] with a principled method to obtain good quality training material, using knowledge derived from editorial judgements.",null,null
+,,,
+275,"Asadi et al. [2] describe a method for generating pseudo test collections for training learning to rank methods for web retrieval. Their methods build on the idea that anchor text in web documents is a good source for sampling queries, and the documents that these anchors link to are regarded as relevant documents for the anchor text (query). Our work shares analogies, but in the microblog set-",null,null
+,,,
+276,"Table 9: P30 performance on TREC MB 2011 topics for various LTR algorithms, trained on different collections. Features are tuned on MAP. Best run in bold. Indicated statistically significant differences are with regard to training on TREC-MB-2012. The best individual tuned ranker, DFR-FD, achieved 0.416.",null,null
+,,,
+277,Train on,null,null
+,,,
+278,Pegasos RankSVM,null,null
+,,,
+279,CA,null,null
+,,,
+280,TREC-MB-2012 Random Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+281,0.446±0.001 0.401±0.004 0.437±0.002 0.438±0.001 0.437±0.001,null,null
+,,,
+282,0.436±0.004 0.356±0.011 0.430±0.004 0.426±0.002 0.406±0.007,null,null
+,,,
+283,0.447±0.004 0.378±0.006 0.434±0.002 0.434±0.003 0.429±0.002,null,null
+,,,
+284,Hashtags-TI-X20 Hashtags-TI-X40 Hashtags-TI-X60 Hashtags-TI-X80,null,null
+,,,
+285,0.432±0.001 0.435±0.001 0.438±0.001 0.438±0.001,null,null
+,,,
+286,0.265±0.016 0.361±0.006 0.415±0.004 0.427±0.003,null,null
+,,,
+287,0.383±0.016 0.427±0.001 0.431±0.003 0.435±0.002,null,null
+,,,
+288,Hashtags-TI-QL1 0.189±0.135 Hashtags-TI-QL2 0.435±0.002 Hashtags-TI-QL3 0.443±0.001 Hashtags-TI-QL5 0.443±0.001 Hashtags-TI-QL20 0.438±0.001,null,null
+,,,
+289,0.034±0.015 0.244±0.024 0.240±0.012 0.259±0.008 0.320±0.007,null,null
+,,,
+290,0.293±0.107 0.421±0.047 0.427±0.023 0.428±0.005 0.432±0.004,null,null
+,,,
+291,"Table 10: MAP performance on TREC MB 2011 topics for various LTR algorithms, trained on different collections. Features are tuned on MAP. Best performance per LTR algorithm in bold. Indicated statistically significant differences are with regard to training on TREC-MB-2012. The best individual tuned ranker, Tf-idf (Indri), achieved 0.357.",null,null
+,,,
+292,Train on,null,null
+,,,
+293,Pegasos RankSVM,null,null
+,,,
+294,CA,null,null
+,,,
+295,TREC-MB-2012 Random Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+296,0.388±0.001 0.348±0.004 0.374±0.001 0.379±0.000 0.383±0.001,null,null
+,,,
+297,0.362±0.003 0.294±0.009 0.360±0.005 0.362±0.005 0.344±0.003,null,null
+,,,
+298,0.387±0.003 0.319±0.009 0.385±0.001 0.386±0.000 0.377±0.002,null,null
+,,,
+299,Hashtags-TI-X20 Hashtags-TI-X40 Hashtags-TI-X60 Hashtags-TI-X80,null,null
+,,,
+300,0.376±0.001 0.380±0.001 0.383±0.001 0.381±0.000,null,null
+,,,
+301,0.198±0.015 0.300±0.007 0.352±0.005 0.363±0.002,null,null
+,,,
+302,0.332±0.013 0.373±0.001 0.381±0.003 0.384±0.002,null,null
+,,,
+303,Hashtags-TI-QL1 0.141±0.125 Hashtags-TI-QL2 0.370±0.001 Hashtags-TI-QL3 0.379±0.000 Hashtags-TI-QL5 0.383±0.001 Hashtags-TI-QL20 0.383±0.001,null,null
+,,,
+304,0.020±0.009 0.185±0.019 0.166±0.011 0.165±0.007 0.231±0.008,null,null
+,,,
+305,0.202±0.119 0.360±0.046 0.366±0.026 0.372±0.006 0.381±0.002,null,null
+,,,
+306,"ting, there is no anchor text to sample queries. Moreover, the temporal aspect of relevance plays a bigger role in microblog search.",null,null
+,,,
+307,"Carterette et al. [7] investigate what the minimal judging effort is that must be done to have confidence in the outcome of an evaluation. Rajput et al. [32] present a method for extending the recall base in a manually created test collection. Carterette et al. [8] find that test collections with thousands of queries with fewer relevant documents considerably reduce the assessor effort with no appreciable increase in evaluation errors. This finding inspired us to come up with pseudo test collection generators that are able to produce large numbers of queries: while the signal produced by an individual query may be noisy, the volume will produce a signal that is useful for learning and parameter tuning.",null,null
+,,,
+308,8. DISCUSSION AND CONCLUSION,null,null
+,,,
+309,Following the results of our experiments we list three main observations: (1) The Random pseudo test collection performs significantly worse than editorial collections in the retrieval experiments and shows low correlation to these collections in the tuning phase. (2) The top pseudo test collections are not significantly worse than editorial collections and show high correlation when tuning parameters. (3) Differences between various pseudo test collections on retrieval effectiveness are small.,null,null
+,,,
+310,60,null,null
+,,,
+311,"Table 11: P30 performance on TREC MB 2012 topics for various LTR algorithms, trained on different collections. Features are tuned on MAP. Best performance per LTR algorithm in bold. Indicated statistically significant differences are with regard to training on TREC-MB-2011. The best individual tuned ranker, DFR-FD, achieved 0.351.",null,null
+,,,
+312,Train on,null,null
+,,,
+313,Pegasos RankSVM,null,null
+,,,
+314,CA,null,null
+,,,
+315,TREC-MB-2011 Random Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+316,0.392±0.001 0.341±0.003 0.379±0.001 0.372±0.001 0.381±0.001,null,null
+,,,
+317,0.391±0.007 0.289±0.008 0.330±0.011 0.336±0.005 0.326±0.007,null,null
+,,,
+318,0.392±0.007 0.314±0.006 0.378±0.001 0.382±0.001 0.393±0.002,null,null
+,,,
+319,Hashtags-TI-X20 Hashtags-TI-X40 Hashtags-TI-X60 Hashtags-TI-X80,null,null
+,,,
+320,0.377±0.001 0.379±0.001 0.379±0.001 0.373±0.001,null,null
+,,,
+321,0.248±0.013 0.294±0.009 0.348±0.003 0.337±0.006,null,null
+,,,
+322,0.353±0.008 0.389±0.001 0.394±0.006 0.388±0.007,null,null
+,,,
+323,Hashtags-TI-QL1 0.198±0.089 Hashtags-TI-QL2 0.374±0.002 Hashtags-TI-QL3 0.381±0.001 Hashtags-TI-QL5 0.385±0.001 Hashtags-TI-QL20 0.380±0.001,null,null
+,,,
+324,0.047±0.016 0.231±0.016 0.218±0.007 0.248±0.005 0.302±0.005,null,null
+,,,
+325,0.291±0.059 0.377±0.035 0.382±0.016 0.391±0.004 0.388±0.002,null,null
+,,,
+326,"Table 12: MAP performance on TREC MB 2012 topics for various LTR algorithms, trained on different collections. Features are tuned on MAP. Best performance per LTR algorithm in bold. Indicated statistically significant differences are with regard to training on TREC-MB-2011. The best individual tuned ranker, DFR-FD, achieved 0.220.",null,null
+,,,
+327,Train on,null,null
+,,,
+328,Pegasos RankSVM,null,null
+,,,
+329,CA,null,null
+,,,
+330,TREC-MB-2011 Random Hashtags Hashtags-T Hashtags-TI,null,null
+,,,
+331,0.245±0.000 0.207±0.001 0.231±0.000 0.227±0.001 0.234±0.001,null,null
+,,,
+332,0.245±0.004 0.159±0.005 0.181±0.008 0.193±0.004 0.172±0.005,null,null
+,,,
+333,0.246±0.004 0.176±0.006 0.224±0.001 0.227±0.001 0.233±0.001,null,null
+,,,
+334,Hashtags-TI-X20 Hashtags-TI-X40 Hashtags-TI-X60 Hashtags-TI-X80,null,null
+,,,
+335,0.233±0.001 0.233±0.000 0.233±0.000 0.230±0.000,null,null
+,,,
+336,0.143±0.007 0.158±0.005 0.196±0.002 0.189±0.004,null,null
+,,,
+337,0.210±0.005 0.230±0.001 0.234±0.003 0.230±0.004,null,null
+,,,
+338,Hashtags-TI-QL1 0.106±0.060 Hashtags-TI-QL2 0.229±0.001 Hashtags-TI-QL3 0.234±0.000 Hashtags-TI-QL5 0.235±0.000 Hashtags-TI-QL20 0.231±0.000,null,null
+,,,
+339,0.026±0.008 0.123±0.011 0.106±0.004 0.118±0.004 0.162±0.003,null,null
+,,,
+340,0.165±0.048 0.233±0.021 0.231±0.015 0.233±0.003 0.228±0.001,null,null
+,,,
+341,"Combining the top two observations leads us to conclude that our approach to constructing pseudo test collections works. We can successfully use pseudo test collections, as long as we find appropriate surrogate relevance labels. Why are these findings important? To train learning to rank methods on microblog retrieval tasks we do not have to invest in manual annotations but can use hashtags for creating training examples. Pseudo test collections can also be used successfully for tuning parameters of retrieval models.",null,null
+,,,
+342,"The third observation is that the differences between our pseudo test collections are limited. More advanced methods for selecting tweets and hashtags result in performance that is only sporadically better than the naive baseline method, which treats all tweets and hashtags equally. We can look at this from two angles. (i) Collection construction: We can limit time spent on constructing a smooth and interesting pseudo test collection by substituting more advanced methods (Hashtags-T and -TI) with the naive Hashtags method. Using the naive method is faster and results in a larger collection, with similar results. (ii) Training volume: Investing in obtaining more interesting tweets and hashtags using our more advanced methods substantially reduces the number of queries in our collections. While the naive Hashtags uses over 1,800 queries and 460,000 relevant tweets, the other methods use only 890 (HashtagsT) and 480 (Hashtags-TI) queries and equally reduced sets of relevant tweets. Training efficiency improves substantially by limiting",null,null
+,,,
+343,"Table 13: P30 performance on 2011 and 2012 topics for retrieval models for which MAP was tuned on 2011 topics, ordered by 2012 performance. The only parameter free retrieval model, DFRee, achieved 0.416 on the 2011 topics, and 0.346 on the 2012 topics.",null,null
+,,,
+344,Model,null,null
+,,,
+345,2011 2012,null,null
+,,,
+346,DFR-FD (Terrier) Tf-idf (Terrier) PL2 (Terrier) PRF (Terrier) Tf-idf (Indri) Okapi (Indri) LM (Indri) BUW (Indri) BOW (Indri),null,null
+,,,
+347,0.416 0.397 0.406 0.391 0.413 0.409 0.404 0.128 0.094,null,null
+,,,
+348,0.351 0.348 0.336 0.335 0.331 0.329 0.325 0.154 0.134,null,null
+,,,
+349,"Table 14: MAP performance on 2011 and 2012 topics for retrieval models for which MAP was tuned on 2011 topics, ordered by 2012 performance. The only parameter free retrieval model, DFRee, achieved 0.351 on the 2011 topics, and 0.216 on the 2012 topics.",null,null
+,,,
+350,Model,null,null
+,,,
+351,2011 2012,null,null
+,,,
+352,DFR-FD (Terrier) Tf-idf (Terrier) PL2 (Terrier) PRF (Terrier) Tf-idf (Indri) Okapi (Indri) LM (Indri) BUW (Indri) BOW (Indri),null,null
+,,,
+353,0.352 0.352 0.348 0.335 0.357 0.354 0.346 0.075 0.060,null,null
+,,,
+354,0.220 0.215 0.209 0.201 0.194 0.191 0.188 0.069 0.061,null,null
+,,,
+355,"the number of queries in the collections. In other words, we can choose between spending more time on constructing our collections, while reducing training time, or take a naive collection construction approach that results in larger collections and thus longer training times. A similar observation holds for the editorial collections, which are the smallest collections (50­60 queries), but (supposedly) with the highest quality.",null,null
+,,,
+356,"Summarizing, we have studied the use of pseudo test collections for training and tuning LTR systems for microblog retrieval. We use hashtags as surrogate relevance labels and generate queries from tweets that contain the particular hashtag. These pseudo test collections are then used for (1) tuning parameters of various retrieval models, and (2) training learning to rank methods for microblog retrieval. We explore three ways of constructing pseudo test collections, (i) a naive method that treats all tweets and hashtags equally, (ii) a method that takes timestamps into account, and (iii) a method that uses timestamps and selects only interesting microblog posts. We compare their performance to those of a randomly generated pseudo test collection and two editorial collections.",null,null
+,,,
+357,"Our pseudo test collections have high correlation with the editorial collections in the parameter tuning phase, whereas the random collection has a significantly lower correlation. In the LTR phase we find that in most cases our collections do not perform significantly worse than the editorial collections, while the random collection does perform significantly worse.",null,null
+,,,
+358,"Looking forward, we are interested in training on a mixture of editorial and generated ground truth. Our work is related to creating ground truth in a semi-supervised way and we also aim to further explore this relation.",null,null
+,,,
+359,Acknowledgements,null,null
+,,,
+360,"This research was partially supported by the European Community's Seventh Framework Programme (FP7/2007-2013) under grant agreements nr 258191 (PROMISE Network of Excellence) and 288024 (LiMoSINe project), the Netherlands Organisation for Scientific Research (NWO) under project nrs 640.004.802, 727.011.005, 612.001.116, HOR-11-10, the Center for Creation, Content and",null,null
+,,,
+361,61,null,null
+,,,
+362,"Technology (CCCT), the BILAND project funded by the CLARINnl program, the Dutch national program COMMIT, the ESF Research Network Program ELIAS, the Elite Network Shifts project funded by the Royal Dutch Academy of Sciences (KNAW), and the Netherlands eScience Center under project number 027.012.105.",null,null
+,,,
+363,9. REFERENCES,null,null
+,,,
+364,"[1] G. Amati and C. van Rijsbergen. Probabilistic models of information retrieval based on measuring the divergence from randomness. ACM Trans. Inf. Syst., 20(4):357­389, 2002.",null,null
+,,,
+365,"[2] N. Asadi, D. Metzler, T. Elsayed, and J. Lin. Pseudo test collections for learning web search ranking functions. In SIGIR '11, pages 1073­1082, 2011.",null,null
+,,,
+366,"[3] L. Azzopardi, M. de Rijke, and K. Balog. Building simulated queries for known-item topics: an analysis using six european languages. In SIGIR '07, pages 455­462, 2007.",null,null
+,,,
+367,"[4] R. Berendsen, M. Tsagias, M. de Rijke, and E. Meij. Generating pseudo test collections for learning to rank scientific articles. In CLEF '12, 2012.",null,null
+,,,
+368,"[5] M. Bron, E. Meij, M. Peetz, M. Tsagkias, and M. de Rijke. Team COMMIT at TREC 2011. In TREC 2011, 2011.",null,null
+,,,
+369,"[6] S. Carter, W. Weerkamp, and E. Tsagkias. Microblog language identification. Language Resources and Evaluation Journal, 47(1), 2013.",null,null
+,,,
+370,"[7] B. Carterette, J. Allan, and R. Sitaraman. Minimal test collections for retrieval evaluation. In SIGIR '06, pages 268­275, 2006.",null,null
+,,,
+371,"[8] B. Carterette, V. Pavlu, E. Kanoulas, J. A. Aslam, and J. Allan. Evaluation over thousands of queries. In SIGIR '08, pages 651­658, 2008.",null,null
+,,,
+372,"[9] S. Clinchant and E. Gaussier. Bridging language modeling and divergence from randomness models: A log-logistic model for ir. In ECIR '09, pages 54­65, 2009.",null,null
+,,,
+373,"[10] B. Croft, D. Metzler, and T. Strohman. Search Engines: Information Retrieval in Practice. Addison Wesley, 2009.",null,null
+,,,
+374,"[11] S. Cronen-Townsend and W. B. Croft. Quantifying query ambiguity. In HLT '02, pages 104­109, 2002.",null,null
+,,,
+375,"[12] M. Efron. Information search and retrieval in microblogs. J. Am. Soc. Inf. Sci. Technol., 62:996­1008, 2011.",null,null
+,,,
+376,"[13] M. Efron and G. Golovchinsky. Estimation methods for ranking recent information. In SIGIR '11, pages 495­504, 2011.",null,null
+,,,
+377,"[14] K. Hofmann, B. Huurnink, M. Bron, and M. de Rijke. Comparing click-through data to purchase decisions for retrieval evaluation. In SIGIR '10, pages 761­762, 2010.",null,null
+,,,
+378,"[15] B. Huurnink, K. Hofmann, and M. de Rijke. Simulating searches from transaction logs. In SIGIR 2010 Workshop on the Simulation of Interaction, 2010.",null,null
+,,,
+379,"[16] B. Huurnink, K. Hofmann, M. de Rijke, and M. Bron. Validating query simulators: an experiment using commercial searches and purchases. In CLEF '10, pages 40­51, 2010.",null,null
+,,,
+380,"[17] T. Joachims. Training linear SVMs in linear time. In KDD '06, pages 217­226, 2006.",null,null
+,,,
+381,"[18] J. Kim and W. B. Croft. Retrieval experiments using pseudo-desktop collections. In CIKM '09, pages 1297­1306, 2009.",null,null
+,,,
+382,"[19] H. Kwak, C. Lee, H. Park, and S. Moon. What is Twitter, a social network or a news media? In WWW '10, pages 591­600, 2010.",null,null
+,,,
+383,"[20] G. G. Lee et al. SiteQ: Engineering high performance QA system using lexico-semantic pattern matching and shallow NLP. In TREC 2001, pages 442­451, 2001.",null,null
+,,,
+384,"[21] J. Lin, C. Macdonald, I. Ounis, and I. Soboroff. Overview of the TREC 2011 Microblog track. In TREC 2011, 2012.",null,null
+,,,
+385,"[22] T.-Y. Liu. Learning to rank for information retrieval. Found. and Trends in Inf. Retr., 3:225­331, 2009.",null,null
+,,,
+386,"[23] C. Lundquist, D. Grossman, and O. Frieder. Improving relevance feedback in the vector space model. In CIKM '97, pages 16­23, 1997.",null,null
+,,,
+387,"[24] C. Macdonald, R. Santos, and I. Ounis. The whens and hows of learning to rank for web search. Inf. Retr., pages 1­45, 2012.",null,null
+,,,
+388,"[25] C. D. Manning and H. Schütze. Foundations of statistical natural language processing. MIT Press, 1999.",null,null
+,,,
+389,"[26] K. Massoudi, E. Tsagkias, M. de Rijke, and W. Weerkamp. Incorporating query expansion and quality indicators in searching microblog posts. In ECIR '11, pages 362­367, 2011.",null,null
+,,,
+390,"[27] D. Metzler. A Feature-Centric View of Information Retrieval. Springer, 2011.",null,null
+,,,
+391,"[28] G. Mishne and M. de Rijke. A study of blog search. In ECIR '06, pages 289­301, 2006.",null,null
+,,,
+392,"[29] A. Mohan, Z. Chen, and K. Q. Weinberger. Web-search ranking with initialized gradient boosted regression trees. J. Mach. Learn. Res., Workshop and Conf. Proc., 14:77­89, 2011.",null,null
+,,,
+393,"[30] N. Naveed, T. Gottron, J. Kunegis, and A. C. Alhadi. Searching microblogs: coping with sparsity and document quality. In CIKM '11, pages 183­188, 2011.",null,null
+,,,
+394,"[31] J. Peng, C. Macdonald, B. He, V. Plachouras, and I. Ounis. Incorporating term dependency in the DFR framework. In SIGIR '07, pages 843­844, 2007.",null,null
+,,,
+395,"[32] S. Rajput, V. Pavlu, P. B. Golbus, and J. A. Aslam. A nugget-based test collection construction paradigm. In CIKM '11, pages 1945­1948, 2011.",null,null
+,,,
+396,"[33] S. Robertson and K. Jones. Simple, proven approaches to text retrieval. Technical report, U. Cambridge, 1997.",null,null
+,,,
+397,"[34] S. Robertson and H. Zaragoza. On rank-based effectiveness measures and optimization. Inf. Retr., 10(3):321­339, 2007.",null,null
+,,,
+398,"[35] S. Robertson, S. Walker, S. Jones, M. Hancock-Beaulieu, and M. Gatford. Okapi at trec-3. In TREC '94, pages 109­109, 1995.",null,null
+,,,
+399,"[36] D. Sculley. Large scale learning to rank. In NIPS Workshop on Advances in Ranking, 2009.",null,null
+,,,
+400,"[37] S. Shalev-Shwartz, Y. Singer, and N. Srebro. Pegasos: Primal estimated sub-gradient solver for SVM. In ICML '12, pages 807­814, 2012.",null,null
+,,,
+401,"[38] J. Tague and M. Nelson. Simulation of user judgments in bibliographic retrieval systems. In SIGIR '81, pages 66­71, 1981.",null,null
+,,,
+402,"[39] J. Tague, M. Nelson, and H. Wu. Problems in the simulation of bibliographic retrieval systems. In SIGIR '80, pages 236­255, 1980.",null,null
+,,,
+403,"[40] J. Teevan, D. Ramage, and M. R. Morris. #twittersearch: a comparison of microblog search and web search. In WSDM '11, pages 35­44, 2011.",null,null
+,,,
+404,"[41] W. Weerkamp and M. de Rijke. Credibility-based reranking for blog post retrieval. Inf. Retr., 15(3­4):243­277, 2012.",null,null
+,,,
+405,"[42] C. Zhai and J. Lafferty. A study of smoothing methods for language models applied to ad hoc information retrieval. In SIGIR '01, pages 334­342, 2001.",null,null
+,,,
+406,62,null,null
+,,,
+407,,null,null

@@ -1,0 +1,118 @@
+Learning to Rank under Tight Budget Constraints
+
+Christian Pölitz
+Saarland University Campus E 1.7
+Cluster of Excellence MMCI 66123 Saarbrücken
+poelitz@mmci.uni-saarland.de,
+
+Ralf Schenkel
+Saarland University Campus E 1.7
+Cluster of Excellence MMCI 66123 Saarbrücken
+schenkel@mmci.uni-saarland.de
+
+ABSTRACT
+This paper investigates the influence of pruning feature lists to keep a given budget for the evaluation of ranking methods. We learn from a given training set how important the individual prefixes are for the ranking quality. Based on there importance we choose the best prefixes to calculate the ranking while keeping the budget.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval
+General Terms
+Algorithms, Performance, Measurement
+Keywords
+Learning to Rank, Constraints
+1. INTRODUCTION
+Efficiently finding the best results for a query is an important issue in many precision-oriented, interactive tasks. Consequently, a large number of top-k or dynamic pruning algorithms have been proposed (see [2,6] for an overview). In many applications, results need to be provided within a controlled amount of time; however, only very few algorithms have been proposed that explicitly support execution under a limited budget of processing time or disk access costs. One of the few examples from the database community, proposed by Shmueli-Scheuer et al. [3], makes heuristic decisions at runtime based on the documents seen so far. A more fundamental approach that integrates budget constraints into a learning-to-rank framework was recently proposed by Wang et al. [5]; however, they focus on selecting features and do not consider evaluating features for some documents only, resulting rather long processing times of a few seconds per query.
+We propose an algorithm that combines the best of both worlds: It selects, for each feature of the ranking function, a subset of documents to be evaluated before the actual query processing starts, extending the method of [5]. We demonstrate in experiments with TREC GOV2 and queries from the TREC Terabyte track that our method can achieve
+Copyright is held by the author/owner(s). SIGIR'11, July 24­28, 2011, Beijing, China. ACM 978-1-4503-0757-4/11/07.
+
+almost perfect precision while scoring only as few as 20% of the documents.
+2. SCORES
+We focus on the family of linear ranking functions that come with a family of features­functions F = {f1, . . . , fN } assigning real values to (document,query) pairs­and model parameters  = {1, . . . , N }. Our current work uses only unigram (i.e., term) features, but can be extended to bigram features. For simplicity, we assume that each term ti corresponds to exactly one feature fi, which can be its BM25 score (used in our experiments), a Dirichlet score, etc, and write fi(d) instead of fi(d, q); again, extension to multiple features per term is simple. The score of a document d with respect to a query q = {t1, . . . , tn} is computed as
+score(d, q) = ifi(d)
+i
+Following existing work [1], we define the feature weights as weighted sum of a number of document independent meta features (we use the unigram meta features from [5]), i.e., t = j jgj(t), where the i are learned from training queries.
+3. BUDGET CONSTRAINTS
+We assume that for each feature fi, a corresponding inverted list Li exists that provides all pairs (d, fi(d)) of documents d with their feature values where fi(d) = 0, and that is sorted by descending feature value. Processing a query q without budget constraints would read all entries from the lists for q and compute the top-k result documents. The problem considered in this paper is computing good approximate results for q when the budget, i.e., the aggregated number of entries read from all lists, is limited by B. Under the realistic assumption that documents with high feature values are more likely relevant than documents with low feature values, we will read only prefixes of lists. Representing by mi the maximal feature value of any document in Li, we denote by Lbii = {(d, fi(d))  Li|fi(d) > bi · mi} the prefix of Li where the score is more than bi · mi, for bi  [0; 1). We denote by |L| the number of entries in a list or a list prefix. We now want to compute an access plan P  [0; 1]n that denotes, for each Li, which prefix LPi i should be accessed. The execution cost of such an access plan is given as |P | = |LPi i |. Given such an access plan P , the score of
+
+1173
+
+a document now is
+
+scoreP (d, q) =
+
+ifi(d)
+
+i:fi (d)>Pi ·mi
+
+Our goal is now to determine an access plan P for query q that keeps the given budget B, i.e., where |P |  B, and yields a good result quality. We leverage a general idea from [5] for selecting features under budget constraints: Intuitively, the weight i of a feature indicates how important that feature is for the final ranking. We extend this approach by assigning a weight bii to each prefix Lbii , and select an access plan P  that maximizes the sum of the prefix weights while keeping the budget:
+
+P  := argmaxP [0;1]n:|P |B
+
+Pi i
+
+This is an instance of the multiple-choice knapsack prob-
+lem [4].For tractability, we restrict possible choices of Pi to a relatively small number of values (we use {0, 0.1, . . . , 0.9});
+this makes problem instances usually small enough to solve
+them exactly.
+However, this just shifted the problem towards computing the Pi i . We believe that these weights should be derived from the weight i of the corresponding list Li in the unconstrained case, and examined the following two derivations
+(others could be possible as well):
+
+· relative cost: Here, we assume that the usefulness of a prefix is proportional to its length:
+
+Pi i
+
+:=
+
+|LPi i | |Li|
+
+· i
+
+· learning the weights: W.r.t. [5] we determine weights that optimize the quality of results (in our case precision@20) over a set Q of training queries and over a set of budgets:
+
+1 argmaxiPi |Q|
+
+P @20(q, P (q, B)) · P (B)
+
+qQ B
+
+Here, P (B) denotes the probability that a query with budget B will occur, and P (q, B) is the optimal ac-
+cess plan for query q and budget B. Instead of learning the Pi i directly, we propose to derive them from the weight i of list Li in the unconstrained case, by setting Pi i := Pi · i.
+
+4. EXPERIMENTS
+We evaluate our method using the TREC GOV2 collection and topics from the TREC Terabyte tasks 2004­2006, which we split into training (100 topics from 2005+2006) and test (49 topics from 2004) topics. Our features are BM25 scores with k1 = 1.2 and b = 0.5, and we use the same meta features used in [5]. We first learned optimal list weights (i) on the training topics without budget constraints. We considered a set of relative budgets B= {0.2, 0.25, . . . , 1.0} , where a relative budget of 0.2 means the system can access at most 20% of the entries in all index lists for that query. We learned the Pi on the training topics for precision@20 assuming uniform distribution of the budgets.
+We then measured precision@20 for the test topics for the same selection B of relative budgets, solving the multiplechoice knapsack problem with the two different list prefix
+
+1 0.98
+
+Weights Relative to Costs Learned Weights
+
+0.96
+
+Relative P20
+
+0.94
+
+0.92
+
+0.9
+
+0.88
+
+0.86
+
+0.2 0.25 0.3 0.35 0.4 0.45 0.5 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.95 1 Budget
+
+Figure 1: Precision@20 for different budgets, relative to unconstrained execution
+
+weights introduced in the previous section. Figure 1 shows the result of this experiment, where we report relative precision compared to the precision with full feature lists. It is evident that both methods provide good results (relative precision >90%) over a large range of budgets. For small budgets below 35% of the full index lists, the learned weights outperform the simple cost-based weights, providing excellent performance even at 20% budget.
+5. CONCLUSIONS AND FUTURE WORK
+The results show the benefit of using the introduced prefixes when facing budget constraints. Under very tight constraints we could show that learning good prefix combinations can keep good ranking quality while skipping larger parts of the index lists. Here the effect to even tighter budgets will be examined in the future. A comparison to existing budget-aware top-k techniques, such as [3], will clarify if our proposed method is significantly better, while not requiring expensive bookkeeping at query execution time and additional statistics. Further we plan to additionally integrate multiple features per term and multi-term features to raise the ranking quality and better compare to [5].
+6. REFERENCES
+[1] Michael Bendersky, Donald Metzler, and W. Bruce Croft. Learning concept importance using a weighted dependence model. In WSDM, pages 31­40, 2010.
+[2] Ihab F. Ilyas et al. A survey of top- query processing techniques in relational database systems. ACM Comput. Surv., 40(4), 2008.
+[3] Michal Shmueli-Scheuer et al. Best-effort top-k query processing under budgetary constraints. In ICDE, pages 928­939, 2009.
+[4] Prabhakant Sinha and Andris A. Zoltners. The multiple-choice knapsack problem. Operations Research, 27(3):503­515, 1979.
+[5] Lidan Wang, Donald Metzler, and Jimmy Lin. Ranking under temporal constraints. In CIKM, pages 79­88, 2010.
+[6] Justin Zobel and Alistair Moffat. Inverted files for text search engines. ACM Comput. Surv., 38(2), 2006.
+
+1174
+
+

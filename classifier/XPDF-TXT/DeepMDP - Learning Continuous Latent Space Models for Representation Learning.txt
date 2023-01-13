@@ -1,0 +1,4851 @@
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+arXiv:1906.02736v1 [cs.LG] 6 Jun 2019
+
+Carles Gelada 1 Saurabh Kumar 1 Jacob Buckman 2 Ofir Nachum 1 Marc G. Bellemare 1
+
+Abstract
+Many reinforcement learning (RL) tasks provide the agent with high-dimensional observations that can be simplified into low-dimensional continuous states. To formalize this process, we introduce the concept of a DeepMDP, a parameterized latent space model that is trained via the minimization of two tractable losses: prediction of rewards and prediction of the distribution over next latent states. We show that the optimization of these objectives guarantees (1) the quality of the latent space as a representation of the state space and (2) the quality of the DeepMDP as a model of the environment. We connect these results to prior work in the bisimulation literature, and explore the use of a variety of metrics. Our theoretical findings are substantiated by the experimental result that a trained DeepMDP recovers the latent structure underlying high-dimensional observations on a synthetic environment. Finally, we show that learning a DeepMDP as an auxiliary task in the Atari 2600 domain leads to large performance improvements over model-free RL.
+1. Introduction
+In reinforcement learning (RL), it is typical to model the environment as a Markov Decision Process (MDP). However, for many practical tasks, the state representations of these MDPs include a large amount of redundant information and task-irrelevant noise. For example, image observations from the Arcade Learning Environment (Bellemare et al., 2013) consist of 33,600-dimensional pixel arrays, yet it is intuitively clear that there exist lower-dimensional approximate representations for all games. Consider PONG; observing only the positions and velocities of the three objects in the
+1Google Brain 2Center for Language and Speech Processing, Johns Hopkins University. Correspondence to: Carles Gelada <cgel@google.com>.
+Proceedings of the 36 th International Conference on Machine Learning, Long Beach, California, PMLR 97, 2019. Copyright 2019 by the author(s).
+
+frame is enough to play. Converting each frame into such a simplified state before learning a policy facilitates the learning process by reducing the redundant and irrelevant information presented to the agent. Representation learning techniques for reinforcement learning seek to improve the learning efficiency of existing RL algorithms by doing exactly this: learning a mapping from states to simplified states.
+Prior work on representation learning, such as state aggregation with bisimulation metrics (Givan et al., 2003; Ferns et al., 2004; 2011) or feature discovery algorithms (Comanici & Precup, 2011; Mahadevan & Maggioni, 2007; Bellemare et al., 2019), has resulted in algorithms with good theoretical properties; however, these algorithms do not scale to large scale problems or are not easily combined with deep learning. On the other hand, many recentlyproposed approaches to representation learning via deep learning have strong empirical results on complex domains, but lack formal guarantees (Jaderberg et al., 2016; van den Oord et al., 2018; Fedus et al., 2019). In this work, we propose an approach to representation learning that unifies the desirable aspects of both of these categories: a deeplearning-friendly approach with theoretical guarantees.
+We describe the DeepMDP, a latent space model of an MDP which has been trained to minimize two tractable losses: predicting the rewards and predicting the distribution of next latent states. DeepMDPs can be viewed as a formalization of recent works which use neural networks to learn latent space models of the environment (Ha & Schmidhuber, 2018; Oh et al., 2017; Hafner et al., 2018; Francois-Lavet et al., 2018), because the value functions in the DeepMDP are guaranteed to be good approximations of value functions in the original task MDP. To provide this guarantee, careful consideration of the metric between distribution is necessary. A novel analysis of Maximum Mean Discrepancy (MMD) metrics (Gretton et al., 2012) defined via a function norm allows us to provide such guarantees; this includes the Total Variation, the Wasserstein and Energy metrics. These results represent a promising first step towards principled latentspace model-based RL algorithms.
+From the perspective of representation learning, the state of a DeepMDP can be interpreted as a representation of the
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+(s)
+
+P¯ <latexit sha1_base64="nQL7ImoMvppIK5z/IOPt8aJg70k=">AAAB+nicbVDLSsNAFL3xWesr1aWbYBFclUQEXRbcuGzBPqAp5WY6aYdOJmFmopQY8EfcuFDErV/izr9x0nahrQcuHM65lzlzgoQzpV3321pb39jc2i7tlHf39g8O7cpRW8WpJLRFYh7LboCKciZoSzPNaTeRFKOA004wuSn8zj2VisXiTk8T2o9wJFjICGojDeyKH6DM/Aj1mCDPGnk+sKtuzZ3BWSXeglRhgcbA/vKHMUkjKjThqFTPcxPdz1BqRjjNy36qaIJkgiPaM1RgRFU/m0XPnTOjDJ0wlmaEdmbq74sMI6WmUWA2i4xq2SvE/7xeqsPrfsZEkmoqyPyhMOWOjp2iB2fIJCWaTw1BIpnJ6pAxSiTatFU2JXjLX14l7Yua59a85mW13nya11GCEziFc/DgCupwCw1oAYEHeIZXeLMerRfr3fqYr65ZiwqP4Q+szx8AU5Tr</latexit>
+
+<latexit sha1_base64="VrXrlXLqGMDaYOXqbz0CyaEtrZ0=">AAAB7nicbVDLSgNBEOyNrxhfUY9eBoMQL2FXBD0GvHhMwDwgWcLspDcZMjs7zMwKIQT8BS8eFPHq93jzb5w8DppY0FBUddPdFSnBjfX9by+3sbm1vZPfLeztHxweFY9PmibNNMMGS0Wq2xE1KLjEhuVWYFtppEkksBWN7mZ+6xG14al8sGOFYUIHksecUeukVlcNedlc9oolv+LPQdZJsCQlWKLWK351+ynLEpSWCWpMJ/CVDSdUW84ETgvdzKCibEQH2HFU0gRNOJmfOyUXTumTONWupCVz9ffEhCbGjJPIdSbUDs2qNxP/8zqZjW/DCZcqsyjZYlGcCWJTMvud9LlGZsXYEco0d7cSNqSaMusSKrgQgtWX10nzqhL4laB+XarWnxZx5OEMzqEMAdxAFe6hBg1gMIJneIU3T3kv3rv3sWjNecsIT+EPvM8f24iPsA==</latexit>
+
+P¯(·|
+<latexit sha1_base64="UfixzdyrKLHBiHZu2N5eJBLZaQw=">AAACDnicbVDLSsNAFJ3UV62vqEs3g6XQgpREBF0W3LhswT6gCeVmMmmHTh7MTIQSA+7d+CtuXCji1rU7/8bpY6GtBy4czrmXe+/xEs6ksqxvo7C2vrG5Vdwu7ezu7R+Yh0cdGaeC0DaJeSx6HkjKWUTbiilOe4mgEHqcdr3x9dTv3lEhWRzdqklC3RCGEQsYAaWlgVlxPBCZE4IaEeBZM8+rDvFjhe+xk4xYVdbOMNQGZtmqWzPgVWIvSBkt0ByYX44fkzSkkSIcpOzbVqLcDIRihNO85KSSJkDGMKR9TSMIqXSz2Ts5rmjFx0EsdEUKz9TfExmEUk5CT3dO75bL3lT8z+unKrhyMxYlqaIRmS8KUo5VjKfZYJ8JShSfaAJEMH0rJiMQQJROsKRDsJdfXiWd87pt1e3WRbnRepjHUUQn6BRVkY0uUQPdoCZqI4Ie0TN6RW/Gk/FivBsf89aCsYjwGP2B8fkD/lqb1A==</latexit>
+
+(s), a)
+
+LP¯ (s, <latexit sha1_base64="BJgHLIQdWwNns2TbT/lZSLu72Vc=">AAAB+nicbZBLSwMxFIXv+Kz1NdWlm2ARKkiZEUGXBTcuXLRgH9AOQybNtKGZzJBklDIO+EfcuFDErb/Enf/G9LHQ1gOBj3NuyM0JEs6Udpxva2V1bX1js7BV3N7Z3du3SwctFaeS0CaJeSw7AVaUM0GbmmlOO4mkOAo4bQej60nevqdSsVjc6XFCvQgPBAsZwdpYvl269bNegGVWz/OKOkP41LfLTtWZCi2DO4cyzFX37a9ePyZpRIUmHCvVdZ1EexmWmhFO82IvVTTBZIQHtGtQ4IgqL5uunqMT4/RRGEtzhEZT9/eNDEdKjaPATEZYD9ViNjH/y7qpDq+8jIkk1VSQ2UNhypGO0aQH1GeSEs3HBjCRzOyKyBBLTLRpq2hKcBe/vAyt86rrVN3GRbnWeJrVUYAjOIYKuHAJNbiBOjSBwAM8wyu8WY/Wi/VufcxGV6x5hYfwR9bnD1G6k9E=</latexit>
+
+a)
+
+P(·|s, a)
+<latexit sha1_base64="iFEl/22eCF2FK7Z9ZPx8m0aL5mU=">AAACB3icbVBNS8NAEJ3Ur1q/oh4FWSxCBSmJCHosePHYgv2AJpTNZtsu3WzC7kYoseDBi3/FiwdFvPoXvPlv3LQ9aPXBwOO9GWbmBQlnSjvOl1VYWl5ZXSuulzY2t7Z37N29lopTSWiTxDyWnQArypmgTc00p51EUhwFnLaD0VXut2+pVCwWN3qcUD/CA8H6jGBtpJ596CVDhrwI6yHBPKtPKh4JY43ukDpF+KRnl52qMwX6S9w5KcMc9Z796YUxSSMqNOFYqa7rJNrPsNSMcDopeamiCSYjPKBdQwWOqPKz6R8TdGyUEPVjaUpoNFV/TmQ4UmocBaYzP1gtern4n9dNdf/Sz5hIUk0FmS3qpxzpGOWhoJBJSjQfG4KJZOZWRIZYYqJNdCUTgrv48l/SOqu6TtVtnJdrjftZHEU4gCOogAsXUINrqEMTCDzAE7zAq/VoPVtv1vustWDNI9yHX7A+vgF3FpjU</latexit>
+
+<latexit sha1_base64="f3OSgVXulC9A4ocbUU+eHdeqbXc=">AAAB63icbVBNSwMxEJ3Ur1q/qh69BIvgqeyKoMeCF48t2A9ol5JNs93QJLskWaEsBX+BFw+KePUPefPfmG170NYHA4/3ZpiZF6aCG+t536i0sbm1vVPereztHxweVY9POibJNGVtmohE90JimOCKtS23gvVSzYgMBeuGk7vC7z4ybXiiHuw0ZYEkY8UjToktpEEa82G15tW9OfA68ZekBks0h9WvwSihmWTKUkGM6fteaoOcaMupYLPKIDMsJXRCxqzvqCKSmSCf3zrDF04Z4SjRrpTFc/X3RE6kMVMZuk5JbGxWvUL8z+tnNroNcq7SzDJFF4uiTGCb4OJxPOKaUSumjhCqubsV05hoQq2Lp+JC8FdfXiedq7rv1f3Wda3RelrEUYYzOIdL8OEGGnAPTWgDhRie4RXekEQv6B19LFpLaBnhKfwB+vwBPguOzg==</latexit>
+
+s, a <latexit sha1_base64="hO7kR8ya5p/C0dQQqNwNZgKN8Mk=">AAAB63icbVDLSgNBEOz1GeMr6tHLYBA8SNgVQY8BLx4TMA9IljA76SRDZmaXmVkhLAG/wIsHRbz6Q978G2eTHDSxoKGo6qa7K0oEN9b3v7219Y3Nre3CTnF3b//gsHR03DRxqhk2WCxi3Y6oQcEVNiy3AtuJRiojga1ofJf7rUfUhsfqwU4SDCUdKj7gjNpcMpeE9kplv+LPQFZJsCBlWKDWK311+zFLJSrLBDWmE/iJDTOqLWcCp8VuajChbEyH2HFUUYkmzGa3Tsm5U/pkEGtXypKZ+nsio9KYiYxcp6R2ZJa9XPzP66R2cBtmXCWpRcXmiwapIDYm+eOkzzUyKyaOUKa5u5WwEdWUWRdP0YUQLL+8SppXlcCvBPXrcrX+NI+jAKdwBhcQwA1U4R5q0AAGI3iGV3jzpPfivXsf89Y1bxHhCfyB9/kDf/2OUQ==</latexit>
+(s)
+<latexit sha1_base64="VrXrlXLqGMDaYOXqbz0CyaEtrZ0=">AAAB7nicbVDLSgNBEOyNrxhfUY9eBoMQL2FXBD0GvHhMwDwgWcLspDcZMjs7zMwKIQT8BS8eFPHq93jzb5w8DppY0FBUddPdFSnBjfX9by+3sbm1vZPfLeztHxweFY9PmibNNMMGS0Wq2xE1KLjEhuVWYFtppEkksBWN7mZ+6xG14al8sGOFYUIHksecUeukVlcNedlc9oolv+LPQdZJsCQlWKLWK351+ynLEpSWCWpMJ/CVDSdUW84ETgvdzKCibEQH2HFU0gRNOJmfOyUXTumTONWupCVz9ffEhCbGjJPIdSbUDs2qNxP/8zqZjW/DCZcqsyjZYlGcCWJTMvud9LlGZsXYEco0d7cSNqSaMusSKrgQgtWX10nzqhL4laB+XarWnxZx5OEMzqEMAdxAFe6hBg1gMIJneIU3T3kv3rv3sWjNecsIT+EPvM8f24iPsA==</latexit>
+
+P <latexit sha1_base64="tCEktpMUbWs2AY4hfp7HscYsXuQ=">AAAB8nicbVDLSsNAFL2pr1pfVZdugkVwVRIRdFlw47IF+4A0lMl00g6dzISZG6GEgj/hxoUibv0ad/6Nk7YLbT0wcDjnDvfcE6WCG/S8b6e0sbm1vVPereztHxweVY9POkZlmrI2VULpXkQME1yyNnIUrJdqRpJIsG40uSv87iPThiv5gNOUhQkZSR5zStBKQT8hOKZE5M3ZoFrz6t4c7jrxl6QGSzQH1a/+UNEsYRKpIMYEvpdimBONnAo2q/Qzw1JCJ2TEAkslSZgJ83nkmXthlaEbK22fRHeu/v6Rk8SYaRLZySKiWfUK8T8vyDC+DXMu0wyZpItFcSZcVG5xvzvkmlEUU0sI1dxmdemYaELRtlSxJfirJ6+TzlXd9+p+67rWaD0t6ijDGZzDJfhwAw24hya0gYKCZ3iFNwedF+fd+ViMlpxlhafwB87nD7GckfU=</latexit>
+R¯ <latexit sha1_base64="x/DAAHbXX9C7fiFT0eHZgFNUaoA=">AAAB+nicbVDLSsNAFL2pr1pfqS7dDBbBVUlE0GXBjctW7AOaUCbTSTt0MgkzE6XEgD/ixoUibv0Sd/6Nk7YLbT1w4XDOvcyZEyScKe0431ZpbX1jc6u8XdnZ3ds/sKuHHRWnktA2iXksewFWlDNB25ppTnuJpDgKOO0Gk+vC795TqVgs7vQ0oX6ER4KFjGBtpIFd9QIsMy/Cekwwz27zfGDXnLozA1ol7oLUYIHmwP7yhjFJIyo04Vipvusk2s+w1Ixwmle8VNEEkwke0b6hAkdU+dkseo5OjTJEYSzNCI1m6u+LDEdKTaPAbBYZ1bJXiP95/VSHV37GRJJqKsj8oTDlSMeo6AENmaRE86khmEhmsiIyxhITbdqqmBLc5S+vks553XXqbuui1mg9zesowzGcwBm4cAkNuIEmtIHAAzzDK7xZj9aL9W59zFdL1qLCI/gD6/MHA1+U7Q==</latexit>
+
+<latexit sha1_base64="f3OSgVXulC9A4ocbUU+eHdeqbXc=">AAAB63icbVBNSwMxEJ3Ur1q/qh69BIvgqeyKoMeCF48t2A9ol5JNs93QJLskWaEsBX+BFw+KePUPefPfmG170NYHA4/3ZpiZF6aCG+t536i0sbm1vVPereztHxweVY9POibJNGVtmohE90JimOCKtS23gvVSzYgMBeuGk7vC7z4ybXiiHuw0ZYEkY8UjToktpEEa82G15tW9OfA68ZekBks0h9WvwSihmWTKUkGM6fteaoOcaMupYLPKIDMsJXRCxqzvqCKSmSCf3zrDF04Z4SjRrpTFc/X3RE6kMVMZuk5JbGxWvUL8z+tnNroNcq7SzDJFF4uiTGCb4OJxPOKaUSumjhCqubsV05hoQq2Lp+JC8FdfXiedq7rv1f3Wda3RelrEUYYzOIdL8OEGGnAPTWgDhRie4RXekEQv6B19LFpLaBnhKfwB+vwBPguOzg==</latexit>
+P(·|s, a)
+<latexit sha1_base64="dUYHIATm4eAI5Z94VLnW3ywFASw=">AAACAnicbVBNS8NAEJ3Ur1q/op7Ey2IRKkhJRNBjwYvHFuwHtKFsNpt26SYbdjdCiUUP/hUvHhTx6q/w5r9x0/ag1QcDj/dmmJnnJ5wp7ThfVmFpeWV1rbhe2tjc2t6xd/daSqSS0CYRXMiOjxXlLKZNzTSnnURSHPmctv3RVe63b6lUTMQ3epxQL8KDmIWMYG2kvn3Qi7AeEsyz+qTSI4HQ6A6pU4RP+nbZqTpToL/EnZMyzFHv25+9QJA0orEmHCvVdZ1EexmWmhFOJ6VeqmiCyQgPaNfQGEdUedn0hQk6NkqAQiFNxRpN1Z8TGY6UGke+6cwPVoteLv7ndVMdXnoZi5NU05jMFoUpR1qgPA8UMEmJ5mNDMJHM3IrIEEtMtEmtZEJwF1/+S1pnVdepuo3zcq3xMIujCIdwBBVw4QJqcA11aAKBe3iCF3i1Hq1n6816n7UWrHmE+/AL1sc36uWW5Q==</latexit>
+
+R¯ (
+<latexit sha1_base64="zhncPSIt+Rg165eSLOg3r8aUDJEfbk927K7dFgF30iitGTCZ0ggaOTclUf4dzaaqE+9alzmQkJRQxkpvt8IEa5xKyARM1xqXS6eyRQcwk=">AAACBB2+nX3icbVZDBLNSsgw8NMAxFEJIN3XUv4V1+W6LKe28ytv61XqV61EquKs1hMRrWIBNhio8G0vEAVQiRoguWQpCURoArEzyiBb4RFn0Y0Qa8WpXF3ugLLHhxhFu5sZXbxwVsTbeR6Zw/gCDQCOhe5kDVROLmM5ZO5kbmk6tm4ZuHbtlTmahsO07kZ3MBYTyk3IRhQQ2HgShKlADMBoHCAI0sQbB3vfF/82hW5UNE3vCfLH0ChX9Tc3x+vf6go7m3j/upzw/z35B05rsJh9nbpxbDu0Rw9/fQDaa+WgezAruk4QDnG8CIPG4vcHZSxuxcJ/7uyNul7MfLwDcQkMeUSvLBwi+NZDZ9VlMe2TKbn2sWGnvd9G63r+Nbrg/XZo+1XrgjVqfct2ufvguWrf7NGNtz8fFcXzPJNjeW0krct9eXbNzt2mtnzoHdu296fi/ezHfu0lPXgbj/jahQsKliUql0SEzliilZRC5ihGj8D2nYZRmiJiFlxEptCeX0PiUAZ62FC4CRUGVMBkJ8RnCYzIpigW83R0LNtpgtaZzWqjyDYiLd5tFR7BfDcsbISLjMSC6AQof8hH0EhHi6wa7w2c7egc+S7bgmGXsy1+TD7dLun+XPf5Tv5zCq4QodKreSyMRsaMwULr9jw46cTWm6kMjU1tAliU/M6Cx/gkFRY7HCwOEGD6hgJo5gny0PaiYCrNACalWgAb2tdfk9LPncMvn1WE3j2CixIlBwVJSOxkBRDXTOCoLg9hwGY5QoaT9ENFIQbNsG+lDeG9T3Sn2mStyZ7ewZK8rxDZeYDM/lUxGHJrIrxqlCanVK05XrdOlZhsHxENiF6OqB3lfUqZbc05NU7esNDc1SmqaYjwFmMpwsF87gXDgriK9ubxLAu5iKn6wiJSUzTMXUQ5U7HmzNPj7tW0Gfezg3/SUie9PCXnNm1EMaIJ7c5ERgKkRiEotTVKRQGExUjizqCHz1QKiXaT6Omsdu2kR6V7P8aAsTs0Za3NSTB+s0S52FEopqYRokHjTvnjT3ZNr9SiO4xlQuV6kKLikZas9EAZb5xAOwkxsDjtHECjoPkdGaPzINUDwV1hyRDNZAC78SKGrJhaPW02Zf0MGT+Pjtk/bL5IGBM8Ti8J7W6lVlARytD+g1GnDENg7lpQkdTSdVqAETNVSJCKaz4jrP6xH3nV69fKIe0Csy+0NKkVQFEoqUE5WKgwkl5tYJCdmGTmJzavjdJFOmNv/dCGF8ho6rI51FzK67R8O1xzXcw/i/YsfMal1/S64rbq3Jlh0cY1qkdM/J+rcNxPl1q2MyUWQkixa1To8SjmZyQi3VIH8ZZY4LkS+ZtbGo8Gqkh2SHO9ACOD6sV7JIY7k5ToUxzdnTBZgPuMvC3AtAwlMCMoUUY1qoApLU6M5nDx2MSBgMCACFVgRX3kDEMpBExl9IKbKN6My3BRYAgmjHlBEDUBE9mKC2JUBaNTLKcqg5k6hsUkISTQ43g7BOrAXWvXeV4XvV81Y6j4nFJm39p750XfnXVO2CRasdbuhpdqn+Xpvos5n256Qnk9AFWLmK5Ot348nIRTy+RCY8qLxz4oVxM4F8ICE4lORxX0+IMSgoMkE4tqV<NIZ/KxClEdNaFdLtFoleJhEx7qdig63tBQa>dXA7XGgUa3RiXAGqQC29HXotqmE2fzP0eikVtV16vrsx1Jpq+PKvx3FYIer/wgcbj+H6Z7/qPM0WHrgk1jWGizPWC8xIBA/D=Q9=Hg<1f/uHlc5aPAtR0eWax+viYmtwM>AQ==</latexit>
+
+(s), a)
+
+<latexit sha1_base64="f3OSgVXulC9A4ocbUU+eHdeqbXc=">AAAB63icbVBNSwMxEJ3Ur1q/qh69BIvgqeyKoMeCF48t2A9ol5JNs93QJLskWaEsBX+BFw+KePUPefPfmG170NYHA4/3ZpiZF6aCG+t536i0sbm1vVPereztHxweVY9POibJNGVtmohE90JimOCKtS23gvVSzYgMBeuGk7vC7z4ybXiiHuw0ZYEkY8UjToktpEEa82G15tW9OfA68ZekBks0h9WvwSihmWTKUkGM6fteaoOcaMupYLPKIDMsJXRCxqzvqCKSmSCf3zrDF04Z4SjRrpTFc/X3RE6kMVMZuk5JbGxWvUL8z+tnNroNcq7SzDJFF4uiTGCb4OJxPOKaUSumjhCqubsV05hoQq2Lp+JC8FdfXiedq7rv1f3Wda3RelrEUYYzOIdL8OEGGnAPTWgDhRie4RXekEQv6B19LFpLaBnhKfwB+vwBPguOzg==</latexit>
+s, a <latexit sha1_base64="hO7kR8ya5p/C0dQQqNwNZgKN8Mk=">AAAB63icbVDLSgNBEOz1GeMr6tHLYBA8SNgVQY8BLx4TMA9IljA76SRDZmaXmVkhLAG/wIsHRbz6Q978G2eTHDSxoKGo6qa7K0oEN9b3v7219Y3Nre3CTnF3b//gsHR03DRxqhk2WCxi3Y6oQcEVNiy3AtuJRiojga1ofJf7rUfUhsfqwU4SDCUdKj7gjNpcMpeE9kplv+LPQFZJsCBlWKDWK311+zFLJSrLBDWmE/iJDTOqLWcCp8VuajChbEyH2HFUUYkmzGa3Tsm5U/pkEGtXypKZ+nsio9KYiYxcp6R2ZJa9XPzP66R2cBtmXCWpRcXmiwapIDYm+eOkzzUyKyaOUKa5u5WwEdWUWRdP0YUQLL+8SppXlcCvBPXrcrX+NI+jAKdwBhcQwA1U4R5q0AAGI3iGV3jzpPfivXsf89Y1bxHhCfyB9/kDf/2OUQ==</latexit>
+
+R <latexit sha1_base64="PTPfRohSqqBIxcyPIm11pT6eKis=">AAAB8nicbVDLSsNAFL3xWeur6tLNYBFclUQEXRbcuGzFPiANZTKdtEMnmTBzI5RQ8CfcuFDErV/jzr9x0nahrQcGDufc4Z57wlQKg6777aytb2xubZd2yrt7+weHlaPjtlGZZrzFlFS6G1LDpUh4CwVK3k01p3EoeScc3xZ+55FrI1TygJOUBzEdJiISjKKV/F5MccSozO+n/UrVrbkzkFXiLUgVFmj0K1+9gWJZzBNkkhrje26KQU41Cib5tNzLDE8pG9Mh9y1NaMxNkM8iT8m5VQYkUtq+BMlM/f0jp7Exkzi0k0VEs+wV4n+en2F0E+QiSTPkCZsvijJJUJHifjIQmjOUE0so08JmJWxENWVoWyrbErzlk1dJ+7LmuTWveVWtN5/mdZTgFM7gAjy4hjrcQQNawEDBM7zCm4POi/PufMxH15xFhSfwB87nD7Smkfc=</latexit>
+
+LR¯ (s, <latexit sha1_base64="/PPo28hdRrt0JfiUAWWCd9BQ8VE=">AAAB+nicbZBLSwMxFIXv1Fetr6ku3QSLUEHKjAi6LLhx4aIV+4B2GDJp2oZmMkOSUco44B9x40IRt/4Sd/4b08dCWw8EPs65ITcniDlT2nG+rdzK6tr6Rn6zsLW9s7tnF/ebKkokoQ0S8Ui2A6woZ4I2NNOctmNJcRhw2gpGV5O8dU+lYpG40+OYeiEeCNZnBGtj+Xbxxk+7AZbpbZaV1SnCJ75dcirOVGgZ3DmUYK6ab391exFJQio04VipjuvE2kux1IxwmhW6iaIxJiM8oB2DAodUeel09QwdG6eH+pE0R2g0dX/fSHGo1DgMzGSI9VAtZhPzv6yT6P6llzIRJ5oKMnuon3CkIzTpAfWYpETzsQFMJDO7IjLEEhNt2iqYEtzFLy9D86ziOhW3fl6q1p9mdeThEI6gDC5cQBWuoQYNIPAAz/AKb9aj9WK9Wx+z0Zw1r/AA/sj6/AFU0pPT</latexit>
+
+a)
+
+R(s, a)
+<latexit sha1_base64="CqraAHavjml0ciBa/ObXZlIRiXw=">AAAB+nicbVDLSgNBEOz1GeNro0cvg0GIIGFXBD0GvHhMxDwgWULvZJIMmX0wM6uENeCPePGgiFe/xJt/42ySgyYWNBRV3UxN+bHgSjvOt7Wyura+sZnbym/v7O7t24WDhooSSVmdRiKSLR8VEzxkdc21YK1YMgx8wZr+6Drzm/dMKh6Fd3ocMy/AQcj7nKI2UtcudALUQ4oivZ2U1BnB065ddMrOFGSZuHNShDmqXfur04toErBQU4FKtV0n1l6KUnMq2CTfSRSLkY5wwNqGhhgw5aXT6BNyYpQe6UfSTKjJVP19kWKg1DjwzWYWVC16mfif1050/8pLeRgnmoV09lA/EURHJOuB9LhkVIuxIUglN1kJHaJEqk1beVOCu/jlZdI4L7tO2a1dFCu1p1kdOTiCYyiBC5dQgRuoQh0oPMAzvMKb9Wi9WO/Wx2x1xZpXeAh/YH3+AFjAk9U=</latexit>
+
+Figure 1. Diagram of the latent space losses. Circles denote a distribution.
+
+original MDP's state. When the Wasserstein metric is used for the latent transition loss, analysis reveals a profound theoretical connection between DeepMDPs and bisimulation. These results provide a theoretically-grounded approach to representation learning that is salable and compatible with modern deep networks.
+In Section 2, we review key concepts and formally define the DeepMDP. We start by studying the model-quality and representation-quality results of DeepMDPs (using the Wasserstein metric) in Sections 3 and 4. In Section 5, we investigate the connection between DeepMDPs using the Wasserstein and bisimulation. Section 6 generalizes only our model-based guarantees to metrics other than the Wasserstein; this limitation emphasizes the special role of that the Wasserstein metric plays in learning good representations. Finally, in Section 8 we consider a synthetic environment with high-dimensional observations and show that a DeepMDP learns to recover its underlying low-dimensional latent structure. We then demonstrate that learning a DeepMDP as an auxiliary task to model-free RL in the Atari 2600 environment leads to significant improvement in performance when compared to a baseline model-free method.
+2. Background
+2.1. Markov Decision Processes
+Define a Markov Decision Process (MDP) in standard fashion: M " xS, A, R, P, y (Puterman, 1994). For simplicity of notation we will assume that S and A are discrete spaces unless otherwise stated. A policy  defines a distribution over actions conditioned on the state, pa|sq. Denote
+
+by  the set of all stationary policies. The value function of a policy  P  at a state s is the expected sum of future
+discounted rewards by running the policy from that state. V  : S Ñ R is defined as:
+
+«8
+
+ff
+
+V psq "
+
+E
+
+ÿ tRpst, atq|s0 " s .
+
+at ,, p¨|st q st`1 ,,P p¨|st ,at q
+
+t"0
+
+The action value function is similarly defined:
+
+«8
+
+ff
+
+Qps, aq "
+
+E
+
+ÿ tRpst, atq|s0 " s, a0 " a
+
+at ,, p¨|st q st`1 ,,P p¨|st ,at q
+
+t"0
+
+We denote by P the action-independent tran-
+s
+sition function induced by running a policy ,
+
+Ps ps1|sq
+
+"
+
+
+aPA
+
+P
+
+ps1
+
+|s,
+
+aqpa|sq.
+
+Similarly
+
+R psq
+s
+
+"
+
+
+aPA
+
+Rps,
+
+aqpa|sq.
+
+We denote ° as the
+
+optimal policy in M; i.e., the policy which maximizes
+
+expected future reward. We denote the optimal state and
+
+action value functions with respect to ° as V °, Q°. We
+
+denote the stationary distribution of a policy  in M by ;
+
+i.e., psq " ÿ Pps|s9, a9 qpa9 |s9qps9q
+
+s9PS,a9 PA
+
+We overload notation by also denoting the state-action stationary distribution as ps, aq " psqpa|sq. Although only non-terminating MDPs have stationary distributions, a state distribution for terminating MDPs with similar properties exists (Gelada & Bellemare, 2019).
+
+2.2. Latent Space Models
+
+For some MDP M, let M " xSs, A, Rs, Ps, y be an MDP where Ss is a continuous space with metric dSs and a shared action space A between M and M. Furthermore, let  : S Ñ Ss be an embedding function which connects the state spaces of these two MDPs. We refer to pM, q as a latent space model of M.
+
+Since M is, by definition, an MDP, value functions can
+
+be
+
+defined
+
+in
+
+the
+
+standard
+
+way.
+
+We
+
+use
+
+Vs
+
+ s
+
+,
+
+Qss
+
+to
+
+denote
+
+the value functions of a policy s P s, where s is the set of policies defined on the state space Ss.The transition and
+
+reward functions, Rss and Pss , of a policy s are also defined in the standard manner. We use ° to denote the optimal
+s
+policy in M. The corresponding optimal state and action
+
+value functions are then Vs °, Qs°. For ease of notation, when
+
+s P S, we use sp¨|sq :" sp¨|psqq to denote first using  to map s to the state space Ss of M and subsequently using s
+
+to generate the probability distribution over actions.
+
+Although similar definitions of latent space models have been previously studied (Francois-Lavet et al., 2018; Zhang et al., 2018; Ha & Schmidhuber, 2018; Oh et al., 2017;
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Hafner et al., 2018; Kaiser et al., 2019; Silver et al., 2017), the parametrizations and training objectives used to learn such models have varied widely. For example Ha & Schmidhuber (2018); Hafner et al. (2018); Kaiser et al. (2019) use pixel prediction losses to learn the latent representation while (Oh et al., 2017) chooses instead to optimize the model to predict next latent states with the same value function as the sampled next states.
+
+In this work, we study the minimization of loss functions defined with respect to rewards and transitions in the latent space:
+
+LRs ps, aq " |Rps, aq ´ Rsppsq, aq|
+
+(1)
+
+LPs ps, aq " D `Pp¨|s, aq, Psp¨|psq, aq
+
+(2)
+
+where we use the shorthand notation Pp¨|s, aq to denote
+
+the probability distribution over Ss of first sampling s1 ,,
+
+Pp¨|s, aq
+
+and
+
+then
+
+embedding
+
+s1 s
+
+"
+
+ps1q,
+
+and
+
+where
+
+D
+
+is a metric between probability distributions. To provide
+
+guarantees, D in Equation 2 needs to be chosen carefully.
+
+For the majority of this work, we focus on the Wasserstein
+
+metric; in Section 6, we generalize some of the results to
+
+alternative metrics from the Maximum Mean Discrepancy
+
+family. Francois-Lavet et al. (2018) and Chung et al. (2019)
+
+have considered similar latent losses, but to the best of
+
+our knowledge ours is the first theoretical analysis of these
+
+models. See Figure 1 for an illustration of how the latent
+
+space losses are constructed.
+
+We use the term DeepMDP to refer to a parameterized latent space model trained via the minimization of losses consisting of LRs and LPs (sometimes referred to as DeepMDP losses). In Section 3, we derive theoretical guarantees of DeepMDPs when minimizing LRs and LPs over the whole state space. However, our principal objective is to learn DeepMDPs parameterized by deep networks, which requires DeepMDP losses in the form of expectations; we show in Section 4 that similar theoretical guarantees can be obtained in this setting.
+
+2.3. Wasserstein Metric
+
+Initially studied in the optimal transport literature (Villani,
+2008), the Wasserstein-1 (which we simply refer to as the Wasserstein) metric Wd pP, Qq between two distributions P and Q, defined on a space with metric d, corresponds to the minimum cost of transforming P into Q, where the cost of moving a particle at point x to point y comes from the underlying metric dpx, yq.
+Definition 1. The Wasserstein-1 metric W between distributions P and Q on a metric space x, dy is:
+
+
+
+Wd pP, Qq " inf
+
+dpx, yqpx, yq dx dy.
+
+PpP,Qq ^
+
+where pP, Qq denotes the set of all couplings of P and Q.
+
+When there is no ambiguity on what the underlying metric d is, we will simply write W . The Monge-Kantorovich duality (Mueller, 1997) shows that the Wasserstein has a dual form:
+
+Wd pP, Qq " sup | E f pxq ´ E f pyq|, (3)
+
+f PFd x,,P
+
+y,,Q
+
+where Fd is the set of 1-Lipschitz functions under the metric d, Fd " tf : |f pxq ´ f pyq|  dpx, yqu.
+
+2.4. Lipschitz Norm of Value Functions
+
+The degree to which a value function of M, Vs s approx-
+
+imates
+
+the
+
+value
+
+function
+
+V
+
+ s
+
+of
+
+M
+
+will
+
+depend
+
+on
+
+the
+
+Lipschitz norm of Vs s . In this section we define and provide
+
+conditions for value functions to be Lipschitz.1 Note that
+
+we study the Lipschitz properties of DeepMDPs M (instead
+
+of a MDP Mq because in this work, only the Lipschiz prop-
+
+erties of DeepMDPs are relevant; the reader should note that
+
+these results follow for any continuous MDP with a metric
+
+state space.
+
+We say a policy s P s is Lipschitz-valued if its value function is Lipschitz, i.e. it has Lipschitz Qss and Vs s functions.
+
+Definition 2. Let M be a DeepMDP with a metric dSs. A policy s P s is KVs -Lipschitz-valued if for all ss1, ss2 P Ss:
+Vs s pss1q ´ Vs s pss2q  KVs dSspss1, ss2q,
+and if for all a P A:
+Qss pss1, aq ´ Qss pss2, aq  KVs dSspss1, ss2q.
+
+Several works have studied Lipschitz norm constraints on the transition and reward functions (Hinderer, 2005; Asadi et al., 2018) to provide conditions for value functions to be Lipschitz. Closely following their formulation, we define Lipschitz DeepMDPs as follows:
+Definition 3. Let M be a DeepMDP with a metric dSs. We say M is pKRs , KPs q-Lipschitz if, for all ss1, ss2 P Ss and a P A:
+Rspss1, aq ´ Rspss2, aq  KRs dSspss1, ss2q W `Psp¨|, ss1, aq, Psp¨|ss2, aq  KPs dS pss1, ss2q
+
+From here onwards, we will we restrict our attention to the set of Lipschitz DeepMDPs for which the constant KPs is sufficiently small, formalized in the following assumption:
+
+Assumption 1. The Lipschitz constant KPs of the transition
+
+function
+
+Ps
+
+is
+
+strictly
+
+smaller
+
+than
+
+1 
+
+.
+
+1Another benefit of MDP smoothness is improved learning dynamics. Pirotta et al. (2015) suggest that the smaller the Lipschitz constant of an MDP, the faster it is to converge to a near-optimal policy.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+From a practical standpoint, Assumption 1 is relatively
+
+strong, but simplifies our analysis by ensuring that close
+
+states cannot have future trajectories that are "divergent."
+
+An MDP might still not exhibit divergent behaviour even
+
+when
+
+KPs
+
+
+
+1 
+
+.
+
+In
+
+particular,
+
+when
+
+episodes
+
+terminate
+
+after
+
+a finite amount of time, Assumption 1 becomes unnecessary.
+
+We leave as future work how to improve on this assumption.
+
+We describe a small set of Lipschitz-valued policies. For
+
+any
+
+policy
+
+ s
+
+P
+
+s ,
+
+we
+
+refer
+
+to
+
+the
+
+Lipschitz
+
+norm
+
+of
+
+its
+
+transition
+
+function
+
+Ps
+s
+
+as
+
+KP s
+
+
+
+W
+
+`Ps
+s
+
+p¨|ss1q,
+
+Ps
+s
+
+p¨|ss2q
+
+for all ss1, ss2 P S. Similarly, we denote the Lipschitz norm
+
+of
+
+the
+
+reward
+
+function
+
+as
+
+KRs 
+s
+
+
+
+|Rss pss1q
+
+´
+
+Rss pss2q|.
+
+Lemma 1. Let M be pKRs , KPs q-Lipschitz. Then,
+
+1.
+
+The optimal policy ° is s
+
+KR 1´KP
+
+-Lipschitz-valued.
+
+2.
+
+All policies with KPs s
+
+
+
+1 
+
+are
+
+KR s 1´KP
+
+-Lipschitz-
+
+s
+
+valued.
+
+3. All constant policies (i.e. spa|ss1q " spa|ss2q, @a P
+
+A,
+
+ss1, ss2
+
+P
+
+Ss)
+
+are
+
+KR 1´KP
+
+-Lipschitz-valued.
+
+Proof. See Appendix A for all proofs.
+
+A more general framework for understanding Lipschitz value functions is still lacking. Little prior work studying classes of Lipschitz-valued policies exists in the literature and we believe that this is an important direction for future research.
+
+3. Global DeepMDP Bounds
+
+We now present our first main contributions: concrete DeepMDP losses, and several bounds which provide us with useful guarantees when these losses are minimized. We refer to these losses as the global DeepMDP losses, to emphasize their dependence on the whole state and action space:2
+
+L8Rs
+
+"
+
+sup
+sPS ,aPA
+
+|Rps,
+
+aq
+
+´
+
+Rsppsq,
+
+aq|
+
+(4)
+
+L8Ps " sup W `Pp¨|s, aq, Psp¨|psq, aq (5)
+sPS ,aPA
+
+3.1. Value Difference Bound
+
+We start by bounding the difference of the value functions
+
+Qs and Qss for any policy  s
+
+P s.
+
+Note that Qs ps, aq
+
+is computed using P and R on S while Qss ppsq, aq is
+
+computed using Ps and Rs on Ss.
+
+Lemma 2. Let M and M be an MDP and DeepMDP respectively, with an embedding function  and global loss
+
+2The 8 notation is a reference to the 8 norm
+
+functions L8Rs and L8Ps . For any KVs -Lipschitz-valued policy s P s the value difference can be bounded by
+
+Qs ps, aq
+
+´
+
+Qss ppsq, aq
+
+
+
+L8Rs
+
+` 1
+
+KVs ´
+
+L8Ps
+
+,
+
+The previous result holds for all policies s  , a subset of all possible policies . The reader might ask whether this is an interesting set of policies to consider; in Section 5, we answer with a fat "yes" by characterizing this set via a connection with bisimulation.
+A bound similar to Lemma 2 can be found in Asadi et al. (2018), who study non-latent transition models using the Wasserstein metric when there is access to an exact reward function. We also note that our results are arguably simpler, since we do not require the treatment of MDP transitions in terms of distributions over a set of deterministic components.
+
+3.2. Representation Quality Bound
+When a representation is used to predict the value of a policy in M, a clear failure case is when two states with different values are collapsed to the same representation. The following result demonstrates that when the global DeepMDP losses L8Rs " 0 and L8Ps " 0, this failure case can never occur for the embedding function .
+
+Theorem 1. Let M and M be an MDP and DeepMDP
+
+respectively, let dSs be a metric in Ss,  be an embedding
+
+function and L8Rs and L8Ps be the global loss functions. For
+
+any
+
+KVs
+
+-Lipschitz-valued
+
+policy
+
+ s
+
+P
+
+s
+
+the
+
+representation
+
+
+
+guarantees that for all s1, s2 P S and a P A,
+
+Qs ps1, aq ´ Qs ps2, aq  KVs dSspps1q, ps2qq
+
+`
+
+2
+
+L8Rs
+
+` 1
+
+KVs ´
+
+L8Ps
+
+This result justifies learning a DeepMDP and using the embedding function  as a representation to predict values. A similar connection between the quality of representations and model based objectives in the linear setting was made by Parr et al. (2008).
+3.3. Suboptimality Bound
+For completeness, we also bound the performance loss of running the optimal policy of M in M, compared to the optimal policy °. See Theorem 5 in Appendix A.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+4. Local DeepMDP Bounds
+
+In large-scale tasks, data from many regions of the state space is often unavailable,3 making it infeasible to measure ­ let alone optimize ­ the global losses. Further, when the capacity of a model is limited, or when sample efficiency is a concern, it might not even be desirable to precisely learn a model of the whole state space. Interestingly, we can still provide similar guarantees based on the DeepMDP losses, as measured under an expectation over a state-action distribution, denoted here as . We refer to these as the losses local to . Taking LRs , LPs to be the reward and transition losses under , respectively, we have the following local DeepMDP losses:
+
+LRs
+
+"
+
+E |Rps,
+s,a,,
+
+aq
+
+´
+
+Rsppsq,
+
+aq|,
+
+(6)
+
+LPs
+
+"
+
+E "W
+s,a,,
+
+`Pp¨|s, aq, Psp¨|psq, aq .
+
+(7)
+
+Losses of this form are compatible with the stochastic gradient decent methods used by neural networks. Thus, study of the local losses allows us to bridge the gap between theory and practice.
+
+4.1. Value Difference Bound
+
+We provide a value function bound for the local case, analo-
+gous to Lemma 2.
+Lemma 3. Let M and M be an MDP and DeepMDP respectively, with an embedding function . For any KVs Lipschitz-valued policy s P s, the expected value function difference can be bounded using the local loss functions LRss and LPss measured under s , the stationary state action distribution of s.
+
+E Qs ps, aq ´ Qss ppsq, aq
+s,a,,
+
+
+
+LRss
+
+` 1
+
+KVs ´
+
+LPss
+
+,
+
+s
+
+The provided bound guarantees that for any policy s P s
+which visits state-action pairs ps, aq where LRs ps, aq and LPs ps, aq are small, the DeepMDP will provide accurate value functions for any states likely to be seen under the policy.4
+
+4.2. Representation Quality Bound
+
+We can also extend the local value difference bound to provide a local bound on how well the representation  can be used to predict the value function of a policy ¯ P ¯ , analogous to Theorem 1.
+
+3Challenging exploration environments like Montezuma's Re-
+
+venge are a prime example.
+
+4The value functions might be inaccurate in states that the
+
+policy
+
+ s
+
+rarely
+
+visits.
+
+Figure 2. A pair of bisimilar states. In the game of ASTEROIDS, the colors of the asteroids can vary randomly, but this in no way impacts gameplay.
+
+Theorem 2. Let M and M be an MDP and DeepMDP
+
+respectively, let dSs be the metric in Ss and  be the em-
+
+bedding function. Let s P s be any KVs -Lipschitz-valued
+
+policy
+
+with
+
+stationary
+
+distribution
+
+ ,
+s
+
+and
+
+let
+
+LRss
+
+and
+
+LPss
+
+be the local loss functions. For any two states s1, s2 P S,
+
+the representation  is such that,
+
+|V s ps1q ´ V s ps2q|  KVs dSspps1q, ps2qq
+
+`
+
+LRss
+
+` KVs LPss 1´
+
+^1 d ps1 q
+
+`
+
+1 d ps2 q
+
+s
+
+s
+
+Thus, the representation quality argument given in 3.2 holds
+for any two states s1 and s2 which are visited often by a policy s.
+
+5. Bisimulation
+
+5.1. Bisimulation Relations
+
+Bisimulation relations in the context of RL (Givan et al.,
+2003), are a formalization of behavioural equivalence be-
+tween states.
+Definition 4 (Givan et al. (2003)). Given an MDP M, an equivalence relation B between states is a bisimulation relation if for all states s1, s2 P S that are equivalent under B (i.e. s1Bs2), the following conditions hold for all actions a P A.
+
+Rps1, aq " Rps2, aq PpG|s1, aq " PpG|s2, aq, @G P S{B
+
+Where S{B denotes the partition of S under the relation
+
+B, the set of all groups of equivalent states, and where
+
+P pG|s,
+
+aq
+
+"
+
+
+s1 PG
+
+P ps1 |s,
+
+aq.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Note that bisimulation relations are not unique. For example, the equality relation " is always a bisimulation relation. Of particular interest is the maximal bisimulation relation ,,, which defines the partition S{ ,, with the fewest elements (or equivalently, the relation that generates the largest possible groups of states). We will say that two states are bisimilar if they are equivalent under ,,. Essentially, two states are bisimilar if (1) they have the same immediate reward for all actions and (2) both of their distributions over next-states contain states which themselves are bisimilar. Figure 2 gives an example of states that are bisimilar in the Atari 2600 game ASTEROIDS. An important property of bisimulation relations is that any two bisimilar states s1, s2 must have the same optimal value function Q°ps1, aq " Q°ps2, aq, @a P A. Bisimulation relations were first introduced for state aggregation (Givan et al., 2003), which is a form of representation learning, since merging behaviourally equivalent states does not result in the loss of information necessary for solving the MDP.
+5.2. Bisimulation Metrics
+A drawback of bisimulation relations is their all-or-nothing nature. Two states that are nearly identical, but differ slightly in their reward or transition functions, are treated as though they were just as unrelated as two states with nothing in common. Relying on the optimal transport perspective of the Wasserstein, Ferns et al. (2004) introduced bisimulation metrics, which are pseudometrics that quantify the behavioural similarity of two discrete states.
+A pseudometric d satisfies all the properties of a metric except identity of indiscernibles, dpx, yq " 0 ô x " y. A pseudometric can be used to define an equivalence relation by saying that two points are equivalent if they have zero distance; this is called the kernel of the pseudometric. Note that pseudometrics must obey the triangle inequality, which ensures the kernel satisfies the associative property. Without any changes to its definition, the Wasserstein metric can be extended to spaces x, dy, where d is a pseudometric. Intuitively, the usage of a pseudometric in the Wasserstein can be interpreted as allowing different points x1  x2 in  to be equivalent under the pseudometric (i.e. dpx1, x2q " 0). Thus, there is no need for transportation from one to the other.
+An extension of bisimulation metrics based on Banach fixed points by Ferns et al. (2011) which allows the metric to be defined for MDPs with discrete and continuous state spaces.
+Definition 5 (Ferns et al. (2011)). Let M be an MDP and denote by Z the space of pseudometrics on the space S s.t. dps1, s2q P r0, 8q for d P Z. Define the operator F : Z Ñ Z to be:
+
+Fdps1,
+
+s2q
+
+"
+
+maxp1
+a
+
+´
+
+q
+
+|Rps1,
+
+aq
+
+´
+
+Rps2,
+
+aq|
+
+` WdpPp¨|s1, aq, Pp¨|s2, aqq.
+
+Then:
+
+1. The operator F is a contraction with a unique fixed point denoted by dr.
+2. The kernel of dris the maximal bisimulation relation ,,. (i.e. drps1, s2q " 0 ðñ s1 ,, s2)
+
+A useful property of bisimulation metrics is that the optimal
+
+value function difference between any two states can be
+
+upper bounded by the bisimulation metric between the two
+
+states.
+
+|V °ps1q ´
+
+V
+
+°ps2q|
+
+
+
+drps1, s2q 1´
+
+Bisimulation metrics have been used for state aggregation (Ferns et al., 2004; Ruan et al., 2015), feature discovery (Comanici & Precup, 2011) and transfer learning between MDPs (Castro & Precup, 2010), but due to their high computational cost and poor compatibility with deep networks they have not been successfully applied to large scale settings.
+
+5.3. Connection with DeepMDPs
+The representation  learned by global DeepMDP losses with the Wasserstein metric can be connected to bisimulation metrics.
+Theorem 3. Let M be an MDP and M be a KRs -KPs Lipschitz DeepMDP with metric dSs. Let  be the embedding function and L8Ps and L8Rs be the global DeepMDP losses. The bisimulation distance in M, dr : S ^ S Ñ R` can be upperbounded by the 2 distance in the embedding and the losses in the following way:
+
+drps1, s2q
+
+
+
+p1 ´ 1´
+
+qKR KPs
+
+dSspps1q,
+
+ps2qq
+
+`
+
+2
+
+^ L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+
+
+This result provides a similar bound to Theorem 1, except
+
+that instead of bounding the value difference |Vs s ps1q ´
+
+Vs
+
+ s
+
+ps2q|
+
+the
+
+bisimulation
+
+distance
+
+drps1,
+
+s2q
+
+is
+
+bounded.
+
+We
+
+speculate that similar results should be possible based on
+
+local DeepMDP losses, but they would require a generaliza-
+
+tion of bisimulation metrics to the local setting.
+
+5.4. Characterizing s
+In order to better understand the set of policies s (which appears in the bounds of Sections 3 and 4), we
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+first consider the set of bisimilar policies, defined as r " t : @s1, s2 P S, s1 ,, s2 ô pa|s1q " pa|s2q@au, which contains all policies that act the same way on states
+that are bisimilar. Although this set excludes many policies in , we argue that it is adequately expressive, since any policy that acts differently on states that are bisimilar is fundamentally uninteresting.5
+
+We show a connection between deep policies and bisimi-
+lar policies by proving that the set of Lipschitz-deep policies, sK  s, approximately contains the set of Lipschitzbisimilar policies, rK  r, defined as follows:
+
+s K
+
+"
+
+" s
+
+:
+
+@s1
+
+
+
+s2
+
+P
+
+S,
+
+|spa|s1q ´ spa|s2q| dSspps1q, ps2qq
+
+
+
+* K,
+
+#
+
++
+
+r K "  : @s1  s2 P S, |pa|s1q ´ pa|s2q|  K .
+
+drps1, s2q
+
+The following theorem proves that minimizing the global
+
+DeepMDP losses ensures that for any r P rK, there is
+
+a deep policy s P sCK which is close to r, where the
+
+constant
+
+C
+
+"
+
+p1´qKR 1´KP
+
+.
+
+Theorem 4. Let M be an MDP and M be a (KRs , KPs )Lipschitz DeepMDP, with an embedding function  and
+
+global loss functions L8Rs and L8Ps . Denote by r K and s K the sets of Lipschitz-bisimilar and Lipschitz-deep policies.
+
+Then for any r P rK there exists a s P sCK which is close to r in the sense that, for all s P S and a P A,
+
+|rpa|sq
+
+´
+
+spa|sq|
+
+
+
+L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+6. Beyond the Wasserstein
+Interestingly, value difference bounds (Lemmas 2 and 3) can be derived for many different choices of probability metric D (in the DeepMDP transition loss function, Equation 2). Here, we generalize the result to a family of Maximum Mean Discrepancy (MMD) metrics (Gretton et al., 2012) defined via a function norm that we denote as Norm Maximum Mean Discrepancy (Norm-MMD) metrics. Interestingly, the role of the Lipschitz norm in the value difference bounds is a consequence of using the Wasserstein; when we switch from the Wasserstein to another metric, it is replaced by a different term. We interpret these terms as different forms of smoothness of the value functions in M.
+By choosing a metric whose associated smoothness corresponds well to the environment, we can potentially improve the tightness of the bounds. For example, in environments with highly non-Lipschitz dynamics, it may be impossible to
+5For control, searching over these policies increases the size of the search space with no benefits on the optimality of the solution.
+
+learn an accurate DeepMDP whose deep value function has a small Lipschitz norm. Instead, the associated smoothness of another metric might be more appropriate. Another reason to consider other metrics is computational; the Wasserstein has high computational cost and suffers from biased stochastic gradient estimates (Bikowski et al., 2018; Bellemare et al., 2017b), so minimizing a simpler metric, such as the KL, may be more convenient.
+
+6.1. Norm Maximum Mean Discrepancy Metrics
+
+MMD metrics (Gretton et al., 2012) are a family of probability metrics, each generated via a class of functions. They have also been studied by Mu¨ller (1997) under the name of Integral Probability Metrics.
+Definition 6 (Gretton et al. (2012) Definition 2). Let P and Q be distributions on a measurable space  and let FD be a class of functions f :  Ñ R. The Maximum Mean Discrepancy D is
+
+D pP, Qq " sup | E f pxq ´ E f pyq|.
+
+f PFD x,,P
+
+y,,Q
+
+When P " Q it's obvious that D pP, Qq " 0 regardless of the function class FD. But the class of functions leads to MMD metrics with different behaviours and properties.
+Of interest to us are function classes generated via function seminorms6. Concretely, we define a Norm-MMD metric D to be an MMD metric generated from a function class FD of the following form:
+
+FD " tf : }f }D  1u.
+
+where }¨}D is the associated function seminorm of D. We will see that the family of Norm-MMDs are well suited for
+the task of latent space modeling. Their key property is the following: let D be a Norm-MMD, then for any function f s.t. }f }D  K,
+
+| E f pxq ´ E f pyq|  K ¨ D pP, Qq . (8)
+
+x,,P
+
+y,,Q
+
+We now discuss three particularly interesting examples of Norm-MMD metrics.
+
+Total Variation:
+
+Defined as T V pP, Qq
+
+"
+
+1 2
+
+
+
+
+|P
+
+pxq
+
+´
+
+Qpxq| dx, the Total Variation is one of the most widely-
+
+studied metrics. Pinsker's inequality (Borwein & Lewis,
+
+2005, p.63) bounds the TV with the Kullback­Leibler (KL)
+
+divergence. The Total Variation is also the Norm-MMD
+
+generated from the set of functions with absolute value
+
+bounded by 1 (Mu¨ller, 1997). Thus, the function norm
+
+}f }T V " }f }8 " supxP |f pxq|.
+
+Wasserstein metric: The interpretation of the Wasserstein as an MMD metrics is clear from its dual form (Equation 3),
+
+6A seminorm }¨}D is a norm except that }f }D " 0 oe f " 0.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Figure 3. Visualization of the way in which different smoothness properties on the value function are derived. The left compares two near-identical frames of PONG, (a) and (b), whose only difference is the position of the player's paddle. The plots on the right show the optimal value of the state (top) and the derivative of the optimal value (bottom) as a function of the position of the player's paddle, assuming all other features of the state are kept constant. The associated smoothness of each Norm-MMD metric is shown visually. (Note that this is for illustrative purposes only, and was not actually computed from the real game. The curve in the value function represents noisy dynamics, such as those induced by "sticky actions" (Mnih et al., 2015); if the environment were deterministic, the optimal value would be a step function.)
+
+where the function class FW is set of 1-Lipschitz functions,
+
+FW " tf : |f pxq ´ f pyq|  dpx, yq, @x, y P u.
+
+The norm associated with the Wasserstein metric }f }W is
+
+therefore the Lipschitz norm, which in turn is the the 8
+
+norm of f 1 (the derivative of f ). Thus, }f }W " }f 1}8 "
+
+supxP
+
+df pxq dx
+
+.
+
+Energy distance: The energy distance E was first devel-
+
+oped to compare distributions in high dimensions via a two
+
+sample test (Sze´kely & Rizzo, 2004; Gretton et al., 2012).
+
+It is defined as:
+
+EpP, Qq " 2 E }x ´ y}
+px,yq,,P ^Q
+
+´ E >>x ´ x1>> ´ E >>y ´ y1>> ,
+
+x,x1 ,,P
+
+y ,y1 ,,Q
+
+where x, x1 ,, P denotes two independent samples of the
+
+distribution P . Sejdinovic et al. (2013) showed the connec-
+
+tion between the energy distance and MMD metrics. Sim-
+
+ilarly to the Wasserstein, the Energy distance's associated
+
+seminorm
+
+is:
+
+}f }E
+
+"
+
+}f 1}1
+
+"
+
+
+
+
+|
+
+df pxq dx
+
+|
+
+dx.
+
+6.2. Value Function Smoothness
+In the context of value functions, we interpret the function seminorms associated with Norm-MMD metrics as different forms of smoothness.
+Definition 7. Let M be a DeepMDP and let D be a NormMMD with associated norm }¨}D. We say that a policy
+
+s P s is KVs -smooth-valued if:
+
+>>Vs
+
+s
+
+> >D
+
+
+
+KVs
+
+.
+
+and if for all a P A:
+
+>>Qss p¨, aq>>D  KVs .
+
+For a value function Vs s ,
+
+>>Vs
+
+s
+
+> >T
+
+V
+
+is the maximum abso-
+
+lute
+
+value
+
+of
+
+Vs
+
+ s
+
+.
+
+Both
+
+>>Vs
+
+ s
+
+> >W
+
+and
+
+>>Vs
+
+ s
+
+> >E
+
+depend
+
+on
+
+the
+
+derivative
+
+of
+
+Vs s ,
+
+but
+
+while
+
+>>Vs
+
+s
+
+> >W
+
+is
+
+governed
+
+by
+
+point
+
+of
+
+maximal
+
+change,
+
+>>Vs
+
+ s
+
+> >E
+
+instead
+
+measures
+
+the
+
+amount
+
+of
+
+change over the whole state space ss. Thus, a value func-
+
+tion with a small region of high derivative (and thus, large
+
+>>Vs
+
+ s
+
+> >W
+
+)
+
+can
+
+still
+
+have
+
+small
+
+>>Vs
+
+ s
+
+> >E
+
+.
+
+In
+
+Figure
+
+3
+
+we
+
+provide
+
+an intuitive visualization of these three forms of smoothness
+
+in the game of Pong.
+
+One advantage of the Total Variation is that it requires mini-
+
+mal assumptions on the DeepMDP. If the reward function
+
+is bounded, i.e. |Rspss, aq|  KRs , @ss P Ss, a P A, then all
+
+policies
+
+s
+
+P
+
+s
+
+are
+
+KR 1´
+
+-smooth-valued.
+
+We
+
+leave
+
+it
+
+to
+
+future
+
+work to study value function smoothness more generally for
+
+different Norm-MMD metrics and their associated norms.
+
+6.3. Generalized Value Difference Bounds
+The global and local value difference results (Lemmas 2 and 3), as well as the suboptimality result Lemma 1, can easily be derived when D is any Norm-MMD metric. Due to the repetitiveness of these results, we don't include them in the main paper; refer to Appendix A.6 for the full
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+statements and proofs. We leave it to future work to characterize the of policies s when general (i.e. non-Wasserstein) Norm-MMD metrics are used.
+The fact that the representation quality results (Theorems 1 and 2) and the connection with bisimulation (Theorems 3 and 4) don't generalize to Norm-MMD metrics emphasizes the special role the Wasserstein metric plays for representation learning.
+
+7. Related Work in Representation Learning
+State aggregation methods (Abel et al., 2017; Li et al., 2006; Singh et al., 1995; Givan et al., 2003; Jiang et al., 2015; Ruan et al., 2015) attempt to reduce the dimensionality of the state space by joining states together, taking the perspective that a good representation is one that reduces the total number of states without sacrificing any necessary information. Other representation learning approaches take the perspective that an optimal representation contains features that allow for the linear parametrization of the optimal value function (Comanici & Precup, 2011; Mahadevan & Maggioni, 2007). Recently, Bellemare et al. (2019); Dadashi et al. (2019) approached the representation learning problem from the perspective that a good representation is one that allows the prediction via a linear map of any value function in the value function space. In contrast, we have argued that a good representation (1) allows for the parametrization of a large set of interesting policies and (2) allows for the good approximation of the value function of these policies.
+Concurrently, a suite of methods combining model-free deep reinforcement learning with auxiliary tasks has shown large benefits on a wide variety of domains (Jaderberg et al., 2016; van den Oord et al., 2018; Mirowski et al., 2017). Distributional RL (Bellemare et al., 2017a), which was not initially introduced as a representation learning technique, has been shown by Lyle et al. (2019) to only play an auxiliary task role. Similarly, (Fedus et al., 2019) studied different discounting techniques by learning the spectrum of value functions for different discount values , and incidentally found that to be a highly useful auxiliary task. Although successful in practice, these auxiliary task methods currently lack strong theoretical justification. Our approach also proposes to minimize losses as an auxilliary task for representation learning, for a specifc choice of losses: the DeepMDP losses. We have formally justified this choice of losses, by providing theoretical guarantees on representation quality.
+8. Empirical Evaluation
+Our results depend on minimizing losses in expectation, which is the main requirement for deep networks to be applicable. Still, two main obstacles arise when turning
+
+(a) One-track DonutWorld.
+(b) Four-track DonutWorld. Figure 4. Given a state in our DonutWorld environment (first row), we plot a heatmap of the distance between that latent state and each other latent state, for both autoencoder representations (second row) and DeepMDP representations (third row). More-similar latent states are represented by lighter colors.
+these theoretical results into practical algorithms: (1) Minimization of the Wasserstein Arjovsky et al. (2017) first proposed the use of the Wasserstein distance for Generative Adversarial Networks (GANs) via its dual formulation (see Equation 3). Their approach consists of training a network, constrained to be 1-Lipschitz, to attain the supremum of the dual. Once this supremum is attained, the Wasserstein can be minimized by differentiating through the network. Quantile regression has been proposed as an alternative solution to the minimization of the Wasserstein (Dabney et al., 2018b), (Dabney et al., 2018a), and has shown to perform well for Distributional RL. The reader might note that issues with the stochastic minimization of the Wasserstein distance have been found to be biased by Bellemare et al. (2017b) and Bikowski et al. (2018). In our experiments, we circumvent these issues by assuming that both P and Ps are deterministic. This reduces the Wasserstein distance WdSs pPp¨|s, aq, Psp¨|psq, aqq to dSsppPps, aqq, Psppsq, aqq, where Pps, aq and Pspss, aq denote the deterministic transition functions. (2) Control the Lipschitz constants KRs and KPs . We also turn to the field of Wasserstein GANs for approaches to con-
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Figure 5. Due to the competition between reward and transition losses, the optimization procedure spends significant time in local minima early on in training. It eventually learns a good representation, which it then optimizes further. (Note that the curves use different scaling on the y-axis.)
+strain deep networks to be Lipschitz. Originally, Arjovsky et al. (2017) used a projection step to constraint the discriminator function to be 1-Lipschitz. Gulrajani et al. (2017a) proposed using a gradient penalty, and sowed improved learning dynamics. Lipschitz continuity has also been proposed as a regularization method by Gouk et al. (2018), who provided an approach to compute an upper bound to the Lipschitz constant of neural nets. In our experiments, we follow Gulrajani et al. (2017a) and utilize the gradient penalty.
+8.1. DonutWorld Experiments
+In order to evaluate whether we can learn effective representations, we study the representations learned by DeepMDPs in a simple synthetic environment we call DonutWorld. DonutWorld consists of an agent rewarded for running clockwise around a fixed track. Staying in the center of the track results in faster movement. Observations are given in terms of 32x32 greyscale pixel arrays, but there is a simple 2D latent state space (the x-y coordinates of the agent). We investigate whether the x-y coordinates are correctly recovered when learning a two-dimensional representation.
+This task epitomizes the low-dimensional dynamics, highdimensional observations structure typical of Atari 2600 games, while being sufficiently simple to experiment with. We implement the DeepMDP training procedure using Tensorflow and compare it to a simple autoencoder baseline. See Appendix B for a full environment specification, experimental setup, and additional experiments. Code for replicating all experiments is included in the supplementary material.
+In order to investigate whether the learned representations learned correspond well to reality, we plot a heatmap of closeness of representation for various states. Figure 4(a) shows that the DeepMDP representations effectively recover the underlying state of the agent, i.e. its 2D position, from
+
+the high-dimensional pixel observations. In contrast, the autoencoder representations are less meaningful, even when the autoencoder solves the task near-perfectly.
+In Figure 4(b), we modify the environment: rather than a single track, the environment now has four identical tracks. The agent starts in one uniformly at random and cannot move between tracks. The DeepMDP hidden state correctly merges all states with indistinguishable value functions, learning a deep state representation which is almost completely invariant to which track the agent is in.
+The DeepMDP training loss can be difficult to optimize, as illustrated in Figure 5. This is due to the tendency of the transition and reward losses to compete with one another. If the deep state representation is uniformly zero, the transition loss will be zero as well; this is an easily-discovered local optimum, and gradient descent tends to arrive at this point early on in training. Of course, an informationless representation results in a large reward loss. As training progresses, the algorithm incurs a small amount of transition loss in return for a large decrease in reward loss, resulting in a net decrease in loss.
+In DonutWorld, which has very simple dynamics, gradient descent is able to discover a good representation after only a few thousand iterations. However, in complex environments such as Atari, it is often much more difficult to discover representations that allow us to escape the low-information local minima. Using architectures with good inductive biases can help to combat this, as shown in Section 8.3. This issue also motivates the use of auxiliary losses (such as value approximation losses or reconstruction losses), which may help guide the optimizer towards good solutions; see Appendix C.5.
+8.2. Atari 2600 Experiments
+In this section, we demonstrate practical benefits of approximately learning a DeepMDP in the Arcade Learning Environment (Bellemare et al., 2013). Our results on representation-similarity indicate that learning a DeepMDP is a principled method for learning a high-quality representation. Therefore, we minimize DeepMDP losses as an auxiliary task alongside model-free reinforcement learning, learning a single representation which is shared between both tasks. Our implementations of the proposed algorithms are based on Dopamine (Castro et al., 2018).
+We adopt the Distributional Q-learning approach to modelfree RL; specifically, we use as a baseline the C51 agent (Bellemare et al., 2017a), which estimates probability masses on a discrete support and minimizes the KL divergence between the estimated distribution and a target distribution. C51 encodes the input frames using a convolutional neural network  : S Ñ Ss, outputting a dense
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Figure 6. We compare the DeepMDP agent versus the C51 agent on the 60 games from the ALE (3 seeds each). For each game, the percentage performance improvement of DeepMDP over C51 is recorded.
+
+Figure 7. Performance of C51 with model-based auxiliary objectives. Three types of transition models are used for predicting next latent states: a single convolutional layer (convolutional), a single fully-connected layer (one-layer), and a two-layer fully-connected network (two-layer).
+
+vector
+
+representation
+
+s s
+
+"
+
+psq.
+
+The
+
+C51
+
+Q-function
+
+is
+
+a
+
+feed-forward neural network which maps s to an estimate s
+
+of the reward distribution's logits.
+
+To incorporate learning a DeepMDP as an auxiliary learning objective, we define a deep reward function and deep transition function. These are each implemented as a feed-forward neural network, which uses s to estimate the immediate re-
+s ward and the next-state representation, respectively. The overall objective function is a simple linear combination of the standard C51 loss and the Wasserstein distance-based approximations to the local DeepMDP loss given by Equations 6 and 7. For experimental details, see Appendix C.
+
+By optimizing  to jointly minimize both C51 and DeepMDP losses, we hope to learn meaningful s that form the
+s basis for learning good value functions. In the following subsections, we aim to answer the following questions: (1) What deep transition model architecture is conducive to learning a DeepMDP on Atari? (2) How does the learning of a DeepMDP affect the overall performance of C51 on Atari 2600 games? (2) How do the DeepMDP objectives compare with similar representation-learning approaches?
+
+8.3. Transition Model Architecture
+We compare the performance achieved by using different architectures for the DeepMDP transition model (see Figure 7). We experiment with a single fully-connected layer, two fully-connected layers, and a single convolutional layer (see Appendix C for more details). We find that using a convolutional transition model leads to the best DeepMDP performance, and we use this transition model architecture for the rest of the experiments in this paper. Note how the performance of the agent is highly dependent on the architecture. We hypothesize that the inductive bias provided via the model has a large effect on the learned DeepMDPs. Further exploring model architectures which provide inductive biases is a promising avenue to develop better auxiliary tasks. Particularly, we believe that exploring attention (Vaswani et al., 2017; Bahdanau et al., 2014) and relational inductive biases (Watters et al., 2017; Battaglia et al., 2016) could be useful in visual domains like Atari2600.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Figure 8. Using various auxiliary tasks in the Arcade Learning Environment. We compare predicting the next state's representation (Next Latent State, recommended by theoretical bounds on DeepMDPs) with reconstructing the current observation (Observation), predicting the next observation (Next Observation), and predicting the next C51 logits (Next Logits). Training curves for a baseline C51 agent are also shown.
+
+8.4. DeepMDPs as an Auxiliary Task
+We show that when using the best performing DeepMDP architecture described in Appendix C.2, we obtain nearly consistent performance improvements over C51 on the suite of 60 Atari 2600 games (see Figure 6).
+8.5. Comparison to Alternative Objectives
+We empirically compare the effect of the DeepMDP auxilliary objectives on the performance of a C51 agent to a variety of alternatives. In the experiments in this section, we replace the deep transition loss suggested by the DeepMDP bounds with each of the following:
+(1) Observation Reconstruction: We train a state decoder to reconstruct observations s P S from ss. This framework is similar to (Ha & Schmidhuber, 2018), who learn a latent space representation of the environment with an autoencoder, and use it to train an RL agent.
+(2) Next Observation Prediction: We train a transition model to predict next observations s1 ,, Pp¨|s, aq from the current state representation ss. This framework is similar to modelbased RL algorithms which predict future observations (Xu et al., 2018).
+(3) Next Logits Prediction: We train a transition model to predict next-state representations such that the Q-function correctly predicts the logits of ps1, a1q, where a1 is the action associated with the max Q-value of s1. This can be understood as a distributional analogue of the Value Prediction Network, VPN, (Oh et al., 2017). Note that this auxiliary loss is used to update only the parameters of the representation encoder and the transition model, not the Q-function.
+Our experiments demonstrate that the deep transition loss suggested by the DeepMDP bounds (i.e. predicting the next state's representation) outperforms all three ablations (see Figure 8). Accurately modeling Atari 2600 frames, whether through observation reconstruction or next observation pre-
+
+diction, forces the representation to encode irrelevant information with respect to the underlying task. VPN-style losses have been shown to be helpful when using the learned predictive model for planning (Oh et al., 2017); however, we find that with a distributional RL agent, using this as an auxiliary task tends to hurt performance.
+9. Discussion on Model-Based RL
+We have focused on the implications of DeepMDPs for representation learning, but our results also provide a principled basis for model-based RL ­ in latent space or otherwise. Although DeepMDPs are latent space models, by letting  be the identity function, all the provided results immediately apply to the standard model-based RL setting, where the model predicts states instead of latent states. In fact, our results serve as a theoretical justification for common practices already found in the model-based deep RL literature. For example, Chua et al. (2018); Doerr et al. (2018); Hafner et al. (2018); Buesing et al. (2018); Feinberg et al. (2018); Buckman et al. (2018) train models to predict a reward and a distribution over next states, minimizing the negative log-probability of the true next state. The negative log-probability of the next state can be viewed as a one-sample estimate of the KL between the model's state distribution and the next state distribution. Due to Pinsker's inequality (which bounds the TV with the KL), and the suitability of TV as a metric (Section 6), this procedure can be interpreted as training a DeepMDP. Thus, the learned model will obey our local value difference bounds (Lemma 8) and suboptimality bounds (Theorem 6), which provide theoretical guarantees for the model.
+Further, the suitability of Norm-MMD metrics for learning models presents a promising new research avenue for modelbased RL: to break away from the KL and explore the vast family of Norm Maximum Mean Discrepancy metrics.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+10. Conclusions
+We introduce the concept of a DeepMDP: a parameterized latent space model trained via the minimization of tractable losses. Theoretical analysis provides guarantees on the quality of the value functions of the learned model when the latent transition loss is any member of the large family of Norm Maximum Mean Discrepancy metrics. When the Wasserstein metric is used, a novel connection to bisimulation metrics guarantees the set of parametrizable policies is highly expressive. Further, it's guaranteed that two states with different values for any of those policies will never be collapsed under the representation. Together, these findings suggest that learning a DeepMDP with the Wasserstein metric is a theoretically sound approach to representation learning. Our results are corroborated by strong performance on large-scale Atari 2600 experiments, demonstrating that minimizing the DeepMDP losses can be a beneficial auxiliary task in model-free RL.
+Using the transition and reward models of the DeepMDP for model-based RL (e.g. planning, exploration) is a promising future research direction. Additionally, extending DeepMDPs to accommodate different action spaces or time scales from the original MDPs could be a promising path towards learning hierarchical models of the environment.
+Acknowledgements
+The authors would like to thank Philip Amortila and Robert Dadashi for invaluable feedback on the theoretical results; Pablo Samuel Castro, Doina Precup, Nicolas Le Roux, Sasha Vezhnevets, Simon Osindero, Arthur Gretton, Adrien Ali Taiga, Fabian Pedregosa and Shane Gu for useful discussions and feedback.
+Changes From ICML 2019 Proceedings
+This document represents an updated version of our work relative to the version published in ICML 2019. The major addition was the inclusion of the generalization to NormMMD metrics and associated math in Section 6. Lemma 1 also underwent minor changes to its statements and proofs. Additionally, some sections were partially rewritten, especially the discussion on bisimulation (Section 5), which was significantly expanded.
+References
+Abel, D., Hershkowitz, D. E., and Littman, M. L. Near optimal behavior via approximate state abstraction. arXiv preprint arXiv:1701.04113, 2017.
+Arjovsky, M., Chintala, S., and Bottou, L. Wasserstein generative adversarial networks. In ICML, 2017.
+
+Asadi, K., Misra, D., and Littman, M. L. Lipschitz continuity in model-based reinforcement learning. arXiv preprint arXiv:1804.07193, 2018.
+Bahdanau, D., Cho, K., and Bengio, Y. Neural machine translation by jointly learning to align and translate. arXiv preprint arXiv:1409.0473, 2014.
+Battaglia, P. W., Pascanu, R., Lai, M., Rezende, D. J., and Kavukcuoglu, K. Interaction networks for learning about objects, relations and physics. In NIPS, 2016.
+Bellemare, M. G., Naddaf, Y., Veness, J., and Bowling, M. The Arcade Learning Environment: An evaluation platform for general agents. Journal of Artificial Intelligence Research, 47:253­279, June 2013.
+Bellemare, M. G., Dabney, W., and Munos, R. A distributional perspective on reinforcement learning. In Proceedings of the International Conference on Machine Learning, 2017a.
+Bellemare, M. G., Danihelka, I., Dabney, W., Mohamed, S., Lakshminarayanan, B., Hoyer, S., and Munos, R. The cramer distance as a solution to biased wasserstein gradients. arXiv preprint arXiv:1705.10743, 2017b.
+Bellemare, M. G., Dabney, W., Dadashi, R., Taiga, A. A., Castro, P. S., Roux, N. L., Schuurmans, D., Lattimore, T., and Lyle, C. A geometric perspective on optimal representations for reinforcement learning. CoRR, abs/1901.11530, 2019.
+Bikowski, M., Sutherland, D. J., Arbel, M., and Gretton, A. Demystifying MMD GANs. In International Conference on Learning Representations, 2018. URL https:// openreview.net/forum?id=r1lUOzWCW.
+Borwein, J. and Lewis, A. S. Convex Analysis and Nonlinear Optimization. Springer, 2005.
+Buckman, J., Hafner, D., Tucker, G., Brevdo, E., and Lee, H. Sample-efficient reinforcement learning with stochastic ensemble value expansion. In NeurIPS, 2018.
+Buesing, L., Weber, T., Racaniere, S., Eslami, S., Rezende, D., Reichert, D. P., Viola, F., Besse, F., Gregor, K., Hassabis, D., et al. Learning and querying fast generative models for reinforcement learning. arXiv preprint arXiv:1802.03006, 2018.
+Castro, P. and Precup, D. Using bisimulation for policy transfer in mdps. Proceeedings of the 9th International Conference on Autonomous Agents and Multiagent Systems (AAMAS-2010), 2010.
+Castro, P. S., Moitra, S., Gelada, C., Kumar, S., and Bellemare, M. G. Dopamine: A research framework for deep reinforcement learning. arXiv, 2018.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Chua, K., Calandra, R., McAllister, R., and Levine, S. Deep reinforcement learning in a handful of trials using probabilistic dynamics models. In Advances in Neural Information Processing Systems, pp. 4754­4765, 2018.
+Chung, W., Nath, S., Joseph, A. G., and White, M. Twotimescale networks for nonlinear value function approximation. In International Conference on Learning Representations, 2019.
+Comanici, G. and Precup, D. Basis function discovery using spectral clustering and bisimulation metrics. In AAMAS, 2011.
+Dabney, W., Ostrovski, G., Silver, D., and Munos, R. Implicit quantile networks for distributional reinforcement learning. In ICML, 2018a.
+Dabney, W., Rowland, M., Bellemare, M. G., and Munos, R. Distributional reinforcement learning with quantile regression. In AAAI, 2018b.
+Dadashi, R., Taiga, A. A., Roux, N. L., Schuurmans, D., and Bellemare, M. G. The value function polytope in reinforcement learning. CoRR, abs/1901.11524, 2019.
+Doerr, A., Daniel, C., Schiegg, M., Nguyen-Tuong, D., Schaal, S., Toussaint, M., and Trimpe, S. Probabilistic recurrent state-space models. arXiv preprint arXiv:1801.10395, 2018.
+Fedus, W., Gelada, C., Bengio, Y., Bellemare, M. G., and Larochelle, H. Hyperbolic discounting and learning over multiple horizons. ArXiv, abs/1902.06865, 2019.
+Feinberg, V., Wan, A., Stoica, I., Jordan, M. I., Gonzalez, J. E., and Levine, S. Model-based value estimation for efficient model-free reinforcement learning. arXiv preprint arXiv:1803.00101, 2018.
+Ferns, N., Panangaden, P., and Precup, D. Metrics for finite markov decision processes. Proceedings of the 20th Conference on Uncertainty in Artificial Intelligence, UAI'04:162­169, 2004.
+Ferns, N., Panangaden, P., and Precup, D. Bisimulation metrics for continuous markov decision processes. SIAM Journal on Computing, 40(6):1662­1714, 2011.
+Francois-Lavet, V., Bengio, Y., Precup, D., and Pineau, J. Combined reinforcement learning via abstract representations. arXiv preprint arXiv:1809.04506, 2018.
+Gelada, C. and Bellemare, M. G. Off-policy deep reinforcement learning by bootstrapping the covariate shift. CoRR, abs/1901.09455, 2019.
+
+Givan, R., Dean, T., and Greig, M. Equivalence notions and model minimization in markov decision processes. Artificial Intelligence, 147(1-2):163­223, 2003.
+Gouk, H., Frank, E., Pfahringer, B., and Cree, M. J. Regularisation of neural networks by enforcing lipschitz continuity. CoRR, abs/1804.04368, 2018.
+Gretton, A., Borgwardt, K. M., Rasch, M. J., Scho¨lkopf, B., and Smola, A. J. A kernel two-sample test. Journal of Machine Learning Research, 13:723­773, 2012.
+Gulrajani, I., Ahmed, F., Arjovsky, M., Dumoulin, V., and Courville, A. C. Improved training of wasserstein gans. In NIPS, 2017a.
+Gulrajani, I., Ahmed, F., Arjovsky, M., Dumoulin, V., and Courville, A. C. Improved training of wasserstein gans. In Advances in Neural Information Processing Systems, pp. 5767­5777, 2017b.
+Ha, D. and Schmidhuber, J. Recurrent world models facilitate policy evolution. In Advances in Neural Information Processing Systems, pp. 2455­2467, 2018.
+Hafner, D., Lillicrap, T., Fischer, I., Villegas, R., Ha, D., Lee, H., and Davidson, J. Learning latent dynamics for planning from pixels. arXiv preprint arXiv:1811.04551, 2018.
+Hinderer, K. Lipschitz continuity of value functions in markovian decision processes. Math. Meth. of OR, 62: 3­22, 2005.
+Jaderberg, M., Mnih, V., Czarnecki, W. M., Schaul, T., Leibo, J. Z., Silver, D., and Kavukcuoglu, K. Reinforcement learning with unsupervised auxiliary tasks. arXiv preprint arXiv:1611.05397, 2016.
+Jiang, N., Kulesza, A., and Singh, S. Abstraction selection in model-based reinforcement learning. In International Conference on Machine Learning, pp. 179­188, 2015.
+Kaiser, L., Babaeizadeh, M., Milos, P., Osinski, B., Campbell, R. H., Czechowski, K., Erhan, D., Finn, C., Kozakowski, P., Levine, S., Sepassi, R., Tucker, G., and Michalewski, H. Model-based reinforcement learning for atari. CoRR, abs/1903.00374, 2019.
+Li, L., Walsh, T. J., and Littman, M. L. Towards a unified theory of state abstraction for mdps. In ISAIM, 2006.
+Lyle, C., Castro, P. S., and Bellemare, M. G. A comparative analysis of expected and distributional reinforcement learning. CoRR, abs/1901.11084, 2019.
+Mahadevan, S. and Maggioni, M. Proto-value functions: A laplacian framework for learning representation and control in markov decision processes. Journal of Machine Learning Research, 8:2169­2231, 2007.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Mirowski, P. W., Pascanu, R., Viola, F., Soyer, H., Ballard, A. J., Banino, A., Denil, M., Goroshin, R., Sifre, L., Kavukcuoglu, K., Kumaran, D., and Hadsell, R. Learning to navigate in complex environments. CoRR, abs/1611.03673, 2017.
+Mnih, V., Kavukcuoglu, K., Silver, D., Rusu, A. A., Veness, J., Bellemare, M. G., Graves, A., Riedmiller, M. A., Fidjeland, A., Ostrovski, G., Petersen, S., Beattie, C., Sadik, A., Antonoglou, I., King, H., Kumaran, D., Wierstra, D., Legg, S., and Hassabis, D. Human-level control through deep reinforcement learning. Nature, 518:529­533, 2015.
+Mueller, A. Integral probability metrics and their generating classes of functions. 1997.
+Mu¨ller, A. Integral probability metrics and their generating classes of functions. Advances in Applied Probability, 29 (2):429­443, 1997.
+Oh, J., Singh, S., and Lee, H. Value prediction network. In Advances in Neural Information Processing Systems, pp. 6118­6128, 2017.
+Parr, R., Li, L., Taylor, G., Painter-Wakefield, C., and Littman, M. L. An analysis of linear models, linear value-function approximation, and feature selection for reinforcement learning. In ICML, 2008.
+
+van den Oord, A., Li, Y., and Vinyals, O. Representation learning with contrastive predictive coding. CoRR, abs/1807.03748, 2018.
+Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, L., and Polosukhin, I. Attention is all you need. In NIPS, 2017.
+Villani, C. Optimal Transport: Old and New. Springer Science & Business Media, 2008, 2008.
+Watters, N., Tacchetti, A., Weber, T., Pascanu, R., Battaglia, P. W., and Zoran, D. Visual interaction networks. CoRR, abs/1706.01433, 2017.
+Xu, H., Li, Y., Tian, Y., Darrell, T., and Ma, T. Algorithmic framework for model-based reinforcement learning with theoretical guarantees. arXiv preprint arXiv:1807.03858, 2018.
+Zhang, M., Vikram, S., Smith, L., Abbeel, P., Johnson, M. J., and Levine, S. Solar: Deep structured latent representations for model-based reinforcement learning. arXiv preprint arXiv:1808.09105, 2018.
+
+Pirotta, M., Restelli, M., and Bascetta, L. Policy gradient in lipschitz markov decision processes. Machine Learning, 100(2-3):255­283, 2015.
+
+Puterman, M. L. Markov decision processes: Discrete stochastic dynamic programming. 1994.
+
+Ruan, S. S., Comanici, G., Panangaden, P., and Precup, D. Representation discovery for mdps using bisimulation metrics. In AAAI, 2015.
+
+Sejdinovic, D., Sriperumbudur, B. K., Gretton, A., and Fukumizu, K. Equivalence of distance-based and rkhs-based statistics in hypothesis testing. CoRR, abs/1207.6076, 2013.
+
+Silver, D., van Hasselt, H. P., Hessel, M., Schaul, T., Guez, A., Harley, T., Dulac-Arnold, G., Reichert, D. P., Rabinowitz, N. C., Barreto, A., and Degris, T. The predictron: End-to-end learning and planning. In ICML, 2017.
+
+Singh, S. P., Jaakkola, T., and Jordan, M. I. Reinforcement learning with soft state aggregation. In Advances in neural information processing systems, pp. 361­368, 1995.
+
+Sze´kely, G. J. and Rizzo, M. L. Testing for equal distributions in high dimension. 2004.
+
+Appendix
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+A. Proofs
+
+A.1. Lipschitz MDP
+
+Lemma 1. Let M be pKRs , KPs q-Lipschitz. Then,
+
+1.
+
+The optimal policy ° is s
+
+KR 1´KP
+
+-Lipschitz-valued.
+
+2.
+
+All policies with KPs 
+s
+
+
+
+1 
+
+are
+
+KR 
+s
+1´KP
+
+-Lipschitz-valued.
+
+s
+
+3.
+
+All constant policies (i.e.
+
+spa|ss1q " spa|ss2q, @a P A, ss1, ss2
+
+P Ss) are
+
+KR 1´KP
+
+-Lipschitz-valued.
+
+Proof. Start by proving 1. By induction we will show that a sequence of Q values Qsn converging to Qs° are all Lipschitz,
+
+and that as n
+
+Ñ
+
+8,
+
+their Lipschitz norm goes to
+
+. KR
+1´KP
+
+Let Qs0pss, aq
+
+"
+
+0, @ss P
+
+Ss, a
+
+P
+
+A be the base case.
+
+Define
+
+Qsn`1pss, aq
+
+"
+
+Rspss, aq
+
+`
+
+
+
+Es1
+s
+
+,,Ps
+
+p¨|ss,aq
+
+"
+
+maxa1
+
+Qsnpss1, a1q.
+
+It
+
+is
+
+a
+
+well
+
+known
+
+result
+
+that
+
+the
+
+sequence
+
+Qsn
+
+converges
+
+to
+
+Qs°.
+
+Now
+
+let
+
+KQs ,n
+
+"
+
+supaPA,ss1ss2PSs
+
+|Qs n pss1 ,aq´Qs n pss2 ,aq| dSs pss1 ,ss2 q
+
+be
+
+the
+
+Lipschitz
+
+norm
+
+of
+
+Qsn.
+
+Clearly
+
+KQs ,0
+
+"
+
+0.
+
+Then,
+
+KQs ,n`1
+
+"
+
+sup
+aPA,ss1 ss2 PSs
+
+|Qsn`1pss1, aq ´ Qsn`1pss2, dSspss1, ss2q
+
+aq|
+
+
+
+sup
+aPA,ss1 ss2 PSs
+
+|Rspss1, aq ´ Rspss2, aq| dSspss1, ss2q
+
+`
+
+
+
+sup
+aPA,ss1 ss2 PSs
+
+| Ess11,,Psp¨|ss1,aq
+
+Qsnpss11, aq ´ Ess12,,Psp¨|ss2,aq dSspss1, ss2q
+
+Qsnpss12, aq|
+
+"
+
+KRs
+
+`
+
+
+
+sup
+aPA,ss1 ss2 PSs
+
+|
+
+Ess11 ,,Ps p¨|ss1 ,aq
+
+Qsnpss11, aq ´ Ess12,,Psp¨|ss2,aq dSspss1, ss2q
+
+Qsnpss12,
+
+aq|
+
+
+
+KRs
+
+` KQs ,n sup
+aPA,ss1 ss2 PSs
+
+W
+
+`Psp¨|ss2, aq, dSspss1,
+
+Psp¨|ss2 ss2q
+
+,
+
+aq
+
+,
+
+(Using
+
+the
+
+fact
+
+that
+
+Qsn
+
+is
+
+KQs ,n-Lipschitz
+
+by
+
+induction)
+
+ KRs ` KQs ,nKPs
+
+n´1
+
+n´1
+
+ ÿ pKPs qiKRs ` pKPs qnKQs ,0 " ÿ pKPs qiKRs , (by expanding the recursion)
+
+i"0
+
+i"0
+
+Thus,
+
+as
+
+n
+
+Ñ
+
+8,
+
+KQs °
+
+
+
+. KR
+1´KP
+
+To
+
+prove
+
+2
+
+a
+
+similar
+
+argument
+
+can
+
+be
+
+used.
+
+The
+
+sequence
+
+Vsn`1pss,
+
+aq
+
+"
+
+Rs
+s
+
+pssq
+
+`
+
+
+
+Es1
+s
+
+,,Ps
+
+p¨|ss,aq
+
+"Vsnpss1q
+
+converges
+
+to
+
+Qss
+
+and
+
+the
+
+sequence
+
+of
+
+Lipschitz
+
+norms
+
+converge
+
+to
+
+. KR  s
+1´KP
+
+From
+
+there
+
+it's
+
+trivial
+
+to
+
+show
+
+that
+
+Qss
+
+is
+
+also
+
+Lipschitz.
+
+Finally, we prove 3. Note that the transition function of a constant policy paq has the following property:
+
+
+
+
+
+W
+
+`Ps
+s
+
+p¨|ss2q,
+
+Ps
+s
+
+p¨|ss2q
+
+"
+
+sup
+f PF
+
+  
+
+pPs
+s
+
+pss1|ss2q
+
+´
+
+Ps
+s
+
+pss1|ss2qqf
+
+pss1
+
+q
+
+ds1 s 
+
+
+
+
+
+
+
+ sup 
+
+
+ÿ paqpPspss1|ss2, aq ´ Pspss1|ss2, aqqf pss1q
+
+ ds1
+s
+
+f PF  a
+
+
+
+
+
+
+
+
+
+ÿ
+
+paq
+
+sup
+
+ 
+
+pPspss1|ss2,
+
+aq
+
+´
+
+Pspss1|ss2
+
+,
+
+aqqf
+
+pss1q
+
+ds1 s
+
+a
+
+f PF 
+
+
+
+ ÿ paqKPs
+a
+
+ KPs
+
+Similarly,
+
+|Rs
+s
+
+pss1q
+
+´
+
+Rs
+s
+
+pss2q|
+
+
+
+KRs .
+
+Thus,
+
+for
+
+a
+
+constant
+
+policy
+
+,
+
+the
+
+Lipschitz
+
+norms
+
+KPs 
+s
+
+
+
+KPs
+
+and
+
+KRs 
+s
+
+
+
+KRs .
+
+To
+
+complete the proof we can apply result 2.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+A.2. Global DeepMDP
+
+Lemma 2. Let M and M be an MDP and DeepMDP respectively, with an embedding function  and global loss functions L8Rs and L8Ps . For any KVs -Lipschitz-valued policy s P s the value difference can be bounded by
+
+Qs ps, aq ´ Qss ppsq, aq
+
+
+
+L8Rs
+
+` 1
+
+KVs ´
+
+L8Ps
+
+,
+
+Proof. This is a specific case to the general Lemma 7
+
+Theorem 1. Let M and M be an MDP and DeepMDP respectively, let dSs be a metric in Ss,  be an embedding function
+
+and
+
+L8Rs
+
+and
+
+L8Ps
+
+be
+
+the
+
+global
+
+loss
+
+functions.
+
+For
+
+any
+
+KVs
+
+-Lipschitz-valued
+
+policy
+
+ s
+
+P
+
+s
+
+the
+
+representation
+
+
+
+guarantees
+
+that for all s1, s2 P S and a P A,
+
+Qs ps1, aq ´ Qs ps2, aq  KVs dSspps1q, ps2qq
+
+`
+
+2
+
+L8Rs
+
+` 1
+
+KVs ´
+
+L8Ps
+
+Proof.
+
+Qs ps1, aq ´ Qs ps2, aq  Qss ps1, aq ´ Qss ps2, aq ` Qs ps1, aq ´ Qss ps1, aq ` Qs ps2, aq ´ Qss ps2, aq
+
+
+
+Qss ps1,
+
+aq
+
+´
+
+Qss ps2,
+
+aq
+
+`
+
+2 `L8Rs
+
+` 1
+
+KV ´
+
+L8Ps 
+
+Applying
+
+Lemma
+
+2
+
+
+
+KV
+
+}ps1q
+
+´
+
+ps2q}
+
+`
+
+2 `L8Rs
+
+` 1
+
+KV ´
+
+L8Ps 
+
+Using
+
+the
+
+Lipschitz
+
+property
+
+of
+
+Qss
+
+Theorem 5. Let M and M be an MDP and a pKRs , KPs q-Lipschitz DeepMDP respectively, with an embedding function 
+
+and
+
+global
+
+loss
+
+functions
+
+L8Rs
+
+and
+
+L8Ps .
+
+For
+
+all
+
+s
+
+P
+
+S,
+
+the
+
+suboptimality
+
+of
+
+the
+
+optimal
+
+policy
+
+° s
+
+of
+
+M
+
+evaluated
+
+on
+
+M
+
+can
+
+be bounded by:
+
+V
+
+°psq
+
+´
+
+V
+
+° s
+
+psq
+
+
+
+2
+
+L8Rs 1´
+
+`
+
+2 p1
+
+´
+
+KRs L8Ps qp1 ´ KPs q
+
+Proof. This is just a case of the general Theorem 6 combined with the result that the optimal policy of a pKRs , KPs q-Lipschitz
+
+DeepMDP
+
+is
+
+KR 1´KP
+
+-Lipschitz-valued.
+
+A.3. Local DeepMDP
+
+Lemma 3. Let M and M be an MDP and DeepMDP respectively, with an embedding function . For any KVs -Lipschitzvalued policy s P s , the expected value function difference can be bounded using the local loss functions LRss and LPss measured under s , the stationary state action distribution of s.
+
+E Qs ps, aq ´ Qss ppsq, aq
+s,a,,
+
+
+
+LRss ` KVs LPss , 1´
+
+s
+
+Proof. This Lemma is just an example of the general Lemma 8
+
+Theorem 2. Let M and M be an MDP and DeepMDP respectively, let dSs be the metric in Ss and  be the embedding
+
+function.
+
+Let
+
+ s
+
+P
+
+s
+
+be
+
+any
+
+KVs
+
+-Lipschitz-valued
+
+policy
+
+with
+
+stationary
+
+distribution
+
+ ,
+s
+
+and
+
+let
+
+LRss
+
+and
+
+LPss
+
+be
+
+the
+
+local
+
+loss functions. For any two states s1, s2 P S, the representation  is such that,
+
+|V
+
+ s
+
+ps1q
+
+´
+
+V
+
+ s
+
+ps2
+
+q|
+
+
+
+KVs
+
+dSspps1q,
+
+ps2qq
+
+`
+
+LRss
+
+` KVs LPss 1´
+
+^1 d ps1 q
+
+`
+
+1 d ps2 q
+
+s
+
+s
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Proof. Es,, s
+
+Using
+
+the
+
+fact
+
+that
+
+V
+
+ s
+
+psq
+
+´
+
+Vs
+
+ s
+
+psq
+
+
+
+d´ 1
+s
+
+psqEs,, s
+
+V
+
+ s
+
+psq
+
+´
+
+Vs
+
+ s
+
+psq,
+
+V
+
+s ps1q
+
+´
+
+V
+
+s ps2q
+
+
+
+Vs
+
+s ps1q
+
+´
+
+Vs
+
+s
+
+ps2
+
+ q
+
+`
+
+d´s 1ps1q
+
+E
+s,,
+
+V
+
+s ps1q
+
+´
+
+Vs
+
+s ps1q
+
+`
+
+d´s 1ps2q
+
+E
+s,,
+
+V
+
+s ps2q
+
+´
+
+Vs
+
+s ps2q
+
+s
+
+s
+
+
+
+Vs
+
+ s
+
+ps1
+
+q
+
+´
+
+Vs
+
+ s
+
+ps2
+
+ q
+
+`
+
+LRss
+
+` KV LPss 1´
+
+`d´s 1ps1q ` d´s 1ps2q ,
+
+Applying
+
+Lemma
+
+3
+
+
+
+KVs dSspps1q, ps2qq `
+
+LRss
+
+` KV LPss 1´
+
+`d´s 1ps1q ` d´s 1ps2q
+
+A.4. Connection to Bisimulation
+Lemma 4. Let M be a KR-KP -Lipschitz DeepMDP with a metric in the state space dSs. Then the bisimulation metric dris Lipschitz s.t. @ss1, ss2 P Ss,
+
+drpss1, ss2q
+
+
+
+p1 ´ 1´
+
+qKRs KPs
+
+dSspss1,
+
+ss2q.
+
+(9)
+
+Proof. We first derive a property of the Wasserstein. Let d and p be pseudometrics in  s.t. dpx, yq  Kppx, yq for all x, y P , and let P and Q be two distributions in . Then WdpP, Qq  KWppP, Qq. To prove it, first note that define the sets of C-Lipschitz functions for both metrics:
+
+Fd,C " tf : @x  y P , |f pxq ´ f pyq|  Cdpx, yqu , Fp,C " tf : @x  y P , |f pxq ´ f pyq|  Cppx, yqu .
+
+Then it becomes clear that Fd,1Fp,K . We can now prove the property:
+
+
+
+
+
+WdpP,
+
+Qq
+
+"
+
+sup
+f PFd,1
+
+ E x,,P
+
+f pxq
+
+´
+
+E
+y,,Q
+
+f pyq 
+
+
+
+
+
+
+
+sup
+
+ E
+
+f pxq ´
+
+E
+
+f pyq
+
+f PFp,K x,,P
+
+y,,Q
+
+
+
+
+
+
+
+"
+
+sup
+
+ E
+
+Kf pxq ´
+
+E
+
+Kf pyq
+
+f PFp,1 x,,P
+
+y,,Q
+
+
+
+
+
+
+
+"K
+
+sup
+
+ E
+
+f pxq ´
+
+E
+
+f pyq
+
+f PFp,1 x,,P
+
+y,,Q
+
+
+
+" KWppP, Qq
+
+We prove the Lemma by induction. We show that a sequence of pseudometrics values dn converging to drare all Lipschitz,
+
+and that as n
+
+Ñ
+
+8, their Lipschitz norm goes to
+
+. p1´qKR
+1´KP
+
+Let d0ps1, s2q
+
+"
+
+0, @s1, s2
+
+P
+
+S
+
+be the base case.
+
+Define
+
+dn`1ps1, s2q " Fdps1, s2q as defined in Definition 5. Ferns et al. (2011) shows that F is a contraction, and that dn converges
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+to
+
+dras
+
+n
+
+Ñ
+
+8.
+
+Now
+
+let
+
+Kd,n
+
+"
+
+sup
+s1 s2 PS
+
+dn ps1 ,s2 q dS ps1,s2q
+
+be
+
+the
+
+Lipschitz
+
+norm
+
+of
+
+dn.
+
+Also
+
+see
+
+that
+
+Kd,0
+
+"
+
+0.
+
+Then,
+
+Kd,n`1
+
+"
+
+sup
+s1 s2 PS
+
+dn`1ps1, s2q dS ps1, s2q
+
+"
+
+sup
+s1 s2 PS
+
+Fdn ps1, s2q dS ps1, s2q
+
+
+
+p1
+
+´
+
+q
+
+sup
+aPA,s1 s2 PS
+
+|Rps1, aq ´ Rps2, aq| dS ps1, s2q
+
+`
+
+
+
+sup
+aPA,s1 s2 PS
+
+Wdn
+
+pPp¨|s2, aq, Pp¨|s2, aqq dS ps1, s2q
+
+"
+
+p1
+
+´
+
+qKR
+
+`
+
+
+
+sup
+aPA,s1 s2 PS
+
+Wdn
+
+pPp¨|s2, aq, Pp¨|s2, dS ps1, s2q
+
+aqq
+
+
+
+p1
+
+´
+
+qKR
+
+`
+
+Kd,n
+
+sup
+aPA,s1 s2 PS
+
+WdS
+
+pP
+
+p¨|s2, aq, Pp¨|s2 dS ps1, s2q
+
+,
+
+aqq
+
+,
+
+(Using
+
+the
+
+property
+
+derived
+
+above.)
+
+ p1 ´ qKR ` Kd,nKP
+
+n´1
+ p1 ´ q ÿ pKP qiKR, (by expanding the recursion)
+
+i"0
+
+Thus,
+
+even
+
+as
+
+n
+
+Ñ
+
+8,
+
+Kd,n
+
+
+
+. p1´qKR
+1´KP
+
+Lemma 5. Let M be an MDP and M be a KRs -KPs -Lipschitz MDP with an embedding function  : S Ñ Ss and global DeepMDP losses L8Ps and L8Rs .. We can extend the bisimulation metric to also measure a distance between s P S and ss P Ss by considering an joined MDP constructed by joining M and M. When an action is taken, each state will transition
+according to the transition function of its corresponding MDP. Then the bisimulation metric between a state s P S and it's
+embedded counterpart psq is bounded by:
+
+drps,
+
+psqq
+
+
+
+L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+Proof. First, note that
+
+WdrpP p¨|s,
+
+aq,
+
+Psp¨|psq,
+
+aqq
+
+"
+
+sup
+f PFdr
+
+E rf
+ss11 ,,P p¨|s,aq
+
+pss11qs
+
+´
+
+ss12
+
+,,Ps
+
+E rf
+p¨|psq,aq
+
+pss12
+
+qs
+
+
+
+p1 ´ qKR 1 ´ KP
+
+sup
+f PF1
+
+E rf
+ss11 ,,P p¨|s,aq
+
+pss11qs
+
+´
+
+E rf
+ss12 ,,Ps p¨|psq,aq
+
+pss12qs
+
+"
+
+p1 1
+
+´ ´
+
+qKR KP
+
+W
+
+2 pPp¨|s, aq, Psp¨|psq, aqq
+
+
+
+p1 1
+
+´ ´
+
+qKR KP
+
+L8Ps
+
+(Using Theorem 4)
+
+Using the triangle inequality of pseudometrics and the previous derivation:
+
+sup
+s
+
+drps,
+
+psqq
+
+"
+
+max
+aPA
+
+`p1
+
+´
+
+q
+
+Rps,
+
+aq
+
+´
+
+Rsppsq,
+
+aq
+
+`
+
+ WdrpP p¨|s,
+
+aq,
+
+Psp¨|psq,
+
+aqq
+
+
+
+p1
+
+´
+
+qL8Rs
+
+`
+
+
+
+max
+aPA
+
+`WdrpP
+
+p¨|s,
+
+aq,
+
+P p¨|s,
+
+aqq
+
+`
+
+WdrpP p¨|s,
+
+aq,
+
+Psp¨|psq,
+
+aqq
+
+
+
+p1
+
+´
+
+qL8Rs
+
+`
+
+
+
+p1 1
+
+´ ´
+
+qKR KP
+
+L8Ps
+
+`
+
+
+
+max
+aPA
+
+WdrpP
+
+p¨|s,
+
+aq,
+
+P
+
+p¨|s,
+
+aqq
+
+
+
+p1
+
+´
+
+qL8Rs
+
+`
+
+
+
+p1 1
+
+´ ´
+
+qKR KP
+
+L8Ps
+
+`
+
+
+
+sup
+s
+
+drps1,
+
+psqq
+
+Solving for the recurrence leads to the desired result.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Theorem 3. Let M be an MDP and M be a KRs -KPs -Lipschitz DeepMDP with metric dSs. Let  be the embedding function
+and L8Ps and L8Rs be the global DeepMDP losses. The bisimulation distance in M, dr: S ^ S Ñ R` can be upperbounded by the 2 distance in the embedding and the losses in the following way:
+
+drps1, s2q
+
+
+
+p1 1
+
+´ ´
+
+qKR KPs
+
+dSspps1
+
+q,
+
+ps2
+
+qq
+
+`
+
+2
+
+^ L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+
+
+Proof.
+
+drps1, s2q  drps1, ps1qq ` drps2, ps2qq ` drpps1q, ps2qq
+
+
+
+2
+
+^ L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+
+
+`
+
+drpps1q,
+
+ps2qq
+
+
+
+2
+
+^ L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+
+
+`
+
+p1 1
+
+´ qL8Rs ´ KPs
+
+}ps1q
+
+´
+
+ps2q}
+
+Completing the proof.
+
+(Using Theorem 5) (Applying Theorem 4)
+
+A.5. Quality of s
+Lemma 6. Let df and dg be the metrics on the space , with the property that for some  0 it holds that @x, y P , df px, yq  ` dgpx, yq. Define the sets of 1-Lipschitz functions F " tf : |f pxq ´ f pyq|  df px, yq, @x, y P u and G " tg : |gpxq ´ gpyq|  dgpx, yq, @x, y P u. Then for any f P F, there exists one g P G such that for all x P ,
+
+|f pxq ´ gpxq|  2
+
+Proof. Define the set Z " tz : |zpxq ´ zpyq|  ` dgpx, yq, @x, y P u. Then trivially, any function f P F is also a
+
+member of Z. We now show that the set Z can equivalently be expressed as zpxq " gpxq ` upxq, where g P G and
+
+upxq
+
+P
+
+p
+
+´ 2
+
+,
+
+2 q,
+
+is
+
+(non
+
+Lipschitz)
+
+bounded
+
+function.
+
+|zpxq ´ zpyq| " |gpxq ` upxq ´ gpyq ´ upyq|  |gpxq ´ gpyq| ` |upxq ´ upyq|  dgpx, yq `
+
+Note how both inequalities are tight (there is a g and u for which the equality holds), together with the fact that the set Z is convex, it follows that any z P Z must be expressible as gpxq ` upxq.
+We now complete the proof. For any z P Z, there exist a g P G s.t. zpxq " gpxq ` upxq. Then:
+
+|zpxq ´ gpxq| " |upxq|  2
+
+Theorem 4. Let M be an MDP and M be a (KRs , KPs )-Lipschitz DeepMDP, with an embedding function  and global loss functions L8Rs and L8Ps . Denote by rK and sK the sets of Lipschitz-bisimilar and Lipschitz-deep policies. Then for any r P rK there exists a s P sCK which is close to r in the sense that, for all s P S and a P A,
+
+|rpa|sq
+
+´
+
+spa|sq|
+
+
+
+L8Rs
+
+`
+
+L8Ps
+
+1
+
+KRs ´ KPs
+
+Proof. The proof is based on Lemma 6. Let  " S, df px, yq " Kdrpx, yq, dgpx, yq " KC }pxq ´ pyq} and "
+
+2
+
+´ L8Rs
+
+`
+
+L8Ps
+
+KR 1´KP
+
+¯ .
+
+Theorem 3 can be used to show that the condition df px, yq
+
+
+
+` dgpx, yq holds. Then the
+
+application of Lemma 6 provides the desired result.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+A.6. Generalized Value Difference Bounds
+Lemma 7. Let M and M be an MDP and DeepMDP respectively, with an embedding function  and global loss functions L8Rs and L8Ps , where L8Ps uses on a Norm-MMD D. For any KVs -smooth-valued policy s P s as in Definition 7. The value difference can be bounded by
+
+Qs ps, aq ´ Qss ppsq, aq
+
+
+
+L8Rs
+
+` 1
+
+KVs ´
+
+L8Ps
+
+.
+
+Proof. The proof consists of showing that the supremum sups,a Qs ps, aq ´ Qss ppsq, aq is bounded by a recurrence relationship.
+
+
+
+
+
+sup
+sPS ,aPA
+
+Qs ps,
+
+aq
+
+´
+
+Qss ppsq,
+
+aq
+
+
+
+sup
+sPS ,aPA
+
+Rps,
+
+aq
+
+´
+
+Rsppsq,
+
+aq
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ E s1 ,,P p¨|s,aq
+
+V
+
+s ps1q
+
+´
+
+E
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+Vs
+
+s pss1q 
+
+
+
+
+
+
+
+
+
+
+
+
+
+"
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ s1
+
+E rV
+,,P p¨|s,aq
+
+ s
+
+ps1
+
+q
+
+´
+
+Vs
+
+ s
+
+pps1
+
+qqs
+
+`
+
+E rVs
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+ s
+
+pps1
+
+qq
+
+´
+
+Vs
+
+ s
+
+pss1
+
+qs
+
+
+
+
+
+s1 ,,P p¨|s,aq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+s ps1q
+
+´
+
+Vs
+
+s
+
+pps1
+
+ qqs
+
+
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ ss1
+
+,,Ps
+
+E rVs
+p¨|psq,aq
+
+s pps1qq
+
+´
+
+Vs
+
+s pss1qs 
+
+ s1,,Pp¨|s,aq
+
+
+
+
+
+
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+
+ 
+
+E
+
+rV
+
+sPS,aPA s1,,Pp¨|s,aq
+
+s ps1q
+
+´
+
+Vs
+
+s
+
+pps1
+
+ qqs
+
+
+
+`
+
+KVs
+
+sup D
+sPS ,aPA
+
+`Pp¨|s, aq,
+
+Psp¨|psq, aq
+
+
+
+
+
+"
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+ s
+
+ps1
+
+q
+
+´
+
+Vs
+
+ s
+
+pps1
+
+ qqs
+
+
+
+`
+
+KVs
+
+L8Ps
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+E
+s1 ,,P p¨|s,aq
+
+rV
+
+s ps1q
+
+´
+
+Vs
+
+s
+
+pps1
+
+ qqs
+
+`
+
+KVs
+
+L8Ps
+
+Using
+
+Jensen's
+
+inequality.
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+rV
+
+ s
+
+psq
+
+´
+
+Vs
+
+ s
+
+ppsqqs
+
+`
+
+KVs
+
+L8Ps
+
+ L8Rs `  sup rQs ps, aq ´ Qss ppsq, aqs ` KVs L8Ps
+sPS ,aPA
+
+Solving for the recurrence relation over supsPS,aPA Qs ps, aq ´ Qss ppsq, aq results in the desired result.
+
+Lemma 8. Let M and M be an MDP and DeepMDP respectively, with an embedding function  and let D be a Norm-MMD metric. For any KVs -smooth-valued policy s P s (as in Definition 7), let LRss and LPss be the local loss functions measured under s , the stationary state action distribution of s. Then the value difference can be bounded by:
+
+E Qs ps, aq ´ Qss ppsq, aq
+s,a,,s
+
+
+
+LRss
+
+` 1
+
+KVs LPss ´
+
+,
+
+Proof.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+
+
+
+
+E
+s,a,,
+s
+
+Qs ps,
+
+aq
+
+´
+
+Qss ppsq,
+
+aq
+
+
+
+E
+s,a,,
+s
+
+Rps,
+
+aq
+
+´
+
+Rsppsq,
+
+aq
+
+`
+
+E
+s,a,,
+s
+
+ E s1 ,,P p¨|s,aq
+
+V
+
+ s
+
+ps1q
+
+´
+
+E
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+Vs
+
+ s
+
+pss1q
+
+
+
+
+
+
+
+
+
+
+
+"
+
+LRss
+
+`
+
+E
+s,a,,
+s
+
+
+
+ s1
+
+E rV
+,,P p¨|s,aq
+
+s ps1q
+
+´
+
+Vs s pps1qqs
+
+`
+
+E
+
+rVs s pps1qq
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+´
+
+ Vs s pss1qs
+
+
+
+
+s1 ,,P p¨|s,aq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+LRss
+
+`
+
+E
+s,a,,s
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+ s
+
+ps1q
+
+´
+
+Vs
+
+ s
+
+pps1qqs
+
+
+
+`
+
+E
+s,a,,s
+
+
+
+ ss1
+
+,,Ps
+
+E rVs
+p¨|psq,aq
+
+ s
+
+pps1
+
+qq
+
+´
+
+
+
+Vs
+
+ s
+
+pss1qs
+
+
+
+ s1,,Pp¨|s,aq
+
+
+
+
+
+
+
+
+
+LRss
+
+`
+
+E
+s,a,,s
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+ s
+
+ps1q
+
+´
+
+Vs
+
+ s
+
+pps1qqs
+
+
+
+`
+
+KVs
+
+ED
+s,a,,s
+
+`Pp¨|s, aq, Psp¨|psq, aq
+
+
+
+
+
+"
+
+LRss
+
+`
+
+E
+s,a,,
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+s ps1q
+
+´
+
+Vs s pps1qqs 
+
+`
+
+KVs
+
+LPss
+
+s
+
+
+
+LRss
+
+`
+
+E
+s,a,,
+
+E rV
+s1 ,,P p¨|s,aq
+
+s ps1q
+
+´
+
+Vs s pps1qqs
+
+`
+
+KVs LPss
+
+Using
+
+Jensen's
+
+inequality.
+
+s
+
+
+
+LRss
+
+`
+
+E
+s,a,,s
+
+rV
+
+ s
+
+psq
+
+´
+
+Vs
+
+ s
+
+ppsqqs
+
+`
+
+KVs LPss
+
+Applying
+
+the
+
+stationarity
+
+property.
+
+
+
+LRss
+
+`
+
+E
+s,a,,s
+
+rQs ps, aq
+
+´
+
+Qss ppsq, aqs
+
+`
+
+KVs LPss
+
+Solving for the recurrence relation over Es,a,, Qs ps, aq ´ Qss ppsq, aq results in the desired result. s
+
+Theorem 6. Let M and M be an MDP and a pKR, KP q-Lipschitz DeepMDP respectively, with an embedding function 
+
+and
+
+global
+
+loss
+
+functions
+
+L8Rs
+
+and
+
+L8Ps .
+
+For
+
+all
+
+s
+
+P
+
+S,
+
+the
+
+suboptimality
+
+of
+
+the
+
+optimal
+
+policy
+
+° s
+
+of
+
+M
+
+evaluated
+
+on
+
+M
+
+can
+
+be bounded by,
+
+V
+
+°psq
+
+´
+
+V
+
+s° psq
+
+
+
+2 L8Rs
+
+`
+
+ 1
+
+>>Vs
+
+°
+
+> >D
+
+´
+
+L8Ps
+
+Where
+
+>>Vs
+
+°> >D
+
+is
+
+the
+
+smoothness
+
+of
+
+the
+
+optimal
+
+value
+
+function.
+
+Proof. For any s P S we have
+
+|V
+
+°psq
+
+´
+
+V
+
+° s
+
+psq|
+
+
+
+|Vs
+
+°ppsqq
+
+´
+
+V
+
+° s
+
+psq|
+
+`
+
+|V
+
+°psq
+
+´
+
+Vs
+
+°ppsqq|.
+
+(10)
+
+Using
+
+the
+
+result
+
+given
+
+by
+
+Lemma
+
+7,
+
+we
+
+may
+
+bound
+
+the
+
+first
+
+term
+
+of
+
+the
+
+RHS
+
+by
+
+} } L8 R` Vs ° D L8 P . 1´
+
+To bound the second therm, we first show that for any s P S, a P A, we have,
+
+|Q°ps, aq ´ Qs°ppsq, aq|
+
+
+
+L8Rs
+
+`
+
+ 1
+
+>>Vs
+
+°
+
+> >D
+
+´
+
+L8Ps
+
+.
+
+(11)
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+We prove this similarly to Lemma 2:
+
+
+
+
+
+sup
+sPS ,aPA
+
+Q°ps,
+
+aq
+
+´
+
+Qs°ppsq,
+
+aq
+
+
+
+sup
+sPS ,aPA
+
+Rps,
+
+aq
+
+´
+
+Rsppsq,
+
+aq
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ E s1 ,,P p¨|s,aq
+
+V
+
+°ps1q
+
+´
+
+E
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+Vs °pss1q 
+
+
+
+
+
+
+
+
+
+
+
+
+
+"
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ s1
+
+E rV
+,,P p¨|s,aq
+
+°ps1q
+
+´
+
+Vs
+
+°pps1qqs
+
+`
+
+E rVs
+
+s1 s
+
+,,Ps
+
+p¨|psq,aq
+
+°pps1qq
+
+´
+
+Vs
+
+°pss1qs 
+
+
+
+s1 ,,P p¨|s,aq
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+°ps1q
+
+´
+
+Vs
+
+°pps1qqs 
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ ss1
+
+,,Ps
+
+E rVs
+p¨|psq,aq
+
+°pps1qq
+
+´
+
+Vs
+
+°pss1qs 
+
+ s1,,Pp¨|s,aq
+
+
+
+
+
+
+
+"
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+ 
+
+E
+
+rV
+
+s1 ,,P p¨|s,aq
+
+°ps1q
+
+´
+
+Vs
+
+°pps1qqs 
+
+`
+
+
+
+>>Vs
+
+°> >D
+
+L8Ps
+
+
+
+L8Rs
+
+`
+
+
+
+max
+s
+
+V
+
+°psq
+
+´
+
+Vs °ppsqq
+
+`
+
+
+
+>>Vs
+
+°
+
+> >D
+
+L8Ps
+
+Using
+
+Jensen's
+
+inequality.
+
+
+
+
+
+"
+
+L8Rs
+
+`
+
+
+
+max
+s
+
+max a
+
+Q°ps,
+
+aq
+
+´
+
+max
+a
+
+Qs°ppsq,
+
+aq 
+
+`
+
+
+
+>>Vs
+
+°> >D
+
+L8Ps
+
+
+
+L8Rs
+
+`
+
+
+
+sup
+sPS ,aPA
+
+Q°ps,
+
+aq
+
+´
+
+Qs°ppsq,
+
+aq
+
+`
+
+
+
+>>Vs
+
+°> >D
+
+L8Ps
+
+Solving for the recurrence gives the desired result. Then, the second therm can be easily bounded:
+
+|V °psq ´ Vs °ppsqq| "| max Q°ps, aq ´ max Qs°ppsq, a1q|
+
+(12)
+
+a
+
+a1
+
+ max |Q°ps, aq ´ Qs°ppsq, aq|
+
+(13)
+
+a
+
+
+
+L8Rs
+
+`
+
+ 1
+
+>>Vs
+
+°> >D
+
+´
+
+L8Ps
+
+.
+
+(14)
+
+as desired. Combining the bounds for the first and second terms completes the proof.
+
+B. DonutWorld Experiments
+B.1. Environment Specification
+Our synthetic environment, DonutWorld, consists of an agent moving around a circular track. The environment is centered at (0,0), and includes the set of points whose distance to the center is between 3 and 6 units away; all other points are out-of-bounds. The distance the agent can move on each timestep is equal to the distance to the nearest out-of-bounds point, capped at 1. We refer to the regions of space where the agent's movements are fastest (between 4 and 5 units away from the origin) as the "track," and other in-bounds locations as "grass". Observations are given in the form of 32-by-32 black-and-white pixel arrays, where the agent is represented by a white pixel, the track by luminance 0.75, the grass by luminance 0.25, and out-of-bounds by black. The actions are given as pairs of numbers in the range (-1,1), representing an unnormalized directional vector. The reward for each transition is given by the number of radians moved clockwise around the center.
+Another variant of this environment involves four copies of the track, all adjacent to one another. The agent is randomly placed onto one of the four tracks, and cannot move between them. Note that the value function for any policy is identical whether the agent is on the one-track DonutWorld or the four-track DonutWorld. Observations for the four-track DonutWorld are 64-by-64 pixel arrays.
+B.2. Architecture Details
+We learn a DeepMDP on states and actions from a uniform distribution over all possible state-action pairs. The environment can be fully represented by a latent space of size two, so that is the dimensionality used for latent states of the DeepMDP.
+We use a convolutional neural net for our embedding function , which contains three convolutional layers followed by a linear transformation. Each convolutional layer uses 4x4 convolutional filters with stride of 2, and depths are mapped to 2,
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+Figure 9. Plot of training curves obtained by learning a DeepMDP on our toy environment. Our objective minimizes both the theoretical upper bound of value difference and the empirical value difference.
+then 4, then 8; the final linear transformation maps it to the size of the latent state, 2. ReLU nonlinearities are used between each layer, and a sigmoid is applied to the output to constrain the space of latent states to be bounded by (0, 1). The transition function and reward function are each represented by feed-forward neural networks, using 2 hidden layers of size 32 with ReLU nonlinearities. A sigmoid is applied output of the transition function. For the autoencoder baseline, we use the same architecture for the encoder as was used for the embedding function. Our decoder is a three-layer feedforward ReLU network with 32 hidden units per layer. The reconstruction loss is a softmax cross-entropy over possible agent locations. B.3. Hyperparameters All models were implemented in Tensorflow. We use an Adam Optimizer with a learning rate of 3e-4, and default settings. We train for 30,000 steps. The batch size is 256 for DMDPs and 1024 for autoencoders. The discount factor, , is set to 0.9, and the coefficient for the gradient penalty, , is set to 0.01. In contrast to the gradient penalty described in Gulrajani et al. (2017b), which uses its gradient penalty to encourage all gradient norms to be close to 1, we encourage all gradient norms to be close to 0. Our sampling distribution is the same as our training distribution, simply the distribution of states sampled from the environment. B.4. Empirical Value Difference Figure 9 shows the loss curves for our learning procedure. We randomly sample trajectories of length 1000, and compute both the empirical reward in the real environment and the reward approximated by performing the same actions in the DeepMDP; this allows us to compute the empirical value error. These results demonstrate that neural optimization techniques are capable of learning DeepMDPs, and that this optimization procedure, designed to tighten theoretical bounds, is minimized by a good model of the environment, as reflected in improved empirical outcomes.
+C. Atari 2600 Experiments
+C.1. Hyperparameters For all experiments we use an Adam Optimizer with a learning rate of 0.00025 and epsilon of 0.0003125. We linearly decay epsilon from 1.0 to 0.01 over 1000000 training steps. We use a replay memory of size 1000000 (it must reach a minimum size of 50000 prior to sampling transitions for training). Unless otherwise specified, the batch size is 32. For additional hyperparameter details, see Table 1 and (Bellemare et al., 2017a).
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Hyperparameter
+Runner.sticky actions Runner.num iterations Runner.training steps Runner.evaluation steps Runner.max steps per episode
+
+Value
+No Sticky Actions 200
+250000 Eval phase not used.
+27000
+
+WrappedPrioritizedReplayBuffer.replay capacity WrappedPrioritizedReplayBuffer.batch size
+
+1000000 32
+
+RainbowAgent.num atoms RainbowAgent.vmax
+RainbowAgent.update horizon RainbowAgent.min replay history
+RainbowAgent.update period RainbowAgent.target update period
+RainbowAgent.epsilon train RainbowAgent.epsilon eval RainbowAgent.epsilon decay period RainbowAgent.replay scheme
+RainbowAgent.tf device RainbowAgent.optimizer
+
+51 10.
+1 50000
+4 10000 0.01 0.001 100000 'uniform' '/gpu:0' @tf.train.AdamOptimizer()
+
+tf.train.AdamOptimizer.learning rate tf.train.AdamOptimizer.epsilon
+
+0.00025 0.0003125
+
+ModelRainbowAgent.reward loss weight ModelRainbowAgent.transition loss weight ModelRainbowAgent.transition model type
+ModelRainbowAgent.embedding type
+
+1.0 1.0 'convolutional' 'conv layer embedding'
+
+Table 1. Configurations for the DeepMDP and C51 agents used with Dopamine (Castro et al., 2018) in Section 8.4. Note that the DeepMDP is referred to as ModelRainbowAgent in the configs.
+
+C.2. Architecture Search
+In this section, we aim to answer: what latent state space and transition model architecture lead to the best Atari 2600 performance of the C51 DeepMDP? We begin by jointly determining the form of Ss and P¯ which are conducive to learning a DeepMDP on Atari 2600 games. We employ three latent transition model architectures: (1) single fully connected layer, (2) two-layer fully-connected network, and (3) single convolutional layer. The fully-connected transition networks use the 512-dimensional output of the embedding network's penultimate layer as the latent state, while the convolutional transition model uses the 11 ^ 11 ^ 64 output of the embedding network's final convolutional layer. Empirically, we find that the use of a convolutional transition model on the final convolutional layer's output outperforms the other architectures, as shown in Figure 7.
+C.3. Architecture Details
+The architectures of various components are described below. A conv layer refers to a 2D convolutional layer with a specified stride, kernel size, and number of outputs. A deconv layer refers to a deconvolutional layer. The padding for conv and deconv layers is such that the output layer has the same dimensionality as the input. A maxpool layer performs max-pooling on a 2D input and fully connected refers to a fully-connected layer.
+C.3.1. ENCODER
+In the main text, the encoder is referred to as  : S Ñ Ss and is parameterized by e. The encoder architecture is as follows: Input: observation s which has shape: batch size ^ 84 ^ 84 ^ 4. The Atari 2600 frames are 84 ^ 84 and there are 4 stacked frames given as input. The frames are pre-processed by dividing by the maximum pixel value, 255. Output: latent state psq
+In Appendix C.2, we experimented with two different latent state representations. (1) ConvLayer: The latent state is the
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+(s)
+<latexit sha1_base64="kK0QmiY2goiw0iTPpzlx+bZF+fE=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJeyKoMegF48RzAOSJcxOOsmQ2dlhZlYISz7CiwdFvPo93vwbJ8keNLGgoajqprsrUoIb6/vf3tr6xubWdmGnuLu3f3BYOjpumiTVDBssEYluR9Sg4BIblluBbaWRxpHAVjS+m/mtJ9SGJ/LRThSGMR1KPuCMWie1umrEK+aiVyr7VX8OskqCnJQhR71X+ur2E5bGKC0T1JhO4CsbZlRbzgROi93UoKJsTIfYcVTSGE2Yzc+dknOn9Mkg0a6kJXP190RGY2MmceQ6Y2pHZtmbif95ndQObsKMS5ValGyxaJAKYhMy+530uUZmxcQRyjR3txI2opoy6xIquhCC5ZdXSfOyGvjV4OGqXLvN4yjAKZxBBQK4hhrcQx0awGAMz/AKb57yXrx372PRuublMyfwB97nD7EFjyE=</latexit>
+
+(s)
+<latexit sha1_base64="kK0QmiY2goiw0iTPpzlx+bZF+fE=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJeyKoMegF48RzAOSJcxOOsmQ2dlhZlYISz7CiwdFvPo93vwbJ8keNLGgoajqprsrUoIb6/vf3tr6xubWdmGnuLu3f3BYOjpumiTVDBssEYluR9Sg4BIblluBbaWRxpHAVjS+m/mtJ9SGJ/LRThSGMR1KPuCMWie1umrEK+aiVyr7VX8OskqCnJQhR71X+ur2E5bGKC0T1JhO4CsbZlRbzgROi93UoKJsTIfYcVTSGE2Yzc+dknOn9Mkg0a6kJXP190RGY2MmceQ6Y2pHZtmbif95ndQObsKMS5ValGyxaJAKYhMy+530uUZmxcQRyjR3txI2opoy6xIquhCC5ZdXSfOyGvjV4OGqXLvN4yjAKZxBBQK4hhrcQx0awGAMz/AKb57yXrx372PRuublMyfwB97nD7EFjyE=</latexit>
+
+RELU fully connected, 512 out
+
+RELU conv 3 x 3, stride 1, 64 out
+
+RELU conv 3 x 3, stride 1, 64 out
+
+RELU conv 4 x 4, stride 2, 64 out
+
+RELU conv 4 x 4, stride 2, 64 out
+
+RELU conv 8 x 8, stride 4, 32 out
+
+RELU conv 8 x 8, stride 4, 32 out
+
+s <latexit sha1_base64="mkAUGWJ2LgbrxZLe/OMm+FiZbBA=">AAAB6HicbVBNS8NAEJ3Ur1q/qh69LBbBU0mkUI8FLx5bsB/QhrLZTtq1m03Y3Qgl9Bd48aCIV3+SN/+N2zYHbX0w8Hhvhpl5QSK4Nq777RS2tnd294r7pYPDo+OT8ulZR8epYthmsYhVL6AaBZfYNtwI7CUKaRQI7AbTu4XffUKleSwfzCxBP6JjyUPOqLFSSw/LFbfqLkE2iZeTCuRoDstfg1HM0gilYYJq3ffcxPgZVYYzgfPSINWYUDalY+xbKmmE2s+Wh87JlVVGJIyVLWnIUv09kdFI61kU2M6Imole9xbif14/NeGtn3GZpAYlWy0KU0FMTBZfkxFXyIyYWUKZ4vZWwiZUUWZsNiUbgrf+8ibp3FQ9t+q1apVGLY+jCBdwCdfgQR0acA9NaAMDhGd4hTfn0Xlx3p2PVWvByWfO4Q+czx/ab4zp</latexit>
+(1) ConvLayer network
+
+s <latexit sha1_base64="mkAUGWJ2LgbrxZLe/OMm+FiZbBA=">AAAB6HicbVBNS8NAEJ3Ur1q/qh69LBbBU0mkUI8FLx5bsB/QhrLZTtq1m03Y3Qgl9Bd48aCIV3+SN/+N2zYHbX0w8Hhvhpl5QSK4Nq777RS2tnd294r7pYPDo+OT8ulZR8epYthmsYhVL6AaBZfYNtwI7CUKaRQI7AbTu4XffUKleSwfzCxBP6JjyUPOqLFSSw/LFbfqLkE2iZeTCuRoDstfg1HM0gilYYJq3ffcxPgZVYYzgfPSINWYUDalY+xbKmmE2s+Wh87JlVVGJIyVLWnIUv09kdFI61kU2M6Imole9xbif14/NeGtn3GZpAYlWy0KU0FMTBZfkxFXyIyYWUKZ4vZWwiZUUWZsNiUbgrf+8ibp3FQ9t+q1apVGLY+jCBdwCdfgQR0acA9NaAMDhGd4hTfn0Xlx3p2PVWvByWfO4Q+czx/ab4zp</latexit>
+(2) FCLayer network
+
+Figure 10. Encoder architectures used for the DeepMDP agent.
+
+output of the final convolutional layer, or (2) FCLayer: the latent state is the output of a fully-connected (FC) layer following the final convolutional layer. These possibilities for the encoder architecture are described in Figure 10.
+In sections 8.4, 8.5, C.4, and C.5 the latent state of type ConvLayer is used: 11 ^ 11 ^ 64 outputs of the final convolutional layer.
+C.3.2. LATENT TRANSITION MODEL
+In Appendix C.2 there are three types of latent transition models Ps : Ss Ñ Ss parameterized by Ps which are evaluated: (1) a single fully-connected layer, (2) a two-layer fully-connected network, and (3) a single convolutional layer (see Figure 11). Note that the first two types of transition models operate on the flattened 512-dimensional latent state (FCLayer), while the convolutional transition model receives as input the 11 ^ 11 ^ 64 latent state type ConvLayer. For each transition model, num actions predictions are made: one for each action conditioned on the current latent state psq.
+In sections 8.4, 8.5, C.4, and C.5 the convolutional transition model is used.
+C.3.3. REWARD MODEL AND C51 LOGITS NETWORK
+The architectures of the reward model Rs parameterized by Rs and C51 logits network parameterized by Z depend the latent state representation. See Figure 12 for these architectures. For each architecture type, num actions predictions are made: one for each action conditioned on the current latent state psq.
+In sections 8.4, 8.5, C.4, and C.5 two-layer fully-connected networks are used for the reward and C51 logits networks.
+C.3.4. OBSERVATION RECONSTRUCTION AND NEXT OBSERVATION PREDICTION
+The models for observation reconstruction and next observation prediction in Section 8.5 are deconvolutional networks based on the architecture of the embedding function . Both operate on latent states of type ConvLayer. The architectures are described in Figure 13.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+fully connected 512 x num_actions outputs
+
+RELU
+fully connected 512 x num_actions outputs
+
+RELU fully connected, 512 out
+
+RELU
+conv 2 x 2, stride 1, 64 x num_actions outputs
+
+(s)
+<latexit sha1_base64="nETNcEL3yMRETmgI5gtcWGwiVLU=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJexKQI8BLx4jmAckS5idzCZDZmeHmV4hhHyEFw+KePV7vPk3TpI9aGJBQ1HVTXdXpKWw6Pvf3sbm1vbObmGvuH9weHRcOjlt2TQzjDdZKlPTiajlUijeRIGSd7ThNIkkb0fju7nffuLGilQ94kTzMKFDJWLBKDqp3dMjUbFX/VLZr/oLkHUS5KQMORr90ldvkLIs4QqZpNZ2A19jOKUGBZN8VuxllmvKxnTIu44qmnAbThfnzsilUwYkTo0rhWSh/p6Y0sTaSRK5zoTiyK56c/E/r5thfBtOhdIZcsWWi+JMEkzJ/HcyEIYzlBNHKDPC3UrYiBrK0CVUdCEEqy+vk9Z1NfCrwUOtXK/lcRTgHC6gAgHcQB3uoQFNYDCGZ3iFN097L96797Fs3fDymTP4A+/zB6zPjxM=</latexit>
+(1)
+
+(s)
+<latexit sha1_base64="nETNcEL3yMRETmgI5gtcWGwiVLU=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJexKQI8BLx4jmAckS5idzCZDZmeHmV4hhHyEFw+KePV7vPk3TpI9aGJBQ1HVTXdXpKWw6Pvf3sbm1vbObmGvuH9weHRcOjlt2TQzjDdZKlPTiajlUijeRIGSd7ThNIkkb0fju7nffuLGilQ94kTzMKFDJWLBKDqp3dMjUbFX/VLZr/oLkHUS5KQMORr90ldvkLIs4QqZpNZ2A19jOKUGBZN8VuxllmvKxnTIu44qmnAbThfnzsilUwYkTo0rhWSh/p6Y0sTaSRK5zoTiyK56c/E/r5thfBtOhdIZcsWWi+JMEkzJ/HcyEIYzlBNHKDPC3UrYiBrK0CVUdCEEqy+vk9Z1NfCrwUOtXK/lcRTgHC6gAgHcQB3uoQFNYDCGZ3iFN097L96797Fs3fDymTP4A+/zB6zPjxM=</latexit>
+(2)
+
+(s)
+<latexit sha1_base64="nETNcEL3yMRETmgI5gtcWGwiVLU=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJexKQI8BLx4jmAckS5idzCZDZmeHmV4hhHyEFw+KePV7vPk3TpI9aGJBQ1HVTXdXpKWw6Pvf3sbm1vbObmGvuH9weHRcOjlt2TQzjDdZKlPTiajlUijeRIGSd7ThNIkkb0fju7nffuLGilQ94kTzMKFDJWLBKDqp3dMjUbFX/VLZr/oLkHUS5KQMORr90ldvkLIs4QqZpNZ2A19jOKUGBZN8VuxllmvKxnTIu44qmnAbThfnzsilUwYkTo0rhWSh/p6Y0sTaSRK5zoTiyK56c/E/r5thfBtOhdIZcsWWi+JMEkzJ/HcyEIYzlBNHKDPC3UrYiBrK0CVUdCEEqy+vk9Z1NfCrwUOtXK/lcRTgHC6gAgHcQB3uoQFNYDCGZ3iFN097L96797Fs3fDymTP4A+/zB6zPjxM=</latexit>
+(3)
+
+Figure 11. Transition model architectures used for the DeepMDP agent: (1) a single fully-connected layer (used with latent states of type FCLayer), (2) a two-layer fully-connected network (used with latent states of type FCLayer), and (3) a single convolutional layer (used with latent states of type ConvLayer).
+
+fully connected 1 x num_actions outputs
+
+fully connected 1 x num_actions outputs
+RELU fully connected, 512 out
+
+(s)
+<latexit sha1_base64="nETNcEL3yMRETmgI5gtcWGwiVLU=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJexKQI8BLx4jmAckS5idzCZDZmeHmV4hhHyEFw+KePV7vPk3TpI9aGJBQ1HVTXdXpKWw6Pvf3sbm1vbObmGvuH9weHRcOjlt2TQzjDdZKlPTiajlUijeRIGSd7ThNIkkb0fju7nffuLGilQ94kTzMKFDJWLBKDqp3dMjUbFX/VLZr/oLkHUS5KQMORr90ldvkLIs4QqZpNZ2A19jOKUGBZN8VuxllmvKxnTIu44qmnAbThfnzsilUwYkTo0rhWSh/p6Y0sTaSRK5zoTiyK56c/E/r5thfBtOhdIZcsWWi+JMEkzJ/HcyEIYzlBNHKDPC3UrYiBrK0CVUdCEEqy+vk9Z1NfCrwUOtXK/lcRTgHC6gAgHcQB3uoQFNYDCGZ3iFN097L96797Fs3fDymTP4A+/zB6zPjxM=</latexit>
+(1)
+
+(s)
+<latexit sha1_base64="nETNcEL3yMRETmgI5gtcWGwiVLU=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJexKQI8BLx4jmAckS5idzCZDZmeHmV4hhHyEFw+KePV7vPk3TpI9aGJBQ1HVTXdXpKWw6Pvf3sbm1vbObmGvuH9weHRcOjlt2TQzjDdZKlPTiajlUijeRIGSd7ThNIkkb0fju7nffuLGilQ94kTzMKFDJWLBKDqp3dMjUbFX/VLZr/oLkHUS5KQMORr90ldvkLIs4QqZpNZ2A19jOKUGBZN8VuxllmvKxnTIu44qmnAbThfnzsilUwYkTo0rhWSh/p6Y0sTaSRK5zoTiyK56c/E/r5thfBtOhdIZcsWWi+JMEkzJ/HcyEIYzlBNHKDPC3UrYiBrK0CVUdCEEqy+vk9Z1NfCrwUOtXK/lcRTgHC6gAgHcQB3uoQFNYDCGZ3iFN097L96797Fs3fDymTP4A+/zB6zPjxM=</latexit>
+(2)
+
+Figure 12. Reward and C51 Logits network architectures used for the DeepMDP agent: (1) a single fully-connected layer (used with latent states of type FCLayer), (2) a two-layer fully-connected network (used with latent states of type ConvLayer).
+
+C.4. DeepMDP Auxiliary Tasks: Different Weightings on DeepMDP Losses
+In this section, we discuss results of a set of experiments where we use a convolutional latent transition model and a two-layer reward model to form auxiliary task objectives on top of a C51 agent. In these experiments, we use different weightings in the set t0, 1u for the transition loss and for the reward loss. The network architecture is based on the best performing DeepMDP architecture in Appendix C.2. Our results show that using the transition loss is enough to match performance of using both the transition and reward loss. In fact, on Seaquest, using only the reward loss as an auxiliary tasks causes performance to crash. See Figure 14 for the results.
+C.5. Representation Learning with DeepMDP Objectives
+Given performance improvements in the auxiliary task setting, a natural question is whether optimization of the deepMDP losses is sufficient to perform model-free RL. To address this question, we learn e only via minimizing the reward and latent transition losses. We then learn Z by minimizing the C51 loss but do not pass gradients through e. As a baseline, we minimize the C51 loss with randomly initialized e and do not update e. In order to successfully predict terminal transitions and rewards, we add a terminal reward loss and a terminal state transition loss. The terminal reward loss is a Huber loss between RsppsT qq and 0, where sT is a terminal state. The terminal transition loss is a Huber loss between Psps, aq and 0, where s is either a terminal state or a state immediately preceding a terminal state and 0 is the zero latent state.
+We find that in practice, minimizing the latent transition loss causes the latent states to collapse to psq " 0 @s P S. As (Francois-Lavet et al., 2018) notes, if only the latent transition loss was minimized, then the optimal solution is indeed  : S Ñ 0 so that Ps perfectly predicts pPps, aqq.
+We hope to mitigate representation collapse by augmenting the influence of the reward loss. We increase the batch size from 32 to 100 to acquire greater diversity of rewards in each batch sampled from the replay buffer. However, we find that only after introducing a state reconstruction loss do we obtain performance levels on par with our simple baseline. These
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+RELU deconv 8 x 8, stride 4, 4 out
+
+RELU
+deconv 8 x 8, stride 4 4 x num_actions outputs
+
+RELU deconv 4 x 4, stride 2, 32 out
+
+RELU deconv 4 x 4, stride 2, 32 out
+
+RELU deconv 3 x 3, stride 1, 64 out
+(s)
+<latexit sha1_base64="kK0QmiY2goiw0iTPpzlx+bZF+fE=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJeyKoMegF48RzAOSJcxOOsmQ2dlhZlYISz7CiwdFvPo93vwbJ8keNLGgoajqprsrUoIb6/vf3tr6xubWdmGnuLu3f3BYOjpumiTVDBssEYluR9Sg4BIblluBbaWRxpHAVjS+m/mtJ9SGJ/LRThSGMR1KPuCMWie1umrEK+aiVyr7VX8OskqCnJQhR71X+ur2E5bGKC0T1JhO4CsbZlRbzgROi93UoKJsTIfYcVTSGE2Yzc+dknOn9Mkg0a6kJXP190RGY2MmceQ6Y2pHZtmbif95ndQObsKMS5ValGyxaJAKYhMy+530uUZmxcQRyjR3txI2opoy6xIquhCC5ZdXSfOyGvjV4OGqXLvN4yjAKZxBBQK4hhrcQx0awGAMz/AKb57yXrx372PRuublMyfwB97nD7EFjyE=</latexit>
+(1) Observation Reconstruction
+
+RELU deconv 3 x 3, stride 1, 64 out
+(s)
+<latexit sha1_base64="kK0QmiY2goiw0iTPpzlx+bZF+fE=">AAAB7nicbVDLSgNBEOz1GeMr6tHLYBDiJeyKoMegF48RzAOSJcxOOsmQ2dlhZlYISz7CiwdFvPo93vwbJ8keNLGgoajqprsrUoIb6/vf3tr6xubWdmGnuLu3f3BYOjpumiTVDBssEYluR9Sg4BIblluBbaWRxpHAVjS+m/mtJ9SGJ/LRThSGMR1KPuCMWie1umrEK+aiVyr7VX8OskqCnJQhR71X+ur2E5bGKC0T1JhO4CsbZlRbzgROi93UoKJsTIfYcVTSGE2Yzc+dknOn9Mkg0a6kJXP190RGY2MmceQ6Y2pHZtmbif95ndQObsKMS5ValGyxaJAKYhMy+530uUZmxcQRyjR3txI2opoy6xIquhCC5ZdXSfOyGvjV4OGqXLvN4yjAKZxBBQK4hhrcQx0awGAMz/AKb57yXrx372PRuublMyfwB97nD7EFjyE=</latexit>
+(1) Next Observation Prediction
+
+Figure 13. Architectures used for observation reconstruction and next observation prediciton. Both networks take latent states of type ConvLayer as input.
+
+Figure 14. We compare C51 with C51 with DeepMDP auxiliary task losses. The combinations of loss weightings are t0, 1u (just reward), t1, 0u (just transition), and t1, 1u (reward+transition), where the first number is the weight for the transition loss and the second number is the weight for the reward loss.
+results (see Figure 15) indicate that in more complex environments, additional work is required to successfully balance the minimization of the transition loss and the reward loss, as the transition loss seems to dominate.
+This finding was surprising, since we were able to train a DeepMDP on the DonutWorld environment with no reconstruction loss. Further investigation of the DonutWorld experiments shows that the DeepMDP optimization procedure seems to be highly prone to becoming trapped in local minima. The reward loss encourages latent states to be informative, but the transition loss counteracts this, preferring latent states which are uninformative and thus easily predictable. Looking at the relative reward and transition losses in early phases of training in Figure 5, we see this dynamic clearly. At the start of training, the transition loss quickly forces latent states to be near-zero, resulting in very high reward loss. Eventually, on this simple task, the model is able to escape this local minimum by "discovering" a representation that is both informative and predictable. However, as the difficulty of a task scales up, it becomes increasingly difficult to discover a representation which
+
+Figure 15. We evaluate the performance of C51 when learning the latent state representation only via minimizing deepMDP objectives. We compare learning the latent state representation with the deepMDP objectives (deep MDP), deepMDP objectives with larger batch sizes (deepMDP + batch size 100), deepMDP objectives and an observation reconstruction loss (deepMDP + state), and deepMDP with both a reconstruction loss and larger batch size (deepMDP + state + batch size 100). As a baselines, we compare to C51 on a random latent state representation (C51).
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+escapes these local minima by explaining the underlying dynamics of the environment well. This explains our observations on the Arcade Learning Environment; the additional supervision from the reconstruction loss helps guide the algorithm towards representations which explain the environment well.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+DeepMDP C51
+C51 DeepMDP
+Figure 16. Learning curves of C51 and C51 + DeepMDP auxiliary task objectives (labeled DeepMDP) on Atari 2600 games.
+
+DeepMDP: Learning Continuous Latent Space Models for Representation Learning
+
+Game Name
+AirRaid Alien Amidar
+Assault Asterix Asteroids Atlantis BankHeist BattleZone BeamRider Berzerk Bowling Boxing Breakout Carnival Centipede ChopperCommand CrazyClimber DemonAttack DoubleDunk ElevatorAction Enduro FishingDerby Freeway Frostbite Gopher Gravitar
+Hero IceHockey Jamesbond JourneyEscape Kangaroo
+Krull KungFuMaster MontezumaRevenge
+MsPacman NameThisGame
+Phoenix Pitfall
+Pong Pooyan PrivateEye Qbert Riverraid RoadRunner Robotank Seaquest Skiing Solaris SpaceInvaders StarGunner Tennis TimePilot Tutankham UpNDown Venture VideoPinball WizardOfWor YarsRevenge Zaxxon
+
+C51
+11544.2 4338.3 1304.7 4133.4 343210.0 1125.4 844063.3 861.3 31078.2 19081.0 1250.9 51.4 97.3 584.1 4877.3 9092.1 10558.8 158427.7 111697.7
+6.7 73943.3 1905.3
+25.4 33.9 5882.9 15214.3 790.4 36420.7 -3.5 1776.7 -1856.1 8815.5 8201.5 37956.5 14.7 4597.8 13738.7 20216.7 -9.8 20.8 4052.7 28694.0 23268.6 17845.1 57638.5 57.4 226264.0 -15454.8 2876.7 12145.8 38928.7 22.6 8340.7 259.3 10175.5 1190.1 668415.7 2926.0 39502.9 7436.5
+
+DeepMDP
+10274.2 6160.7 1663.8 5026.2 452712.7 1981.7 906196.7 937.0 34310.2 16216.8 1799.9
+56.3 98.2 672.8 5319.8 9060.9 9895.7 173043.1 119224.7 -9.3 37854.4 2197.8 33.9 33.9 7367.3 21017.2 838.3 40563.1 -4.1 5181.1 -1337.1 9714.9 8246.9 42692.7 770.7 5282.5 14064.6 45565.1 -0.8 20.8 4431.1 11223.8 23538.7 19934.7 59152.2 51.3 230881.6 -16478.0 2506.8 16461.2 78847.6 22.7 8345.6 256.9 10930.6 755.4 633848.8 11846.1 44317.8 14723.0
+
+Table 2. DeepMDP versus C51 returns. For both agents, we report the max average score achieved across all training iterations (each training iteration is 1 million frames).
+
+

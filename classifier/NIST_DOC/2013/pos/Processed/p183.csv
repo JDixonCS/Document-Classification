@@ -1,0 +1,570 @@
+,sentence,label,data
+0,Fast Document-at-a-time Query Processing using Two-tier Indexes,null,null
+1,Cristian Rossi,null,null
+2,Univ. Federal do Amazonas,null,null
+3,"cristiManan.ianufos,rA@Mg, Bmraazilil.com",null,null
+4,Edleno Silva de Moura,null,null
+5,Univ. Federal do Amazonas,null,null
+6,"edlenMoa@naicuso,mAMp,.uBfraamzil.edu.br",null,null
+7,Andre Luiz Carvalho Altigran Soares da Silva,null,null
+8,Univ. Federal do Amazonas,null,null
+9,Univ. Federal do Amazonas,null,null
+10,"andreM@anicauosm,ApM.u, fBarmaz.iel du.br alti@Miacnoamusp,.AuMfa, mBr.aezdilu.br",null,null
+11,ABSTRACT,null,null
+12,"In this paper we present two new algorithms designed to reduce the overall time required to process top-k queries. These algorithms are based on the document-at-a-time approach and modify the best baseline we found in the literature, Blockmax WAND (BMW), to take advantage of a two-tiered index, in which the first tier is a small index containing only the higher impact entries of each inverted list. This small index is used to pre-process the query before accessing a larger index in the second tier, resulting in considerable speeding up the whole process. The first algorithm we propose, named BMW-CS, achieves higher performance, but may result in small changes in the top results provided in the final ranking. The second algorithm, named BMW-t, preserves the top results and, while slower than BMW-CS, it is faster than BMW. In our experiments, BMW-CS was more than 40 times faster than BMW when computing top 10 results, and, while it does not guarantee preserving the top results, it preserved all ranking results evaluated at this level.",null,null
+13,Categories and Subject Descriptors,null,null
+14,"H.4 [Information Systems Applications]: Miscellaneous; D.2.8 [Software Engineering]: Metrics--complexity measures, performance measures",null,null
+15,Keywords,null,null
+16,"Top-k Query Processing, Efficiency, Two-tier indexes",null,null
+17,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'13, July 28­August 1, 2013, Dublin, Ireland. Copyright 2013 ACM 978-1-4503-2034-4/13/07 ...$15.00.",null,null
+18,1. INTRODUCTION,null,null
+19,"Computing ranking of results by using information retrieval (IR) models is one of the core tasks of search systems. While search systems often index a massive number of documents, usually their users are not interested in an in-depth list of results related to a query, but rather to a small list of highly relevant documents that will satisfy their informational needs. Thus, part of the recent research related to search systems is aimed at improving the quality of the top results presented to users, instead of the overall quality of the presented list. This focus on a narrower set of high quality results has led to the development of a number of technologies to improve the efficiency of methods to compute the top results in search systems.",null,null
+20,"When determining the best results for a given query, a search system usually deploys a number of different sources of relevance evidence. For instance, web search engines use information such as titles of the pages, URL tokenization, and link analysis, among others. These sources of relevance evidence may be combined using a myriad of approaches, such as the adoption of learning to rank techniques. Even in these cases, the initial process of computing the ranking consists of applying a basic IR model, such as BM25 [11] or the Vector Space Model [12], to compute an initial rank of top results, typically limited to the size of just about one thousand documents [5].",null,null
+21,"In this paper we propose two new algorithms which reduce the overall time required to compute the final query ranking. The algorithms modify the best baseline we found in the literature, the Blockmax WAND (BMW) [6], to take advantage of a two-tiered index. The first algorithm we proposed, named BMW-CS, from BMW using the first tier as a candidate selector, uses the first tier to select candidate documents that are taken into account to compute the final ranking when processing the second tier. It achieves higher performance, but may result in small changes in the top results provided in the final ranking. In BMW-CS, the entries of the first tier are not present in the second tier. The second algorithm, named BMW-t, from BMW using the first tier as a threshold selector, preserves the top results and, while slower compared to BMW-CS, it is faster than BMW. The first tier is used only to compute a safe initial threshold to be adopted when processing the second tier, thus allowing",null,null
+22,183,null,null
+23,a slightly faster query processing when compared to BMW. The price paid is that the second tier in BMW-t should contain the full index and the first tier is an extra index.,null,null
+24,"While there were previous approaches based on using a smaller index tier to improve efficiency, our proposed algorithms are designed to take advantage of dynamic pruning techniques, not to minimize the effort of processing answers from the first tier, but to reduce the time required to read and process entries from the second tier.",null,null
+25,"The remainder of this article is structured as follows. Section 2 presents the background and related research necessary to better understand the proposed methods. Section 3 presents our methods, BMW-CS and BMW-t. Section 4 presents the experimental results. Finally, Section 5 presents the conclusion and prospective future work.",null,null
+26,2. BACKGROUND AND RELATED WORK,null,null
+27,"Usually, most of the data needed by a search system to process user queries is stored in data structures known as inverted files [3]. They contain, for each term t, the list of documents where it occurs and an impact factor, or weight, associated with each document. This list of pairs of document and term impacts is called the inverted list of t and it is used to measure the relative importance of terms in the stored documents. Each document is represented in these lists by a value named document id, referred to as docId in this article. The inverted files may become huge in some systems, thus they are usually stored in a compressed format.",null,null
+28,2.1 TAAT approach,null,null
+29,"In a query processing approach named Term-At-A-Time (TAAT), the inverted lists are sorted by term impact in nonincreasing order. The query results are obtained by sequentially traversing one inverted list at a time. As an advantage, we can mention the fact that a sequential access behavior to inverted lists may speed up the process.",null,null
+30,"As the main disadvantage, we can mention that this strategy requires the usage of large amounts of memory to store partial scores achieved by each document when traversing each inverted list. These partial scores should be stored to accumulate the score results obtained by each document when traversing each inverted list. The final ranking can be computed only when all the inverted lists are processed. Several authors proposed methods to discard partial scores, thus reducing the amount of memory required to process queries in the TAAT mode [15, 2, 1]. Despite the significant reduction of required memory for query processing, the space required to store the partial scores remains one of the drawbacks of the TAAT query processing approach.",null,null
+31,"Anh and Moffat [1] studied the application of dynamic pruning over inverted indexes where the entries are sorted by impact, thus adopting a TAAT approach. In their work, a first phase processes blocks containing entries with higher impact in a disjunctive mode. Once all documents that might be present in the top-k results, k being a parameter, are found, the method starts a second phase applying a conjunctive mode query processing where only documents included as results by the first phase are considered. They also present a modified version of their algorithm, named as method B, where the top results may be changed, thus giving approximate results. In method B, only a percentage of the results obtained in the first phase are taken into account",null,null
+32,"in the second phase. This modified version results in even faster query processing, but does not guarantee top k results of the ranking will not be modified.",null,null
+33,"Strohman and Croft [15] proposed a new method for efficient query processing when documents are stored in main memory that modifies the method presented by Anh and Moffat [1]. In their proposal, a dynamic pruning is applied in each phase of query processing over the candidate documents with the goal of obtaining the final query results without requiring a full evaluation of all candidates. The query processing is performed over impact sorted inverted lists and the impact values are discretized in a small range of integer values.",null,null
+34,2.2 DAAT approach,null,null
+35,"Another approach to process queries is to adopt a DocumentAt-A-Time (DAAT) query processing. In this alternative, the inverted lists are sorted by docIds, which allows the algorithms to traverse all the inverted lists related to a query in parallel. As a consequence, the final scores of documents can be computed while traversing the lists and the system may store only the top results required by the user, so the memory requirements are fairly smaller. On the other hand the fragmented access may slow down the query processing and, since the inverted lists are sorted by docIds, important entries are spread along the inverted lists, making the pruning of entries more complex in this query processing approach.",null,null
+36,"As in the TAAT approach, several authors have presented algorithms and data structures to accelerate the query processing in the DAAT approach. For instance, data structures to allow fast jumps in the inverted lists, named as skiplists [7], are adopted to accelerate the query processing. Skiplists divide the inverted lists into blocks of entries and provide pointers for fast access to such blocks, so that a scan in the skiplist determines in which block a document entry may occur, if it does, in the inverted list.",null,null
+37,"The problem of efficiently computing the ranking of results for a given user query has been largely addressed in the literature in several research articles. We here detail the ones closer to our research, focusing on DAAT, which is the approach adopted by our algorithms.",null,null
+38,2.2.1 WAND,null,null
+39,"Broder et al [4] proposed a successful strategy for query processing, known as WAND, which allows fast query processing for both conjunctive and disjunctive queries, with the possibility of configuring the method for preserving the top k documents in the query answer or not. In the case where the top answers are not guaranteed to be preserved, the method leads to even faster query processing.",null,null
+40,"WAND processes the queries using DAAT approach, so the inverted lists of the query terms are traversed in parallel. A heap of scores is created to keep the top k documents with larger scores at each step of the query processing, k being the number of documents requested to the search system. The smaller score in the heap at each moment is taken as a discarding threshold to accelerate the query processing. A new document is evaluated and inserted in the heap only if it has a score higher than this discarding threshold.",null,null
+41,"The WAND has a two level evaluation approach. In the first level, a document pivot has its maximum possible score evaluated using the information of maximum score of each",null,null
+42,184,null,null
+43,"list where the document may occur. If the maximum possible score is greater than the actual discarding threshold, the document has its actual score evaluated. Otherwise, the document is discarded and a new pivot is selected.",null,null
+44,(matex rsmcore),null,null
+45,t1,null,null
+46,...,null,null
+47,(7),null,null
+48,60 70 ...,null,null
+49,t2,null,null
+50,(8),null,null
+51,... 40 90 ...,null,null
+52,t3,null,null
+53,(5),null,null
+54,...,null,null
+55,50 95 ...,null,null
+56,"Figure 1: Inverted lists when processing query with terms t1, t2, and t3. Marked entries are the ones currently processed.",null,null
+57,"At each moment in the DAAT query processing, there is a pointer to the next document to be processed in each inverted list associated with the query. For instance, if we have a query with terms t1, t2 and t3, there will be a pointer to the next document processed in each of their lists, as illustrated in Figure 1. In the Figure, documents 60, 40 and 50 are currently pointed in lists t1, t2 and t3, respectively. The WAND algorithm assures that previous occurrences in each list were already examined and that each of the pointed documents represents the smaller docId in the list that was not yet processed [4]. Thus, since the lists are organized by docIds, at this point we know the smaller docId (40) occurs only in the list of term t2, while document 50 occurs in t3 and might occur in t2. Finally, document 60 occurs in the list of t1 and might occur in the other two lists.",null,null
+58,"At this point, knowing the maximum score a document may reach in each list, we can estimate the maximum scores each of the currently pointed documents can obtain when processing the query: 40 can reach maximum possible score equal to the maximum score a document may achieve in the list of t2; 50 can reach the sums of maximum scores of t2 and t3, and 60 can reach the sum of maximum scores of the three terms as its maximum possible score. Using this information, we may discard the documents which are not able to reach the discarding threshold, i.e., cannot achieve a score higher than the minimum score among the top k results already processed at this moment.",null,null
+59,"So, to discard documents, we check the current documents pointed in each inverted list associated with the query and estimate their maximum possible score. The entry with smaller docId among the ones that reach a maximum possible score higher than the current discarding threshold is then chosen as a candidate to be included in the answer. This entry is known as the pivot. We then move all posting lists so that they point to docIds of at least the same as the pivot. Notice only pointers of lists where the current docIds are smaller than the pivot require a movement. If one of the posting lists with docId smaller than the pivot does not have the pivot document, the document is discarded, a new pivot is selected and the process repeated. Otherwise, if all these lists contain the document, its actual score is then computed. If the actual score of the pivot is higher than the discarding threshold, it is included in the answer set and the discarding threshold is updated. After processing the pivot,",null,null
+60,we move all the lists to the next document with docId bigger than the pivot and start the process again.,null,null
+61,"An interesting feature of the WAND method is that it can be configured as a more or less aggressive pruning method by either applying a reduction in the max score values of each list or by increasing the pruning threshold so that fewer documents will be accepted in the top results. When the pruning threshold is increased, there is no guarantee of preserving the exact top result set. Further details about the WAND method can be found in the article where it was first proposed [4].",null,null
+62,2.2.2 Blockmax WAND,null,null
+63,"Ding and Suel [6] have recently revisited the ideas presented in the WAND method, and proposed an even faster solution named the Blockmax WAND (BMW). In BMW, the entries of the inverted lists are grouped into compressed blocks that may be jumped without any decompression of their content. Each block contains information about the maximum impact among the entries found in it. Whenever such maximum impact is not relevant to change the results for a given query, the whole block is discarded, which avoids important query processing costs.",null,null
+64,"Authors present experiments which indicate BMW results in significant reduction of query processing times when compared to previous work, being currently the fastest query processing method found by us.",null,null
+65,"The BMW is based on the WAND algorithm and uses the same approach for selecting a document pivot during the query processing. In BMW, the pruning of entries is performed using two main pieces of information: (i) the maximum impact found inside an inverted list, which is also adopted in WAND; and (ii) The maximum impact found in each block pointed by the skiplist entries, known as the block max score, so that before accessing a block it is possible to predict the maximum impact of an entry among those found in such a block.",null,null
+66,"The basic idea of BMW is to take advantage of information (ii) to speedup query processing. Once a candidate document is selected to have its score computed, the algorithm uses the block max score information to accelerate the query processing by discarding documents with no chance of being in the top answers. The algorithm also allows skipping entire blocks of inverted list entries based on the block max score present on the skiplists, a procedure that they call shallow movement. Contrary to the regular movement present on the inverted lists, the shallow movement accesses only the skiplist entries, which avoids costs to decompress blocks of the inverted lists when processing queries.",null,null
+67,"The BMW algorithm starts with a pivoting phase, where a document is selected as a candidate to be inserted in the answer. Its pivoting phase is similar to the one performed in the WAND algorithm. Using the global max score of each list and the lists ordered by the value of the current docId pointed in each of them.",null,null
+68,"Before decompressing and evaluating the pivot document, BMW makes a shallow movement to align the inverted lists over the blocks that possibly have the document. After the alignment, the algorithm uses the information of block max score, stored in the skiplists, to estimate a local upper bound score of the candidate document. If this upper bound score is lower than a given pruning threshold, the document is discarded and one of the lists is advanced.",null,null
+69,185,null,null
+70,"As in WAND, the pruning threshold is dynamically updated according to the score of the evaluated candidate. As the processing is DAAT, each evaluated candidate has its complete score calculated, since all inverted lists are processed in parallel. Further details about the BMW algorithm can be found in the article where it was proposed [6].",null,null
+71,"Shan et al [13] show that the performance of BMW is degraded when static scores, such as Pagerank, are added in the ranking function. They study efficient techniques for Top-k query processing in the case where a page's static score is given and propose a set of new algorithms based on BMW which outperform the existing ones when static scores are taken into account when computing the final ranking. Their study can also be applied to our proposal as a future work, being orthogonal to the study presented here.",null,null
+72,2.3 Multi-tier indexes,null,null
+73,"Some authors proposed the splitting of the inverted index in more than one tier in an attempt to accelerate query processing. In these architectures, the query processing starts in a small tier and only if necessary proceeds to larger tiers. Risvik and Aasheim [10] divided the index into three tiers with the goal of achieving better scaling when distributing the index. According to static and dynamic sources of evidence, documents considered as more relevant are selected to compose the smaller tier. The query processing starts in the higher tier and only if the result set is not satisfactory, according to an evaluating algorithm, the query processing proceeds to the next tier. Performance gains are achieved when the processing does not visit the larger tiers. There is no guarantee that the result set is the exact set if compared to the exhaustive query processing.",null,null
+74,"In our proposed algorithms, we also kept the documents considered more important, in our case those with higher impact, in the smaller tier. However, in this paper we use each tier as part of the query processing. Our algorithms could, for instance, be applied to each tier proposed by Ravisk and Aesheim [10], being then ortoghonal to their proposal.",null,null
+75,"Ntoulas and Cho [8] presented a two-tiered query processing method that avoids any degradation of the quality of results, always guaranteeing the exact top-k results set. The first tier contains the documents considered the most important to the collection, selecting the entries by using static and dynamic pruning strategies that remove non-relevant documents and terms. The second tier contains the complete index. Their proposal uses the first tier as a cache level to accelerate query processing. Whenever the method detects that the results of the first tier assures that the top results will not be changed, it does not access the second tier, basing its results only on the first tier. Otherwise, they process the query using the second tier.",null,null
+76,"To guarantee that their method preserves the top answer results when compared to a system without pruning, the method evaluates the ranking function when processing the first tier, assigning the maximum possible score that could be achieved when processing the full index for entries that are not present in the first tier. The authors show how to determine the optimal size of a pruned index and experimentally evaluate their algorithms in a collection of 130 million Web pages. In their experiments, the presented method achieved good results for first tier index sizes varying from 10% to 20% of the full index. The two-tier strategy is also adopted in our article, but instead of using the first tier as",null,null
+77,"a cache, we use it as a candidate selection layer as part of our algorithms to compute the top results of a given query. Another important difference is that we always process the queries using both tiers, and we do not guarantee the exact top-k results.",null,null
+78,"Skobeltsyn et al [14] evaluate the impact of including a cache in the system when using the two-tier method presented by Ntoulas et al [8] and shows the query distribution workload is affected by the cache system. When using the cache, queries with a few terms, which would be the ones that would benefit more from the two-tier strategies, are usually solved by the cache system. As a consequence, the queries with more terms, which are difficult to process with pruning strategies, become more important in the workload when considering a system that adopts a cache of results.",null,null
+79,3. BMW-CS AND BMW-T,null,null
+80,"In this section, we present the details of the algorithms we proposed to accelerate the query processing when computing the ranking of results, which are named BMW-CS, from BWW with candidate selection, and BMW-t, from BMW with a threshold selection. These algorithms are based on a two-tiered index organization in which the first tier is a small index created using the entries with the highest impact from each term list, while the second tier is a larger index. The idea of relying on a high-quality tier is similar to the one adopted by Ntoulas et. al. [8].",null,null
+81,"The main objective of our algorithms is to use the first tier to accelerate the query processing in the second tier (i.e., the larger index) when computing the final ranking. In BMW-CS, the two tiers are disjointed, that is, the highimpact entries in the small index in first tier are not present in the second one. In BMW-t, the second tier contains the full index. Thus, even the high-impact entries in the first tier are also present in it.",null,null
+82,"In both cases, to select the entries for the first tier, we compute a global threshold to select entries so that the size of the first tier is about % of the full index. The parameter  provides an estimation of the final size of the first tier index. We adopted a minimum size of 1000 entries in each inverted list to prevent any individual list from becoming too small.",null,null
+83,"In our index organization, we used skiplists in both tiers in order to accelerate the query processing. For each block of 128 document entries, a skiplist entry is created that keeps the information of the current docId and the highest impact among the documents of the block. Also, for each term in the collection, the highest impact (max score) in the whole inverted list and the lowest impact found in this list in the first tier are computed and stored along with the term information. The lowest impact in the list at the first tier can be seen as an upper bound for the impact of the document entries that were not included in this list. Using this information, we can set the upper bound of contribution for the entries that are not present in the first tier, but appear in the inverted list in the second tier.",null,null
+84,3.1 BMW-CS,null,null
+85,"Listing 1 presents our first algorithm called BWM with candidate selection, or BMW-CS. In its first phase, BMWCS uses the first tier to select documents that are candidates to be present in the top results. Initially, the set of candidate documents, denoted by A, is generated by the function",null,null
+86,186,null,null
+87,Listing 1: Algorithm BMW-CS,null,null
+88,"1 BMW-CS(queryTerms [ 1 . . q] , k)",null,null
+89,"2 A  SelectCandidates(queryTerms, k)",null,null
+90,3,null,null
+91,4 sort A by score 5 min score  Ak . score,null,null
+92,6,null,null
+93,7 //Remove the candidates with low upper score,null,null
+94,"8 for (i , 0 to |A|)",null,null
+95,9,null,null
+96,i f (Ai . upper score < min score) remove Ai,null,null
+97,10 end for,null,null
+98,11,null,null
+99,"12 R  CalculateCompleteScore(A , queryTerms, k)",null,null
+100,13,null,null
+101,14 return R,null,null
+102,"SelectCandidates, which computes the candidates for the top k results of a query composed of a set of terms (Listing 2). Then, the algorithm trims this set of documents, removing all candidates that cannot be present in the topk results. This trimming decreases the cost of the second phase. In the second phase, the second tier is processed to compute the final ranking of the top k results. This phase is performed by the function CalculateCompleteScore (Listing 6).",null,null
+103,The main idea behind BMW-CS is to take advantage of the fact that the first tier has entries with higher impact in order to significantly reduce the amount of documents analyzed in the second tier. We show in the experiments that this approach yields a quite competitive query processing algorithm.,null,null
+104,3.1.1 Candidates Selection,null,null
+105,"BMW-CS selects candidate documents from the first tier. However, the inverted lists in the first tier are not complete, which means, for instance, that a document which appears only in the list of one of the terms of a query in the first tier, may appear in lists of other terms of this query when considering the entries present in the second tier. Thus, during the candidate selection phase, the algorithm may discard a document that could have a high enough score when the full inverted lists are evaluated.",null,null
+106,"To reduce the possible negative impacts of this incompleteness of the lists in the first tier, we modified the BMW algorithm so that it considers the possibility of a missing pair (term, docId) in the first tier to occur in the second tier. During the pivoting phase and the upper boundary score checking, a lower boundary score is added for each missing term of the document that might be absent in the first tier, thus avoiding the possibility of discarding high score candidates due to incompleteness in the first tier.",null,null
+107,"This lower boundary score represents the max score that a document can achieve after processing the inverted list in the second index. With these two values, we can adjust the discarding threshold used to prune documents in BMW. A minimum heap is used to store the top-k documents with a higher score. The smallest score of the heap is used as the discarding threshold for BMW to dynamically prune entries with no chance to be part of the final top-k results. All evaluated documents that have a score higher than the discarding threshold when processing the first tier are added to the set of candidate documents.",null,null
+108,We can see the detailed algorithm for the candidate selection phase in Listing 2. The algorithm starts by selecting,null,null
+109,Listing 2: Algorithm SelectCandidates,null,null
+110,"1 SelectCandidates (queryTerms [ 1 . . q] , k) 2 Let H be the minimum heap to keep the top k results 3 Let A be the l i s t of candidates 4 Let Icand be the f i r s t t i e r index",null,null
+111,5,null,null
+112,6 l i s t s  Icand (queryTerms) ;// Gets inverted l i s t s 7   0;,null,null
+113,8 //Point to the f i r s t docId in each l i s t,null,null
+114,"9 for each {0  i < | l i s t s |} do Next( l i s t s [ i ] , 0) ;",null,null
+115,10,null,null
+116,11 repeat,null,null
+117,12,null,null
+118,sortByCurrentPointedDocId( l i s t s ) ;,null,null
+119,13,null,null
+120,"p  Pivoting( lists , ) ;",null,null
+121,14,null,null
+122,"i f (p ,, -1) break ; //No more candidates",null,null
+123,15,null,null
+124,d  l i s t s [p ] . curDoc;,null,null
+125,16,null,null
+126,"i f (d ,, M AXDOC ) break ; //End of the l i s t",null,null
+127,17,null,null
+128,18,null,null
+129,//Move only the skip pointers,null,null
+130,19,null,null
+131,"for each {0  i  p} do NextShallow( l i s t s [ i ] , d) ;",null,null
+132,20,null,null
+133,21,null,null
+134,"i f ( CheckBlockMax( , p) ,, T RU E )",null,null
+135,22,null,null
+136,"i f ( l i s t s [ 0 ] . curDoc ,, d)",null,null
+137,23,null,null
+138,doc . docId  d;,null,null
+139,24,null,null
+140,doc . score ,null,null
+141,"p i,0",null,null
+142,BM25( l i s t s [ i ] ) ;,null,null
+143,25,null,null
+144,doc . upper score  doc . score +,null,null
+145,26,null,null
+146,"|lists| i,p+1",null,null
+147,l i s t s [i ] . min score ;,null,null
+148,27,null,null
+149,28,null,null
+150,i f (|H| < k) H  H  doc ;,null,null
+151,29,null,null
+152,else i f (H0 . score < doc . score ),null,null
+153,30,null,null
+154,remove H0 ; // the one with smallest score,null,null
+155,31,null,null
+156,H  H  doc ;,null,null
+157,32,null,null
+158,  H0 . score ; //Update the threshold,null,null
+159,33,null,null
+160,end i f,null,null
+161,34,null,null
+162,35,null,null
+163,//Insert only documents with possible score > ,null,null
+164,36,null,null
+165,"i f ( <, doc . upper score)",null,null
+166,37,null,null
+167,doc . terms  queryTerms [ 0 . . p ] ;,null,null
+168,38,null,null
+169,A  A  doc ;,null,null
+170,39,null,null
+171,i f ({dLow  A| dLow. upper score < }),null,null
+172,40,null,null
+173,A  A - dLow ;,null,null
+174,41,null,null
+175,endif,null,null
+176,42,null,null
+177,endif,null,null
+178,43,null,null
+179,//Advance a l l evaluated l i s t s,null,null
+180,44,null,null
+181,"for each {0  i  p} do Next( l i s t s [ i ] , d+1);",null,null
+182,45,null,null
+183,else,null,null
+184,46,null,null
+185,j  {x| l i s t s [x ] . curDoc < d ^,null,null
+186,47,null,null
+187,"| l i s t s [x] | < | l i s t s [ y ] |, 0  y < p} ;",null,null
+188,48,null,null
+189,"Next( l i s t s [ j ] , d) ;",null,null
+190,49,null,null
+191,end i f,null,null
+192,50,null,null
+193,else,null,null
+194,51,null,null
+195,"d next  GetNewCandidate( l i s t s [ j ] , p) ;",null,null
+196,52,null,null
+197,"j  {x| | l i s t s [x] | < | l i s t s [ y ] | , 0  y  p} ;",null,null
+198,53,null,null
+199,"Next( l i s t s [ j ] , d next) ;",null,null
+200,54,null,null
+201,end i f,null,null
+202,55 end repeat,null,null
+203,56,null,null
+204,57 return A,null,null
+205,"the inverted lists to be processed (Line 6), which are the lists that represent each query term. The discarding threshold, , is initially set to 0(Line 7) and is updated to the minimum score stored in the heap H if it is full (Line 32). Line 9 makes each of the inverted lists point to their first document. The function N ext(l, d) searches in the skiplist associated with list l for the block where there is the first occurrence of a docId equal or bigger than d, setting l.current block to the found position. Then, it moves the pointer to the current document of the list, l.curDoc, to the smallest entry with value greater than d.",null,null
+206,"The lists shown in Listing 2 are represented by vector lists and each list has an internal pointer to the docId being processed at each moment, the current docId. In Line 12 we sort this vector into increasing order according to the current docId pointed by each of these lists. We then compute in Line 13 the next document that has a chance to be present in the top results, performing the pivoting, which is",null,null
+207,187,null,null
+208,Listing 3: Algorithm Pivoting,null,null
+209,"1 Pivoting ( lists , )",null,null
+210,2 accum  0;,null,null
+211,3 for each 0  i < |lists| do,null,null
+212,4,null,null
+213,accum  accum + l i s t s [ i ] . max score ;,null,null
+214,5,null,null
+215,accum min ,null,null
+216,"|lists| j,i+1",null,null
+217,l i s t s [j ] . min score,null,null
+218,6,null,null
+219,"i f (accum + accum min >, )",null,null
+220,7,null,null
+221,while(i+1<|l i s t s | AND,null,null
+222,8,null,null
+223,"l i s t s [ i+1].curDoc ,, l i s t s [ i ] . curDoc) do",null,null
+224,9,null,null
+225,i  i + 1;,null,null
+226,10,null,null
+227,end while,null,null
+228,11,null,null
+229,return i,null,null
+230,12,null,null
+231,end i f,null,null
+232,13 end for,null,null
+233,14 return -1;,null,null
+234,Listing 4: Algorithm CheckBlockMax,null,null
+235,"1 CheckBlockMax ( l i s t s , p, )",null,null
+236,2,null,null
+237,"3 //Sum the max score of each block , that d can appear",null,null
+238,4,null,null
+239,max ,null,null
+240,"p i,0",null,null
+241,l i s t s [ i ] . getBlockMaxScore() ;,null,null
+242,5,null,null
+243,6 //Add the min score of the l i s t s that d may appear in the f u l l index,null,null
+244,7,null,null
+245,max  max +,null,null
+246,"|lists| i,p+1",null,null
+247,l i s t s [i ] . min score ;,null,null
+248,8 i f (max > ) return true,null,null
+249,9 return f alse,null,null
+250,"the main step of the BMW heuristic. Our pivoting, however, is computed taking into consideration the possibility of some of the entries of a document being not included in the first tier, which let us add this information to compute the upper score, which is the maximum score when selecting the pivot. This procedure is described in Listing 3. Lines 15 to 17 test break conditions and set the current document to be analyzed by the algorithm.",null,null
+251,"Line 19 adopts the function NextShallow to move the current documents pointer in each list. The function NextShallow is the same presented in the original BMW proposal, and differs from function Next because it does not need to access the documents, accessing only the skiplists of the inverted lists to move their pointers and set a new current block in each inverted list. Using this function, we can skip entries without needing to access or decompress them. Line 21 calls function CheckBlockMax, detailed in Listing 4, which is also modified when compared to the original one proposed in BMW, since it also needs to deal with the incompleteness of the first tier.",null,null
+252,"The remaining algorithm checks whether a document has enough score to be included in the answer. Line 25 takes the incompleteness of the first tier into consideration when computing the upper score. The score of each document is used to include it in heap H, Lines 28 to 33. H is maintained to control the discarding threshold . The upper score of each document is used in Line 36 to check whether a document should be included in the candidate documents set A.",null,null
+253,"The threshold  changes as more documents are processed, so, whenever we add a document to A, we also check if there is at least one document in A with an upper score value lower than the current value of . In such cases, we remove the document (Lines 39 to 40). This procedure avoids wasting memory by keeping elements in A which will be discarded at the end of the process. By the end of the candidate selection algorithm, the list of candidate documents A is returned, so that the final result can be obtained by processing the remainder of the index in the second tier.",null,null
+254,3.1.2 Computing the Final Ranking,null,null
+255,"In function CalculateCompleteScore (Listing 6), the scores of candidates with missing terms are evaluated using the larger index in the second tier, which contains the index entries not present in the first tier. To avoid unnecessary costs with decompression, the shallow movement described in [6] is used to align all the term lists. Then, a second BlockMaxScore check is made to verify whether the document",null,null
+256,Listing 5: Algorithm GetNewCandidate,null,null
+257,"1 GetNewCandidate ( l i s t s , p)",null,null
+258,2 mindoc  M AXDOC,null,null
+259,3,null,null
+260,4 //Selects the lower docId between the blocks boundaries,null,null
+261,5 // of the l i s t s already checked,null,null
+262,6 for each {0  i  p} do,null,null
+263,7,null,null
+264,i f (mindoc > l i s t s [ i ] . getDocBlockBoundary() ),null,null
+265,8,null,null
+266,mindoc  l i s t s [ i ] . getDocBlockBoundary() ;,null,null
+267,9,null,null
+268,end i f,null,null
+269,10 end for,null,null
+270,11,null,null
+271,12 //Select the lower docId between the l i s t s not checked,null,null
+272,13 for each {p + 1  i < |lists|} do,null,null
+273,14,null,null
+274,i f (mindoc > l i s t s [ i ] . curDoc),null,null
+275,15,null,null
+276,mindoc  l i s t s [ i ] . curDoc;,null,null
+277,16,null,null
+278,end i f,null,null
+279,17 end for,null,null
+280,18,null,null
+281,19 return mindoc; //Return the smallest docId found,null,null
+282,"can be part of the top k results or not. Each document is evaluated only if it has a high enough score, otherwise it is discarded. As in the first phase, we keep a minimum heap with the documents with the greatest scores evaluated, and the minimum score of this set is used as a discarding threshold to prune candidates.",null,null
+283,"As the candidate set is small, and only documents with incomplete scores are evaluated, this phase is expected to be performed extremely fast, even considering that it processes a the larger tier.",null,null
+284,"In BWM-CS, the first tier may not contain enough information to assure all top documents are considered as candidate documents. Since only candidate documents can be included in the final results, it does not guarantee exact results in the final ranking. For instance, a document which contains entries for all three terms of a query, but whose entries are present only in the second tier, will not be included in the candidate selection. However, this document may achieve scores higher than the ones in the top documents found by the candidate selection, in cases where there are top results that do not contain all query terms. Notice however that such a situation tends to occur for documents that would be included in the final positions of the top results and, as we show in our experiments, is it does not affect the final results very much.",null,null
+285,3.2 BMW-t,null,null
+286,"In our second algorithm, BMW with threshold selection, or BMW-t, we use just the first tier to set the initial discarding threshold adopted by methods WAND and BMW. In these methods, this initial discarding threshold is set to 0 at the beginning, and grows as the documents with higher scores",null,null
+287,188,null,null
+288,Listing 6: Algorithm CalculateCompleteScore,null,null
+289,"1 CalculateCompleteScore( A , queryTerms [ 1 . . q] , k) 2 Let H be the minimum heap to hold the k most relevant",null,null
+290,candidates,null,null
+291,3 Let Isecond tier be the second index 4 l i s t s  Isecond tier (queryTerms) //Select the terms l i s t s 5 0,null,null
+292,6 H 7 sort A by docId ;,null,null
+293,8,null,null
+294,9 for each {0  i < |A|} do,null,null
+295,10,null,null
+296,i f (Ai . score < Ai . upper score),null,null
+297,11,null,null
+298,local upper score  Ai . score ;,null,null
+299,12,null,null
+300,13,null,null
+301,for each {0  j < |lists|} do,null,null
+302,14,null,null
+303,i f (queryT erm[j]  Ai . terms),null,null
+304,15,null,null
+305,"NextShallow( l i s t s [ j ] , Ai . docId) ;",null,null
+306,16,null,null
+307,local upper score  local upper score +,null,null
+308,17,null,null
+309,18,null,null
+310,end i f,null,null
+311,19,null,null
+312,end for,null,null
+313,l i s t s [ j ] . getBlockMaxScore() ;,null,null
+314,20,null,null
+315,21,null,null
+316,if (local upper score > ),null,null
+317,22,null,null
+318,for each {0  j < |lists|} do,null,null
+319,23,null,null
+320,i f (queryT erm[j]  Ai . terms),null,null
+321,24,null,null
+322,"Next( l i s t s [ j ] , Ai . docId) ;",null,null
+323,25,null,null
+324,end i f,null,null
+325,26,null,null
+326,end for,null,null
+327,27,null,null
+328,//Complete the score with the missing l i s t s,null,null
+329,28,null,null
+330,"for each {0  x < |lists||lists[x].curDoc , Ai.docId} do",null,null
+331,29,null,null
+332,Ai . score  Ai . score + BM25( l i s t s [ x ] ) ;,null,null
+333,30,null,null
+334,end for,null,null
+335,31,null,null
+336,end i f,null,null
+337,32,null,null
+338,end i f,null,null
+339,33,null,null
+340,34,null,null
+341,i f ( < Ai . score ),null,null
+342,35,null,null
+343,i f (|H| < k),null,null
+344,36,null,null
+345,H  H Ai ;,null,null
+346,37,null,null
+347,e l s e i f (H0 . score < Ai . score ),null,null
+348,38,null,null
+349,remove H0 ;,null,null
+350,39,null,null
+351,H  H Ai ;,null,null
+352,40,null,null
+353,  H0 . score ;,null,null
+354,41,null,null
+355,end i f,null,null
+356,42,null,null
+357,end i f,null,null
+358,43 end for,null,null
+359,44,null,null
+360,45 sort H by score ; 46 return H ; 47 end,null,null
+361,"are found and included in the answer. As a consequence, the query processing discards fewer documents at the beginning of the process, since the discarding threshold starts with a small value. We thus propose the usage of the first tier of the index to support a pre-processing stage just to compute an initial discarding threshold that is higher than 0. This simple strategy naturally may speed up the process if the gains when processing the full index are worth the cost of computing the initial discarding threshold when processing the first tier.",null,null
+362,"We then experiment with a variation of BMW, we named BMW-t, and a variation of WAND, we named WAND-t. These variations use the first tier to select an initial discarding threshold when processing the queries. This new usage of the two tier index presents the advantage of preserving the top k results, which does not happen in BMW-CS. The WAND-t performed worse than the BMW-t, thus we report only BMW-t in the experiments.",null,null
+363,4. EXPERIMENTAL EVALUATION,null,null
+364,"We used the TREC GOV2 collection for the experiments in this paper. The collection has 25 million web pages crawled from the .gov domain in early 2004. It has 426 gigabytes of text, composed of HTML pages and the extracted",null,null
+365,"content of pdf and postscripts documents. The full index has about 7 gigabytes of inverted lists and a vocabulary of about 4 million distinct terms. We applied the Porter Stemmer [9] when indexing the collection. Our indexes use the frequency of the terms as the impact information. To evaluate the quality of query results, we randomly selected a set of 1000 queries from the TREC 2006 efficiency queries set and removed the stop-words from these queries. During the query processing, the entire index is loaded to memory, to avoid any possible bias in the query processing time. | All these setup options were chosen for being similar to those adopted in the baseline [6] and previous studies [15]. We ran the experiments in a 24-cores Intel(R) Xeon(R), with X5680 Processor, 3.33GHz and 64 GB of memory. All the queries were processed in a single core.",null,null
+366,"We used Okapi BM25 as the rank function, but our method can be adopted to compute other ranking functions. The generated skiplists have one entry for each block of 128 documents. Each skiplist entry keeps the docId, to help the random decompression, and the maximum impact registered in the block. We also experimented with blocks of 64 entries, and the results and conclusions were about the same, thus we decided to report only results with 128. We varied the first tier % from 1 to 20 percent of the full index in the experiments.",null,null
+367,Another parameter evaluated in the experiments was the size of the top results required by the algorithms. We evaluated the algorithms requesting 10 and 1000 results. Retrieving top 1000 results was included to simulate an environment where the top results are computed to feed a more sophisticated ranking method that performs a re-rank of results. The top 10 results was included to simulate a more common scenario where the user is interested in getting only a small list of results.,null,null
+368,"We evaluated the methods in terms of query response time, the amount of accumulators required to process the queries, amount of decoded entries from the inverted lists, and finally the mean reciprocal rank Distance (MRRD), presented in Equation 1, which was the measure adopted by Broder et al [4] to evaluate the distance between the results when preserving top results to rankings that do not preserve the top results. Using the MRRD distance, we are able to know how much an approximated rank differs from the one that preserves the top results. This measure returns a value between 0 and 1, where identical results provide MRRD,""0, and completely distinct results provide MRRD"",1.",null,null
+369,"M RRD(B, P ) ,",null,null
+370,"k i,""1,di B -P""",null,null
+371,1/i,null,null
+372,"k i,1",null,null
+373,1/i,null,null
+374,(1),null,null
+375,4.1 Baselines,null,null
+376,"One of the implemented baseline algorithms was BMW [6]. As one of our methods may not preserve the top ranking results, we also have considered including as a baseline the version of WAND that does not preserve the top results, proposed by Broder et al [4]. However, the results achieved by the approximate WAND were even slower than the BMW. We thus removed it from the baselines, and modified the method BMW to implement the same approximation strategy proposed to WAND. As a result, we transformed BMW to an approximated top-k query processing algorithm, which does not guarantee preserving top results, but may be faster",null,null
+377,189,null,null
+378,0.5,null,null
+379,BMW-SP-10%,null,null
+380,BMW-SP-30%,null,null
+381,BMW-SP-50%,null,null
+382,0.4,null,null
+383,BMW-F1.5,null,null
+384,BMW-F2,null,null
+385,BMW-CS-1%,null,null
+386,BMW-CS-5%,null,null
+387,0.3,null,null
+388,BMW-CS-10%,null,null
+389,MRR,null,null
+390,0.2,null,null
+391,0.1,null,null
+392,0 0 100 200 300 400 500 600 700 800 900 1000 k,null,null
+393,Figure 2: MRRD values compared to a exact rank for baselines BMW-SP and BMW-f,null,null
+394,"than original BMW. Basically, we artificially increase the pruning threshold during the query processing by multiplying this threshold for a pruning factor f . If f is 1, the exact top-k is guaranteed. When f is greater than 1, there is no guarantee of preserving the exact rank, but less entries will be evaluated, resulting in performance gains.",null,null
+395,"Finally, a reader could wonder if the results would also be good if we had adopted just the first tier for processing queries, considering the first tier as a statically pruned index. Thus, in order to avoid these doubts, we included a naive method using only the first tier for processing queries. We named it BMW-SP (applying BMW with static pruning).",null,null
+396,4.2 Results,null,null
+397,"We begin the report of our experimental results by answering the possible doubts about the advantage of using the BMW-CS algorithm, which does not guarantee that all the top results are preserved, when compared to a simple static pruning strategy that adopts only the first tier to compute the ranking. Figure 2 presents the MRRD results when computing the top k results by using our method with the first tier of 1%, 5% and 10% compared to the usage of the static pruning approach, named BMW-SP. As can be seen in Figure 2, even when using BMW-SP with the first tier with 50% of the full index, the error level (MRRD) obtained by BMW-CS with 1% is still smaller than it. Even considering this observation, for the sake of completeness, we still report the time efficiency results obtained when using the BMW-SP with the first tier being 50%.",null,null
+398,"Figure 2 also presents the BMW-f MRRD results when varying parameter f . As can be seen in Figure 2, BMW-f achieves error levels worse than BMW-CS even when setting the factor f to the low value of 1.5. Lower factor values would slow down the performance of the method, thus we adopt this factor in our efficiency experiments, even considering that its error level is higher than those achieved by our method. We stress that both BMW-f and BMW-SP are included in the experiments to avoid doubts about these possible variations in the usage of BMW. These methods were not explicitly proposed in the literature.",null,null
+399,"Next we present the percentage of entries we included in the first tier of BMW-CS. This choice affects three main factors: the time for processing queries, the MRRD results of",null,null
+400,"our methods and the amount of memory required to process queries. Variation of these parameters are illustrated in Figure 3. As can be seen, when computing the top 1000 results, the MRRD results decrease as the size of the first tier increases, being almost zero for first tier sizes higher than 8%. When computing the top 10 results, MRRD was always zero for all sizes of first tier experimented. Time tends to increase as the first tier increases in both cases. On the other hand, the number of accumulators presents more complex behavior. In the top 1000, it first increases as the size of the first tier increases. Then, at some point, it starts to decrease, since the candidate selection procedure starts to perform better pruning, thus reducing the set of candidate documents.",null,null
+401,"When looking to the general results presented in Figure 3, we conclude that a good size for the first tier in BMW-CS is 2% when tuning the method to compute the top 10 results and 10% when tuning the method to top 1000 results. These parameters provide a good combination of a low number of candidate documents, low query processing times and low MRRD. Notice however that even if choosing other first tier sizes among the ones presented in the experiments, still our method would be quite fast and competitive.",null,null
+402,"Figure 3 (c) and (d) also indicates how much memory our algorithm needs to store the candidate documents. We can see the requirement is not so high in both the top 10 and top 1000 scenarios, being limited to a few times greater than the size of top results required to be computed.",null,null
+403,"Finally, regarding the MRRD error level achieved by BMWCS it is noteworthy that a user would almost not perceive the differences in top k results when using BMW-CS even when considering higher values of k. For instance, as k ,"" 1000, the error of BMW-CS is still smaller than 0.0001 in terms of MRRD for the 10% first tier size. To better illustrate what this error level means, analyzing the results in detail, we perceived that BMW-CS with a 10% first tier resulted in no changes in the top 1000 results for 90% of the evaluated queries. Further, in all experimented first tier sizes, the top 10 results were preserved for all queries. Changes in the ranking, when they occur, are more common in the bottom results. For instance, we preserved the top 100 results for all queries, and preserved the top 200 results for 99.9% of the queries.""",null,null
+404,"We also studied the MRR variation of method BMW-t, but do not present the variation due to space restrictions. Its performance is close to the best when using 1% for the first tier, becoming slower as the partition increases and not improving so much when it decreases. We report the results on the remaining experiments with our methods using 2% and 10% first tier sizes in case of BMW-CS, and 1% in case of BMW-t.",null,null
+405,"In Tables 1 and 2, we can observe the performance of the algorithms in terms of MRRD, decoded integers and query time when processing the top-10 and top-1000. The results of time are presented with confidence level of 95%. BMWCS provides extremely low MRRD results, which means these answers are almost the same as the correct top k results. On the other hand, its performance is considerably better than BMW and BMW-f , which do not have a preprocessing phase during query evaluation, and thus are performed directly over the full index.",null,null
+406,"We can see the performance of BMW-t, which preserves the top results, presents an improvement of around 10% in",null,null
+407,190,null,null
+408,Query Time,null,null
+409,MRRD value,null,null
+410,a) top10:MRRD and Time,null,null
+411,1,null,null
+412,20,null,null
+413,MRRD,null,null
+414,0.8,null,null
+415,Time,null,null
+416,15 0.6,null,null
+417,0.4,null,null
+418,10,null,null
+419,0.2,null,null
+420,5,null,null
+421,0 0,null,null
+422,0 2 4 6 8 10 12 14 16 18 20 Size of first tier,null,null
+423,c) top10:Candidates and Time,null,null
+424,900 20,null,null
+425,800,null,null
+426,#candidates,null,null
+427,Time,null,null
+428,700,null,null
+429,15 600,null,null
+430,500,null,null
+431,400,null,null
+432,10,null,null
+433,300,null,null
+434,200,null,null
+435,5,null,null
+436,100,null,null
+437,0,null,null
+438,0,null,null
+439,0 2 4 6 8 10 12 14 16 18 20,null,null
+440,Size of first tier,null,null
+441,Query Time # of candidates,null,null
+442,Query Time MRRD value,null,null
+443,b) top1000: MRRD and Time,null,null
+444,0.018,null,null
+445,80,null,null
+446,0.016,null,null
+447,MRRD Time,null,null
+448,70,null,null
+449,0.014,null,null
+450,60,null,null
+451,0.012,null,null
+452,50,null,null
+453,0.01 40,null,null
+454,0.008,null,null
+455,0.006,null,null
+456,30,null,null
+457,0.004,null,null
+458,20,null,null
+459,0.002,null,null
+460,10,null,null
+461,0,null,null
+462,0,null,null
+463,0 2 4 6 8 10 12 14 16 18 20,null,null
+464,Size of first tier,null,null
+465,d) top1000: Candidates and Time,null,null
+466,30000,null,null
+467,80,null,null
+468,#candidates,null,null
+469,70,null,null
+470,25000,null,null
+471,Time,null,null
+472,60,null,null
+473,20000,null,null
+474,50,null,null
+475,15000,null,null
+476,40,null,null
+477,10000,null,null
+478,30,null,null
+479,20,null,null
+480,5000,null,null
+481,10,null,null
+482,0,null,null
+483,0,null,null
+484,0 2 4 6 8 10 12 14 16 18 20,null,null
+485,Size of first tier,null,null
+486,Query Time,null,null
+487,# of candidates,null,null
+488,Figure 3: Variation in time and MRRD(a and b); and between time and number of candidate documents stored in (c and d) when processing first tier for method BMW-CS when using distinct sizes of first tier.,null,null
+489,"query processing times when compared to BMW. The approximated version BMW-f , using the factor f ,""1.5, processes query 20% faster than the exact BMW. However, BMW-CS is not only faster than BMW-f , but also presents lower MRRD values.""",null,null
+490,"Still regarding Tables 1 and 2, we can see that BMWCS preserves the result set more than the other approximated methods implemented and is about 40 times faster than BMW when computing the top 10 results (using a 2% tier), and about 4.75 times faster when computing the top 1000 results(using a 10% tier). These gains can also be seen when analyzing the number of decoded integers, which is one of the main costs when elements are stored in memory.",null,null
+491,top 10,null,null
+492,Algorithm MRRD Decoded,null,null
+493,time,null,null
+494,BMW,null,null
+495,0 2353066 100.1 ± 9.9,null,null
+496,BMW-f1.5 0.3386 1797451 78.5 ± 7.8,null,null
+497,BMW-SP-50 0.0032 1700488 79.8 ± 8.0,null,null
+498,BMW-t,null,null
+499,0 2082782 89.5 ± 8.8,null,null
+500,BMW-CS-2,null,null
+501,0 48989 2.4 ± 0.4,null,null
+502,BMW-CS-10,null,null
+503,0 217627 10.4 ± 0.5,null,null
+504,"Table 1: MRRD, number of decoded entries, and time(ms) efficiency achieved by the experimented methods when computing top 10 results.",null,null
+505,"Table 3 presents the performance of the algorithms when processing distinct query sizes for both the top 10 and top 1000 results computation. BMW-CS was the fastest option for all query sizes. Although the gain is smaller for queries with more than 5 terms, our method still results in",null,null
+506,top 1000,null,null
+507,Algorithm MRRD Decoded,null,null
+508,time,null,null
+509,BMW,null,null
+510,0 5032834 226.0 ± 18.0,null,null
+511,BMW-f1.5 0.1149 4463099 193.7 ± 15.4,null,null
+512,BMW-SP-50 0.0584 3495885 174.8 ± 13.0,null,null
+513,BMW-t,null,null
+514,0 4799477 205.7 ± 16.9,null,null
+515,BMW-CS-2 0.0043 1258859 39.8 ± 4.6,null,null
+516,BMW-CS-10 0.0001 921687 47.6 ± 4.2,null,null
+517,"Table 2: MRRD, number of decoded entries, and time(ms) efficiency achieved by the experimented methods when computing top 1000 results.",null,null
+518,impressive gains when compared to all baselines even for long queries.,null,null
+519,"One explanation for the smaller gain in long queries is that in the first phase of the process, as we have many terms in the query, the upper score of a candidate will be higher because it sums the minimum score of the missing lists. Thus, as we have an index with only a small fraction of the full index, the number of documents in the first phase with a complete score will be lower according to the number of terms in the query, making the threshold values lower when compared to the estimated upper scores. This configuration will lead to a less effective pruning during the candidate selection, increasing the costs of the whole process.",null,null
+520,"We observed differences in time results when comparing our experiments to the ones presented by Ding et al [6]. While we adopt exactly the same dataset, the query processing times we obtained are lower than the ones presented in their article. However we see that the number of decoded",null,null
+521,191,null,null
+522,Algorithm 2,null,null
+523,BMW,null,null
+524,12.0,null,null
+525,BMW-f1.5 7.8,null,null
+526,BMW-SP-50 10.3,null,null
+527,Query time (ms) 3 4 5 >5 top 10,null,null
+528,46.6 100.5 197.9 442.7 34.0 77.3 155.5 367.7 38.7 82.4 160.1 331.6,null,null
+529,BMW-t,null,null
+530,10.4 41.1 87.7 179.3 401.7,null,null
+531,BMW-CS-2 0.58 1.42 2.42 3.74 9.96,null,null
+532,BMW-CS-10 2.3 5.7 11.6 19.7 36.8,null,null
+533,top 1000,null,null
+534,BMW,null,null
+535,37.9 122.3 243.6 437.9 848.6,null,null
+536,BMW-f1.5 29.9 102.5 206.3 390.1 725.0,null,null
+537,BMW-SP-50 32.6 102.1 192.0 333.5 610.3,null,null
+538,BMW-t,null,null
+539,29.8 104.6 220.9 406.5 803.5,null,null
+540,BMW-CS-2 8.49 20.62 44.58 79.07 139.1,null,null
+541,BMW-CS-10 14.6 29.3 51.8 82.2 160.8,null,null
+542,Table 3: Time achieved by the experimented methods when processing queries with distinct sizes and computing top 10 and top 1000 results.,null,null
+543,"integers still similar. The final difference in times can be due to the choice of the queries, since we do not know the exact set of queries adopted by them, the architecture of the implemented system, and the machines used for the experiments. These differences do not affect the conclusions presented in our study because they affect all the experimented methods.",null,null
+544,Acknowledgements,null,null
+545,"This work is partially supported by INWeb (MCT/CNPq grant 57.3871/2008-6), DOMAR (MCT/CNPq 476798/20116), TTDSW (FAPEAM), by CNPq fellowship grants to Edleno Moura (307861/2010-4) and Altigran Silva (308380/2010-0), and FAPEAM scholarship to Cristian Rossi.",null,null
+546,5. CONCLUSION,null,null
+547,"The algorithms proposed and studied by us outperform the existent state-of-the-art algorithms for DAAT query processing. BMW-CS presents the advantage of being about 40 times faster than BMW when computing top 10 results and 4.75 times faster when computing top 1000 results. While it does not guarantee to preserve the top results, we show through experiments that the application of the algorithm does not change the results very much. The MRRD error level is quite small and the algorithm provides an impressive gain in performance. Thus, in situations where preserving the top results is not mandatory, the BMW-CS algorithm is an interesting alternative.",null,null
+548,"The price paid for this fast query processing is the necessity of more memory for processing queries. As we show, the number of candidate documents stored by the algorithm, which is the extra memory required by it, is not prohibitive, being, for instance, around 10 times the size of the final results in our experiments. Further, in practice a search system usually processes queries in multiple threads per machines, and the reduction in the query processing times cooperates to increase the throughput, thus compensating for the extra memory required by each thread. We intend to better study this question in future studies, since this was not the focus of this current study.",null,null
+549,"The second algorithm proposed by us, BMW-t, presents the advantage of preserving the top results. It delivers smaller, but significant gains when compared to the application of plain BMW, being about 10% faster.",null,null
+550,"Finally, in the future, we also want to study the combination of our algorithm BMW-CS to ranking strategies that take more information into account. In this regard, we plan to study how our algorithms can be adapted to strategies as those presented by Shan et al [13], where the authors study the impact of including external sources of relevance evidence into the performance of query processing algorithms, and such as [5], in which the authors show how to encode several features into a single impact value.",null,null
+551,6. REFERENCES,null,null
+552,"[1] V. Anh and A. Moffat. Pruned query evaluation using pre-computed impacts. In ACM SIGIR, pages 372­379, 2006.",null,null
+553,"[2] V. N. Anh, O. de Kretser, and A. Moffat. Vector-space ranking with effective early termination. In ACM SIGIR, pages 35­42, 2001.",null,null
+554,"[3] R. Baeza-Yates and B. Ribeiro-Neto. Modern Information Retrieval. Addison-Wesley Publishing Company, USA, 2nd edition, 2011.",null,null
+555,"[4] A. Z. Broder, D. Carmel, M. Herscovici, A. Soffer, and J. Zien. Efficient query evaluation using a two-level retrieval process. In ACM CIKM, pages 426­434, 2003.",null,null
+556,"[5] A. Carvalho, C. Rossi, E. S. de Moura, D. Fernandes, and A. S. da Silva. LePrEF: Learn to Pre-compute Evidence Fusion for Efficient Query Evaluation. JASIST, 55(92):1­28, 2012.",null,null
+557,"[6] S. Ding and T. Suel. Faster top-k document retrieval using block-max indexes. In ACM SIGIR, pages 993­1002, 2011.",null,null
+558,"[7] A. Moffat and J. Zobel. Self-indexing inverted files for fast text retrieval. ACM TOIS, 14(4):349­379, 1996.",null,null
+559,"[8] A. Ntoulas and J. Cho. Pruning policies for two-tiered inverted index with correctness guarantee. In ACM SIGIR, pages 191­198, 2007.",null,null
+560,"[9] M. Porter. An algorithm for suffix stripping. Program: electronic library and information systems, 40(3):211­218, 2006.",null,null
+561,"[10] K. Risvik, Y. Aasheim, and M. Lidal. Multi-tier architecture for web search engines. In First Latin American Web Congress, pages 132­143, 2003.",null,null
+562,"[11] S. E. Robertson and S. Walker. Some simple effective approximations to the 2-poisson model for probabilistic weighted retrieval. In ACM SIGIR, pages 232­241, 1994.",null,null
+563,"[12] G. Salton, A. Wong, and C. S. Yang. A vector space model for automatic indexing. Technical report, Ithaca, NY, USA, 1974.",null,null
+564,"[13] D. Shan, S. Ding, J. He, H. Yan, and X. Li. Optimized top-k processing with global page scores on block-max indexes. In WSDM, pages 423­432, 2012.",null,null
+565,"[14] G. Skobeltsyn, F. Junqueira, V. Plachouras, and R. Baeza-Yates. ResIn: a combination of results caching and index pruning for high-performance web search engines. In ACM SIGIR, pages 131­138, 2008.",null,null
+566,"[15] T. Strohman and W. B. Croft. Efficient document retrieval in main memory. In ACM SIGIR, pages 175­182, 2007.",null,null
+567,192,null,null
+568,,null,null

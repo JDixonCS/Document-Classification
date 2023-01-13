@@ -1,0 +1,1933 @@
+Session 4D: Recommender Systems - Methods
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA
+
+Learning Contextual Bandits in a Non-stationary Environment
+
+Qingyun Wu, Naveen Iyer, Hongning Wang
+Department of Computer Science, University of Virginia Charlottesville, VA, USA
+{qw2ky,nki2kd,hw5x}@virginia.edu
+
+ABSTRACT
+Multi-armed bandit algorithms have become a reference solution for handling the explore/exploit dilemma in recommender systems, and many other important real-world problems, such as display advertisement. However, such algorithms usually assume a stationary reward distribution, which hardly holds in practice as users' preferences are dynamic. This inevitably costs a recommender system consistent suboptimal performance. In this paper, we consider the situation where the underlying distribution of reward remains unchanged over (possibly short) epochs and shifts at unknown time instants. In accordance, we propose a contextual bandit algorithm that detects possible changes of environment based on its reward estimation confidence and updates its arm selection strategy respectively. Rigorous upper regret bound analysis of the proposed algorithm demonstrates its learning effectiveness in such a non-trivial environment. Extensive empirical evaluations on both synthetic and real-world datasets for recommendation confirm its practical utility in a changing environment.
+CCS CONCEPTS
+· Information systems  Recommender systems; · Theory of computation  Online learning algorithms; Regret bounds; · Computing methodologies  Sequential decision making;
+KEYWORDS
+Non-stationary Bandit; Recommender Systems; Regret Analysis
+ACM Reference Format: Qingyun Wu, Naveen Iyer, Hongning Wang. 2018. Learning Contextual Bandits in a Non-stationary Environment. In SIGIR '18: The 41st International ACM SIGIR Conference on Research & Development in Information Retrieval, July 8­12, 2018, Ann Arbor, MI, USA. ACM, New York, NY, USA, 10 pages. https://doi.org/10.1145/3209978.3210051
+1 INTRODUCTION
+Multi-armed bandit algorithms provide a principled solution to the explore/exploit dilemma [2, 3, 14], which exists in many important real-world applications such as display advertisement [21], recommender systems [18], and online learning to rank [27]. Intuitively, bandit algorithms adaptively designate a small amount of traffic to collect user feedback in each round while improving their model estimation quality on the fly. In recent years, contextual bandit
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA © 2018 Association for Computing Machinery. ACM ISBN 978-1-4503-5657-2/18/07. . . $15.00 https://doi.org/10.1145/3209978.3210051
+
+algorithms [9, 17, 18] have gained increasing attention due to their capability of leveraging contextual information to deliver better personalized online services. They assume the expected reward of each action is determined by a conjecture of unknown bandit parameters and given context, which give them advantages when the space of recommendation is large but the rewards are interrelated.
+Most existing stochastic contextual bandit algorithms assume a fixed yet unknown reward mapping function [9, 11, 18, 20, 25]. In practice, this translates to the assumption that users' preferences remain static over time. However, this assumption rarely holds in reality as users' preferences can be influenced by various internal or external factors [7]. For example, when a sports season ends after a championship, seasonal fans might jump over to following a different sport and not have much interest in the off-season. More importantly, such changes are often not observable to the learners. If a learning algorithm fails to model or recognize the possible changes of the environment, it would constantly make suboptimal choices, e.g., keep making out-of-date recommendations to users.
+In this work, moving beyond a restrictive stationary environment assumption, we study a more sophisticate but realistic environment setting where the reward mapping function becomes stochastic over time. More specifically, we focus on the setting where there are abrupt changes in terms of user preferences (e.g., user interest in a recommender system) and those changes are not observable to the learner beforehand. Between consecutive change points, the reward distribution remains stationary yet unknown, i.e., piecewise stationary. Under such a non-stationary environment assumption, we propose a two-level hierarchical bandit algorithm, which automatically detects and adapts to changes in the environment by maintaining a suite of contextual bandit models during identified stationary periods based on its interactions with the environment.
+At the lower level of our hierarchical bandit algorithm, a set of contextual bandit models, referred to as slave bandits, are maintained to estimate the reward distribution in the current environment (i.e., a particular user) since the last detected change point. At the upper level, a master bandit model monitors the `badness' of each slave bandit by examining whether its reward prediction error exceeds its confidence bound. If the environment has not changed, i.e., being stationary since the last change, the probability of observing a large residual from a bandit model learned from that environment is bounded [1, 9]. Thus the `badness' of slave bandit models reflects possible changes of the environment. Once a change is detected with high confidence, the master bandit discards the out-of-date slave bandits and creates new ones to fit the new environment. Consequentially, the active slave bandit models form an admissible arm set for the master bandit to choose from. At each time, the master bandit algorithm chooses one of the active slave bandits to interact with the user, based on its estimated `badness', and distributes user feedback to all active slave bandit models attached with this user for model updating. The master bandit model
+
+495
+
+Session 4D: Recommender Systems - Methods SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA Qingyun Wu, Naveen Iyer, Hongning Wang
+
+maintains its estimation confidence of the `badness' of those slave bandits so as to recognize the out-of-date ones as early as possible.
+We rigorously prove the upper regret bound of our non-stationary contextual bandit algorithm is O(T Smax log Smax), in which T is the total number of ground-truth environment changes up to time T and Smax is the longest stationary period till time T . This arguably is the lowest upper regret bound any bandit algorithm can achieve in such a non-stationary environment without further assumptions. Specifically, the best one can do in such an environment is to discard the old model and estimate a new one at each true change point, as no assumption about the change should be made. This leads to the same upper regret bound achieved in our algorithm. However, as the change points are unknown to the algorithm ahead of time, any early or late detection of the changes can only result in an increased regret. More importantly, we prove that if an algorithm fails to model the changes a linear regret is inevitable. Extensive empirical evaluations on both a synthetic dataset and three real-world datasets for content recommendation confirmed the improved utility of the proposed algorithm, compared with both state-of-the-art stationary and non-stationary bandit algorithms.
+2 RELATED WORK
+Multi-armed bandit algorithms [3, 4, 9, 11, 18, 20] have been extensively studied in literature. However, most of the stochastic bandit algorithms assume the reward pertaining to an arm is determined by an unknown but fixed reward distribution or a context mapping function. This limits the algorithms to a stationary environment assumption, which is restrictive considering the non-stationary nature of many real-world applications of bandit algorithms.
+There are some existing works studying the non-stationary bandit problems. A typical non-stationary environment setting is the abruptly changing environment, or piecewise stationary environment, in which the environment undergoes abrupt changes at unknown time points but remains stationary between two consecutive change points. To deal with such an environment, Hartland et al. [16] proposed the  -Restart algorithm, in which a discount factor  is introduced to exponentially decay the effect of past observations. Garivier and Moulines [10] proposed a discounted-UCB algorithm, which is similar to the  -Restart algorithm in discounting the historical observations. They also proposed a sliding window UCB algorithm, where only observations inside a sliding window are used to update the bandit model. Yu and Mannor [26] proposed a windowed mean-shift detection algorithm to detect the potential abrupt changes in the environment. An upper regret bound of O T log(T ) is proved for the proposed algorithm, in which T is the number of ground-truth changes up to time T . However, they assume that at each iteration, the agent can query a subset of arms for additional observations. Slivkins and Upfal [23] considered a continuously changing environment, in which the expected reward of each arm follows Brownian motion. They proposed a UCB-like algorithm, which considers the volatility of each arm in such an environment. The algorithm restarts in a predefined schedule to account for the change of reward distribution.
+Most existing solutions for non-stationary bandit problems focus on context-free scenarios, which cannot utilize the available contextual information for reward modeling. Ghosh et al. proposed an algorithm in [13] to deal with environment misspecification in
+
+contextual bandit problems. Their algorithm comprises a hypothesis test for linearity followed by a decision to use either the learnt linear contextual bandit model or a context-free bandit model. But this algorithm still assumes a stationary environment, i.e., neither the ground-truth linear model nor unknown models are changing over time. Liu et al. [8] proposed to use cumulative sum and Page-Hinkley Test to detectsudden changes in the environment. An upper regret bound of O( T T logT ) is proved for one of their proposed algorithms. However, this work is limited to a simplified Bernoulli bandit environment. Recently, Luo et al [22] studied the non-stationary bandit problem and proposed several bandit algorithms with statistical tests to adapt to changes in the environment. They analyzed various notions of regret including interval regret, switching regret, and dynamic regret. Hariri et al. [15] proposed a contextual Thompson sampling algorithm with a change detection module, which involves iteratively applying a combination of cumulative sum charts and bootstrapping to capture potential changes of user preference in interactive recommendation. But no theoretical analysis is provided about this proposed algorithm.
+
+3 METHODOLOGY
+We develop a contextual bandit algorithm for a non-stationary environment, where the algorithm automatically detects the changes in the environment and maintains a suite of contextual bandit models for each detected stationary period. In the following discussions, we will first describe the notations and our assumptions about the non-stationary environment, then carefully illustrate our developed algorithm and corresponding regret analysis.
+
+3.1 Problem Setting and Formulation
+
+In a multi-armed bandit problem, a learner takes turns to interact
+with the environment, such as a user or a group of users in a
+recommender system, with a goal of maximizing its accumulated reward collected from the environment over time T . At round t, the learner makes a choice at among a finite, but possibly large, number of arms, i.e., at  A = {a1, a2, . . . , aK }, and gets the corresponding reward rat , such as a user clicks on a recommended item. In a contextual bandit setting, each arm a is associated with a feature vector xa  Rd (xa 2  1 without loss of generality) summarizing the side-information about it at a particular time point.
+The reward of each arm is assumed to be governed by a conjecture of unknown bandit parameter   Rd ( 2  1 without loss of generality), which characterizes the environment. This can be specified by a reward mapping function f : rat = f (xat ). In a stationary environment,  is constant over time.
+In a non-stationary environment, the reward distribution over
+arms varies over time because of the changes in the environment's bandit parameter  . In this paper, we consider abrupt changes in the environment [10, 15, 16], i.e., the ground-truth parameter 
+changes arbitrarily at arbitrary time, but remains constant between
+any two consecutive change points:
+
+r0, r1,· · ·, rtc1 -1, rtc1 , rtc1 +1,· · ·, rtc2 -1,· · · ,rtc , rtc +1,· · ·, rT
+
+distribute by fc0
+
+distribute by fc1
+
+distribute by fc-1
+
+where the change points {tcj }jT=1-1 of the underlying reward distribution and the corresponding bandit parameters {cj }jT=0-1 are
+
+496
+
+Session 4D: Recommender Systems - Methods Learning Contextual Bandits in a Non-stationary Environment
+
+unknown to the learner. We only assume there are at most T - 1 change points in the environment up to time T , with T  T .
+To simplify the discussion, linear structure in fu (xat ) is postu-
+lated, but it can be readily extended to more complicated depen-
+
+dency structures, such as generalized linear models [9], without
+
+changing the design of our algorithm. Specifically, we have,
+
+rt = ft (xat ) = xaTt t + t
+
+(1)
+
+in which t is Gaussian noise drawn from N (0,  2), and the superscript  in t means it is the ground-truth bandit parameter in the environment. In addition, we impose the following assumption
+
+about the non-stationary environment, which guarantees the de-
+
+tectability of the changes, and reflects our insight how to detect
+
+them on the fly,
+
+Assumption 1. For any two consecutive change points tcj and tcj+1 in the environment, there exists j > 0, such that when t  tcj+1 at least  (0 <   1) portion of all the arms satisfy,
+
+|xaTt tcj+1 - xaTt tcj | > j
+
+(2)
+
+Remark 1. The above assumption is general and mild to satisfy in many practical scenarios, since it only requires a portion of the arms to have recognizable change in their expected rewards. For example, a user may change his/her preference in sports news but not in political news. The arms that do not satisfy Eq (2) can be considered as having small deviations in the generic reward assumption made in Eq (1). We will later prove our bandit solution remains its regret scaling in the presence of such small deviation.
+
+3.2 Dynamic Linear UCB
+Based on the above assumption about a non-stationary environment, in any stationary period between two consecutive change points, the reward estimation error of a contextual bandit model trained on the observations collected from that period should be bounded with a high probability [1, 6]. Otherwise, the model's consistent wrong predictions can only come from the change of environment. Based on this insight, we can evaluate whether the stationary assumption holds by monitoring a bandit model's reward prediction quality over time. To reduce variance in the prediction error from one bandit model, we ensemble a set of models, by creating and abandoning them on the fly.
+Specifically, we propose a hierarchical bandit algorithm, in which a master multi-armed bandit model operates over a set of slave contextual bandit models to interact with the changing environment. The master model monitors the slave models' reward estimation error over time, which is referred to as `badness' in this paper, to evaluate whether a slave model is admissible for the current environment. Based on the estimated `badness' of each slave model, the master model dynamically discards out-of-date slave models or creates new ones. At each round t, the master model selects a slave model with the smallest lower confidence bound (LCB) of `badness' to interact with the environment, i.e., the most promising slave model. The obtained observation (xat , rat ) is shared across all admissible slave models to update their model parameters. The process is illustrated in Figure 1.
+Any contextual bandit algorithm [9, 18, 20, 25] can serve as our slave model. Due to the simplified linear reward assumption made in Eq (1), we choose LinUCB [18] for the purpose in this paper; but
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+Upper-Level: The master model selects one of the slave models based on the lower confidence bound of their estimated `badness'.
+Slave Model 1 Badness
+
+Master Model
+
+. . . Slave Model 2
+
+Slave Model N
+
+Badness
+
+Badness
+
+. . . . .
+
+Lower-Level: The selected
+
+slave model selects the
+
+best arm from the arm
+
+Arm 1
+
+. . . Arm 2
+
+pool based on the upper
+
+Estimated Reward Estimated Reward
+
+confidence bound of its
+
+estimated reward.
+
+. . . . .
+Arm K
+Estimated Reward
+
+Probability Probability Probability
+
+Reward
+
+Reward
+
+Reward
+
+Figure 1: Illustration of dLinUCB. The master bandit model maintains the `badness' estimation of slave models over time to detect changes in the environment. At each round, the most promising slave model is chosen to interact with the environment; and the acquired feedback is shared across all admissible slave models for model update.
+
+our proposed algorithm can be readily adapted to any other choices
+
+of the slave model. This claim is also supported by our later regret
+
+analysis. As a result, we name our algorithm as Dynamic Linear
+
+Bandit with Upper Confidence Bound, or dLinUCB in short.
+
+In the following, we first briefly describe our chosen slave model
+
+LinUCB. Then we formally define the concept of `badness', based
+
+on which we design the strategy for creating and discarding slave
+
+bandit models. Lastly, we explain how dLinUCB selects the most
+
+promising slave model from the admissible model set. The detailed
+
+description of dLinUCB is provided in Algorithm 1.
+
+Slave bandit model: LinUCB. Each slave LinUCB model main-
+
+tains all historical observations that the master model has assigned
+
+to it. Based on the assigned observations, a slave model m gets an estimate of user preference ^t (m) = At-1(m)bt (m) [18], in which At (m) = I + i Im,t xai xaTi , I is a d × d identity matrix,  is the coefficient for L2 regularization; bt (m) = i Im,t xai rai , and Im,t
+is an index set recording when the observations are assigned to the
+
+slave model m up to time t. According to [1], with a high proba-
+
+bility 1 - 1 the expected reward estimation error of model m is
+
+up2perdblonu(1n+ded| I:m|r,^1ta|t)(m+ )-
+
+E[rat ]|  Bt (m, a), in which Bt (m, a) = xa A-t 1(m). Based on the upper confi-
+
+dence bound principle [3], a slave model m takes an action using
+
+the following arm selection strategy (i.e., line 6 in Algorithm 1):
+
+at (m) = arg max xaT^t (m) + Bt (m, a)
+
+(3)
+
+aA
+
+Slave model creation and abandonment. For each slave bandit
+model m, we define a binary random variable ei (m) to indicate whether the slave model m's prediction error at time i exceeds its
+
+confidence bound,
+
+ei (m) := 1 |r^i (m) - ri (m)| > Bi (m, ai ) + 
+
+(4)
+
+where 
+
+=
+
+ 2
+
+erf-1
+
+(1
+
+-
+
+1)
+
+and
+
+erf-1(·)
+
+is
+
+the
+
+inverse
+
+of
+
+Gauss
+
+error function.  represents the high probability bound of Gaussian
+
+noise in the received feedback.
+
+According to Eq (7) in Theorem 3.1, if the environment stays
+stationary since the slave model m has been created, we have P(ei (m) = 1)  1, where 1  (0, 1) is a hyper-parameter in
+
+497
+
+Session 4D: Recommender Systems - Methods SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+Algorithm 1 Dynamic Linear UCB (dLinUCB)
+
+1: Inputs:  > 0,  > 0, 1, 2  (0, 1), ~1  [0, 1] 2: Initialize: Maintain a set of slave models Mt with M1 =
+{m1}, initialize m1: A1(m1) = I, b1(m1) = 0, ^1(m1) = 0; and initialize the `badness' statistics of it: e^1(m1) = 0, d1(m1) = 0 3: for t = 1 to T do 4: Choose a slave model from the active slave model set m~ t = arg minm Mt e^t (m) - ln  × dt (m) 5: Observe candidate arm pool At , with xa  Rd for a  At 6: Take action at = arg maxa At xaT^t (m~ t ) + Bt (m~ t , a) , in which Bt (m~ t , a) is defined in Eq (3) 7: Observe payoff rat
+8: Set CreatNewFlag = True
+
+9: for m  Mt do
+
+10:
+
+xaTt
+
+^t
+
+et (m)
+
+(m) = and 
+
+1={|r^2t (mer)f--1r(t|1>-B1t)(m,
+
+a)
+
++
+
+
+
+}, where r^t (m) =
+
+11:
+
+if et (m) = 0 then
+
+12:
+
+Update slave model: At +1(m) = At (m) + xat xaTt ,
+
+bt +1(m) = bt (m) + xat rt , ^t +1 = At-+11(m)bt +1(m)
+
+13:
+
+end if
+
+14:
+
+~(m) = min{t -tm,  }, where tm is when m was created
+
+15:
+
+Update `badness' e^t (m) =
+
+t i =t -~
+
+ei
+
+~ (m)
+
+(m)
+
+,
+
+dt (m)
+
+=
+
+ln 1/2 2~ (m)
+
+16:
+
+if e^t (m) < ~1 + dt (m) then
+
+17:
+
+Set CreatNewFlag = False
+
+18:
+
+else if e^t (m)  1 + dt (m) then
+
+19:
+
+Discard slave model m: Mt+1 = Mt - m
+
+20:
+
+end if
+
+21: end for
+
+22: if CreateNewFlag or Mt =  then
+
+23:
+
+Create a new slave model mt : Mt +1 = Mt + mt
+
+24:
+
+Initialize mt : At (mt ) = I, bt (mt ) = 0, ^t (mt ) = 0
+
+25:
+
+Initialize `badness' statistics of mt : e^t (mt ) = 0, dt (mt ) =
+
+0
+
+26: end if
+
+27: end for
+
+Bi (m, a). Therefore, if we observe a sequence of consistent prediction errors from the slave model m, it strongly suggests a change of
+
+environment, so that this slave model should be abandoned from the admissible set. Moreover, we introduce a size- sliding window
+
+to only accumulate the most recent observations when estimating the expected error in slave model m. The benefit of sliding window
+
+design will be discussed with more details later in Section 3.3.
+
+We define e^t (m) :=
+
+t i =t
+
+-~
+
+(m)
+
+ei
+
+(m
+
+)
+
+~ (m) , which estimates the `badness'
+
+of slave model m within the most recent period ~ to time t, i.e.,
+
+~(m) = min{t - tm,  }, in which tm is when model m was created.
+
+Combining the concentration inequality in Theorem 7.2 (provided
+
+in the appendix), we have the assertion that if in the period [t -
+
+~(m), t] the stationary hypothesis is true, for any given 1  (0, 1) and 2  (0, 1), with a probability at least 1 - 2, the expected `badness' of slave model m satisfies,
+
+e^t (m)  E[et (m)] +
+
+ln(1/2) 2~ (m)
+
+
+
+1
+
++
+
+ln(1/2) 2~ (m)
+
+(5)
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA Qingyun Wu, Naveen Iyer, Hongning Wang
+
+Eq (5) provides a tight bound to detect changes in the environ-
+
+ment. If the environment is unchanged, within a sliding window
+
+the estimation error made by an up-to-date slave model should
+
+not exceed the right-hand side of Eq (5) with a high probability.
+
+Otherwise, the stationary hypothesis has to be rejected and thus the slave model m should be discarded. Accordingly, if none of the
+
+slave models in the admissible bandit set satisfy this condition, a
+
+new slave bandit model should be created for this new environ-
+
+ment. Specifically, the master bandit model controls the slave model
+
+creation and abandonment in the following way.
+
+· Model abandonment: when the slave model m's estimated `badness'
+
+exceeds its upper confidence bound defined in Eq (5), i.e., e^t (m) >
+
+1 +
+
+ln(1/ 2 ) 2~ (m)
+
+,
+
+it
+
+will
+
+be
+
+discarded
+
+and
+
+removed
+
+from
+
+the
+
+admissible
+
+slave model set. This corresponds to line 18-20 in Algorithm 1.
+
+· Model creation: When no slave model's estimated `badness' is
+
+within its expected confidence bound, i.e., no slave model satisfies
+
+e^t (m)  ~1 +
+
+ln(1/ 2 ) 2~ (m)
+
+,
+
+a new
+
+slave
+
+model
+
+will
+
+be created. ~1
+
+
+
+[0, 1] is a parameter to control the sensitivity of dLinUCB, which
+
+affects the number of maintained slave models. When ~1 = 1, the
+
+threshold of creating and abandoning a slave model matches and
+
+the algorithm only maintains one admissible slave model. When ~1 < 1 multiple slave models will be maintained. The intuition is
+
+that an environment change is very likely to happen when all active
+
+slave models face a high risk of being out-of-date (although they
+
+have not been abandoned yet). This corresponds to line 8, 16-17,
+
+and 22-26 in Algorithm 1.
+
+Slave model selection and update. At each round, the master
+
+bandit model selects one active slave bandit model to interact with
+
+the environment, and updates all active slave models with the ac-
+
+quired feedback accordingly. As we mentioned before, with the
+
+model abandonment mechanism every active slave model is guar-
+
+anteed to be admissible for taking acceptable actions; but they are
+
+associated with different levels of risk of being out of date. A well-
+
+designed model selection strategy can further reduce the overall
+
+regret, by minimizing this risk. Intuitively, when facing a chang-
+
+ing environment, one should prefer a slave model with the lowest
+
+empirical error in the most recent period.
+
+The uncertainty in assessing each slave model's `badness' intro-
+
+duces another explore-exploit dilemma, when choosing the active
+
+slave models. Essentially, we prefer a slave model of lower `badness'
+
+with a higher confidence. We realize this criterion by selecting a
+
+slave model according to its Lower Confidence Bound (LCB) of the
+
+estimated `badness.' This corresponds to line 4 in Algorithm 1.
+Once the feedback (xat , rt ) is obtained from the environment on the selected arm at , the master algorithm can not only update
+the selected slave model but also all other active ones for both of
+
+their `badness' estimation and model parameters (line 11-13 and
+
+line 15 in Algorithm 1 accordingly). This would reduce the sample
+
+complexity in each slave model's estimation. However, at this stage,
+
+it is important to differentiate those "about to be out-of-date" models
+
+from the "up-to-date" ones, as any unnecessary model update blurs the boundary between them. As a result, we only update the perfect
+
+slave models, i.e., those whose `badness' is still zero at this round of
+
+interaction; and later we will prove this updating strategy is helpful
+
+to decrease the chance of late detection.
+
+498
+
+Session 4D: Recommender Systems - Methods Learning Contextual Bandits in a Non-stationary Environment
+
+3.3 Regret Analysis
+
+In this section, we provide a detailed regret analysis of our proposed
+
+dLinUCB algorithm. We focus on the accumulated pseudo regret,
+
+which is formally defined as,
+
+T
+
+R(T ) =
+
+E[rat ] - E[rat ]
+
+(6)
+
+t =1
+
+where at is the best arm to select according to the oracle of this problem, and at is the arm selected by the algorithm to be evaluated.
+
+It is easy to prove that if a bandit algorithm does not model the
+
+change of environment, it would suffer from a linearly increasing
+
+regret: An optimal arm in the previous stationary period may be-
+
+come sub-optimal after the change; but the algorithm that does not model environment change will constantly choose this sub-optimal arm until its estimated reward falls behind the other arms'. This leads to a linearly increasing regret in each new stationary period.
+
+Next, we first characterize the confidence bound of reward esti-
+
+mation in a linear bandit model in Theorem 3.1. Then we prove the upper regret bound of two variants of our dLinUCB algorithm in Theorem 3.2 and Theorem 3.5. More detailed proofs are provided in the appendix.
+
+Theorem 3.1. For a linear bandit model m specified in Algorithm 1, if the underlying environment is stationary, for any 1  (0, 1) we have the following inequality with probability at least 1 - 1,
+
+|r^t (m) - rt |  Bt (m, a) + 
+
+(7)
+
+where 
+ ,
+
+Bt =
+
+(m, a) = t
+
+ 2
+
+erf-1(
+
+xat A-t-11 with t = 1-1),  is the standard
+
+ 2 d ln(1 deviation of
+
++| the
+
+It (m) 1
+
+|
+
+)
+
++
+
+Gaussian
+
+noise in reward feedback, and erf(·) is the Gauss error function.
+
+Denote RLin(S) as the upper regret bound of a linear bandit model
+
+within a stationary period S. Based on Theorem 3.1, one can prove
+
+that RLin(S) 
+
+dS log( +
+
+S d
+
+)
+
+2
+
+d
+
+log(1
+
++
+
+S 1
+
+)
+
++
+
+ 
+
+[1]. In
+
+the following, we provide an upper regret bound analysis for the
+
+basic version of dLinUCB, in which the size of the admissible slave
+
+models is restricted to one (i.e., by setting ~1 = 1).
+
+ Theorem 3.2. When Assumption 1 is satisfied with   2  + 2,
+
+if 1 and  in Algorithm 1 are set according to Lemma 3.4, and 2 is
+
+set
+
+to 2
+
+
+
+1 2Smax
+
+,
+
+with
+
+probability
+
+at least
+
+(1 - 1)(1 - 2)(1 -
+
+2 1-2
+
+),
+
+the accumulated regret of dLinUCB satisfies,
+
+4
+
+R(T )  2T RLin(Smax) + T ( + 1 - 2 )
+
+(8)
+
+where Smax is the length of the longest stationary period up to T .
+
+Proof. Step 1: If change points can be perfectly detected, the
+
+regret of dLinUCB can be bounded by
+
+T -1 j =0
+
+R Lin (Sc j
+
+).
+
+However,
+
+additional regret may accumulate if early or late detection happens.
+
+In the following two steps, we will bound the possible additional
+
+regret from early detection, denoted as Rearly, and that from late
+
+detection, denoted as Rlate.
+Step 2: Define kcj as the number of early detection within this stationary period [tcj , tcj+1 ], with Scj = tcj+1 - tcj . Define pe as
+
+the probability of early detection in the stationary period, we
+
+have P(kcj = k) =
+
+Scj k
+
+pek (1
+
+- pe )Scj -k .
+
+According
+
+to
+
+Lemma
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+3.3, we have pe  2. Combining the property of binomial distribu-
+
+tion B(Scj , pe ) and Chebyshev's concentration inequality, we have
+
+kcj  2Scj 2 ability (1-3
+
+with probability at )×(1-1)kSmax , we
+
+least have
+
+1
+
+-
+
+1-2 2Scj 2
+
+Rearly 
+
+.
+
+Hence,
+
+T j =1
+
+kc
+
+j
+
+with RLin(
+
+a prob-
+
+scj kcj
+
+)
+
+
+
+T j =1
+
+2Sc j
+
+
+
+2R
+
+Lin
+
+(
+
+1 22
+
+)
+
+
+
+2 2 T
+
+ST
+
+R
+
+Lin
+
+(
+
+1 22
+
+).
+
+Considering
+
+the
+
+calcu-
+
+lation of RLin, when 2
+
+
+
+1 2Smax
+
+we have Rearly
+
+
+
+T RLin(Smax)
+
+with a probability at least (1 - 2)(1 - 1). This upper bounds the
+
+additional regret from any possible early detection, and maintains
+
+it in the same order as the slave model's.
+
+Step 3. Define k~cj as the number of interactions where the environment has changed (comparing to cj ) but the change is not
+
+detected by the algorithm. The additional regret from this late de-
+
+tection can be bounded by 2k~cj (i.e., the maximum regret in each
+
+round of interaction). Define pd as the probability of detection after the change happens, we have P(k~cj = k) = (1 - pd )k-1pd , i.e., a Geometric distribution. According to Lemma 3.4, pd  1 -2. Based
+
+on the property of Geometric distribution G(pd ) and Chebyshev's
+
+inequality, we have k~cj
+
+
+
+2 1-2
+
+with probability 1 -
+
+2 1-2
+
+.
+
+If
+
+we
+
+consider the case where the change point locates inside the sliding
+
+window  , we may have at most another  delay after each change
+
+point. Therefore, the additional regret from late detection can be
+
+bounded by Rlate  T
+
+
+
++
+
+4 1-2
+
+, which is not directly related to
+
+the length of any stationary period.
+
+Combining the above three steps concludes the proof.
+
+
+
+Lemma 3.3 (Bound the probability of early detection). For 2  (0, 1) and any slave model in Algorithm 1,
+pe = P[e^t (m) > 1 + dt (m)|stationary in past ~(m) rounds]  2.
+
+The intuition behind Lemma 3.3 is that when the environment is stationary, the `badness' of a slave model m should be small and bounded according to Eq (5).
+
+Lemma 3.4 (Bound the probability of late detection). When
+
+the magnitude of change in the environment in Assumption 1 satisfies
+
+>2 Smin >
+
+2+ (2,-a2ndth-e2sh)o, rftoersat nstyati2onar(y0,p1e)r,iiofd1leanngdthSimniAnlgsaotriistfhimes
+
+1 are set to 1
+
+
+
+1-
+
+1 
+
+1-
+
+ 
+2Smin
+
+
+
+ (-2 
+
+-2
+
+)
+
+and 
+
+
+
+(
+
+2 ln (1-1
+
+2 2
+)-1
+
+)2
+
+,
+
+for any slave model m in Algorithm 1, we have,
+
+pd = P e^t (m) > 1 + dt (m)| changed within past ~(m)  1 - 2.
+
+The intuition behind Lemma 3.4 is that when the environment has changed, with a high probability that Eq (7) will not be satisfied in an out-of-date slave model. It means that we will accumulate larger badness from this slave model. In both Lemma 3.3 and 3.4, 2 is a parameter controlling the confidence of the `badenss' estimation in Chernoff Bound; and therefore an input to the algorithm.
+
+Remark 2 (How the environment assumption affects dLin-
+UCB). 1. The magnitude of environment change  affects whether a change is detectable by our algorithm. However, we need to emphasize that when  is very small, the additional regret from re-using an out-of-date slave model is also small. In this case, a similar scale of regret bound can still be achieved, which will be briefly proved in Appendix and empirically studied in Section 4.1. 2. We require the
+
+499
+
+Session 4D: Recommender Systems - Methods
+
+SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+shortest
+
+stationary
+
+period
+
+length
+
+Smin
+
+>
+
+max{
+
+ 
+2
+
+(
+
+-
+
+ 2
+
+-
+
+2), 
+
+},
+
+which guarantees there are enough observations accumulated in a
+
+slave model to make an informed model selection. 3. The portion of
+
+changed arms  regret bound, as
+
+will affect the we require 1
+
+probability of achieving
+
+
+
+1
+
+-
+
+1 
+
+1
+
+-
+
+ 2Smin 
+
+(
+
+-
+
+our derived  2  - 2) .
+
+ also interacts with Smin and  : when  is small, more observations
+
+are needed for a slave model to detect the changes. The effect of  and
+
+Smin will also be studied in our empirical evaluations.
+
+Theorem 3.2 indicates with our model update and abandonment mechanism, each slave model in dLinUCB is `admissible' in terms of upper regret bound. In the following, we further prove that maintaining multiple slave models and selecting them according to their LCB of `badness' can further improve the regret bound.
+
+Theorem 3.5. Under the same condition as specified in Theorem
+
+3.2,
+
+with
+
+probability
+
+at
+
+least
+
+(1
+
+-
+
+1)(1
+
+-
+
+2)(1
+
+-
+
+2 1-2
+
+),
+
+the
+
+expected
+
+accumulated regret of dLinUCB up to time T can be bounded by,
+
+T -1
+
+4
+
+R(T ) 
+
+j =0
+
+RLin(Scj ) + 2T (
+
++
+
+) 1 - 2
+
+(9)
+
+T -1
++
+j =0
+
+8
+m M,m
+
+mc j
+
+ln Scj m,mcj
+
++
+
+(1
+
++
+
+2 3
+
+)m,mcj
+
+in which mcj is the best slave model among all the active ones in the stationary period [tcj , tcj+1 ] according to the oracle, and m,mcj is
+difference between the accumulated expected reward from the selected model m and that from mcj in the period [tcj , tcj+1 ] .
+
+Proof. Define the optimal expected cumulative reward in the
+stationary period [tcj , tcj +1] according to the oracle as G(Scj ) and the expected accumulative reward in dLinUCB as G(Scj ). Gmcj (Scj ) is the expected cumulative reward from mcj . The accumulated
+regret of dLinUCB can be written as,
+
+T -1
+
+R(T ) =
+
+G(Scj ) - Gmcj (Scj ) + Gmcj (Scj ) - G(Scj ) (10)
+
+j =0
+
+The first term of Eq(10) can be bounded based on Theorem 3.2. De-
+
+fine N~cj (m) as the number of times a slave model m is selected when
+
+it is not the best in [tcj , tcj +1]: N~cj (m) =
+
+tcj +1 t =tcj
+
+1{m~ t
+
+= m, mcj
+
+m}, we have Gmcj (Scj ) - G(Scj )  m M m,mcj E[N~cj (m)]. In
+
+Lemma 3.6, we provide the bound of E[N~cj (m)]. Substituting the
+
+above conclusions into Eq (10) finishes the proof.
+
+
+
+Lemma 3.6. The model selection strategy in Algorithm 1 guaran-
+
+tees,
+
+E[N~cj (m)]
+
+
+
+8 ln Scj m2 ,mcj
+
++ 1 + 2 3
+
+(11)
+
+Remark 3 (regret comparison of dLinUCB with one slave
+model and multiple slave models). By maintaining multiple admissible slave models and selecting one according to the LCB of `badness' when interacting with the environment, dLinUCB achieves a regret reduction in the first part of Eq (9). Although there is additional regret introduced by switching between the best model m and the
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA
+Qingyun Wu, Naveen Iyer, Hongning Wang
+chosen model m~ , this added regret increases much slower than that resulted from any slave model (i.e., lnT v.s., RLin(T )); and thus maintaining multiple slave models is always beneficial. Besides, the order of upper regret bound of dLinUCB in both cases is O(T Smax log Smax), which is the best upper regret bound a bandit algorithm can achieve in such a non-stationary environment [10], and it matches the lower bound up to a T log Smax factor.
+Remark 4 (Generalization of dLinUCB). Our theoretical analysis confirms that any contextual bandit algorithm can be used as the slave model in dLinUCB, as long as the its reward estimation error is bounded with a high probability, which corresponds Bt (m, a) in Eq (7). The overall regret of dLinUCB will only be a factor of the actual number of changes in the environment, which is arguably inevitable without further assumptions about the environment.
+4 EVALUATIONS
+We performed extensive empirical evaluations of dLinUCB against
+several related baseline algorithms, including: 1) the state-of-the-art
+contextual bandit algorithm LinUCB [18]; 2) adaptive Thompson
+Sampling algorithm [15] (named as adTS) which has a change
+detection module; 3) windowed mean-shift detection algorithm
+[26] (named as WMDUCB1), which is a UCB1-type algorithm with
+a change detection module ; and 4) Meta-Bandit algorithm [16],
+which switches between two UCB1 models.
+4.1 Experiments on synthetic datasets
+In simulation, we generate a size-K (K = 1000) arm pool A, in which each arm a is associated with a d-dimensional feature vector xa  Rd with xa 2  1. Similarly, we create the ground-truth bandit parameter    Rd with   2  1, which is not disclosed to the learners. Each dimension of xa and   is drawn from a uniform distribution U (0, 1). At each round t, only a subset of arms in A are disclosed to the learner for selection, e.g., randomly sample 10 arms from A without replacement. The ground-truth reward ra is corrupted by Gaussian noise   N (0,  2) before being fed back to the learner. The standard deviation of Gaussian noise  is set to 0.05 by default. To make the comparison fair, at each round t, the same set of arms are presented to all the algorithms being evaluated. To simulate an abruptly changing environment, after every S rounds, we randomize   with respect to the constraint |xaTtcj - xaTtcj+1 | > j for  proportion of arms in A. We set  to 0.1, S to 800 and  to 0.9 by default.
+Under this simulation setting, all algorithms are executed to 5000 iterations and the parameter  in dLinUCB is set to 200. Accumulated regret defined in Eq (6) is used to evaluate different
+algorithms and is reported in Figure 2. The bad performance of
+LinUCB illustrates the necessity of modeling the non-stationarity
+of the environment ­ its regret only converges in the first station-
+ary period, and it suffers from an almost linearly increasing regret,
+which is expected according to our theoretical analysis in Section
+3.3. adTS is able to detect and react to the changes in the environ-
+ment, but it is slow in doing so and therefore suffers from a linear
+regret at the beginning of each stationary period before converging.
+dLinUCB, on the other hand, can quickly identify the changes and
+create corresponding slave models to capture the new reward distri-
+butions, which makes the regret of dLinUCB converge much faster
+in each detected stationary period. In Figure 2 we use the black
+
+500
+
+Session 4D: Recommender Systems - Methods Learning Contextual Bandits in a Non-stationary Environment
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+Table 1: Accumulated regret with different noise level  , environment change  and stationary period length S.
+
+( , , S) dLinUCB
+adTS LinUCB Meta-Bandit WMDUCB1
+
+(0.1, 0.9, 800)
+87.46 ± 3.61 360.75± 39.59 436.84 ± 40.23 1822.31± 80.67 2219.36± 142.16
+
+(0.05, 0.9, 800)
+65.94± 2.30 249.63 ± 27.26 386.10±21.88 1340.01±29.94 1652.99± 21.33
+
+(0.01, 0.9, 800)
+54.07± 3.95 207.95± 22.28 347.19± 14.95 1354.03 ± 22.29 1635.35 ± 73.96
+
+(0.01, 0.5, 800)
+44.94 ± 2.90 189.07±18.39 264.87± 21.53 1329.51 ± 18.93 1464.11 ± 89.16
+
+(0.01, 0.1, 800)
+46.12 ± 4.63 177.55.±20.36 226.87± 32.15 1402.63 ± 24.85 1506.55 ± 41.52
+
+(0.01, 0.9, 400)
+111.72 ± 4.87 412.55 ± 14.53 405.82 ± 33.38 1388.81 ± 115.91 1691.75 ± 48.09
+
+Regret
+
+400
+
+dLinUCB
+
+350
+
+adTS
+
+300
+
+LinUCB
+
+Actual Changes Detected Changes
+
+250
+
+200
+
+150
+
+100
+
+50
+
+0
+
+0
+
+1000
+
+2000
+
+3000
+
+4000
+
+5000
+
+Iteration
+
+Figure 2: Results from simulation.
+
+and blue vertical lines to indicate the actual change points and the
+detected ones by dLinUCB respectively. It is clear that dLinUCB
+detects the changes almost immediately every time. WMDUCB1
+and Meta-Bandit are also compared, but since they are context-free
+bandits, they performed much worse than the above contextual
+bandits. To improve visibility of the result, we exclude them from
+Figure 2 and instead report their performance in Table 1.
+As proved in our regret analysis, dLinUCB's performance depends the magnitude of change  between two consecutive stationary periods, the Gaussian noise  in the feedback, and the length S of stationary period. In order to investigate how these factors affect
+dLinUCB, we varied these three factors in simulation. We ran all the
+algorithms for 10 times and report the mean and standard deviation
+of obtained regret in Table 1. In all of our environment settings,
+dLinUCB consistently achieved the best performance against all baselines. In particular, we can notice that the length S of stationary period plays an important role in affecting dLinUCB's regret
+(and also in adTS). This is expected from our regret analysis: since T is fixed, a smaller S leads to a larger T , which linearly scales dLinUCB's regret in Eq (8) and (9). A smaller noise level  leads to reduced regret in dLinUCB, as it makes the change detection easier. Last but not least, the magnitude of change  does not affect dLinUCB: when  is large, the change is easy to detect; when  is small, the difference between two consecutive reward distributions
+is small, and thus the added regret from an out-of-date slave model
+is also small. Again the context-free algorithms WMDUCB1 and
+Meta-Bandit performed much worse than those contextual bandit
+algorithms in all the experiments. In addition, we also studied the effect of  in dLinUCB by varying
+ from 0.0 to 1.0. dLinUCB achieved the lowest regret when  = 0, since the environment becomes stationary. When  > 0: dLinUCB achieves the best regret (with regret of 54.07 ± 3.95) when  = 1.0, however as  becomes smaller the regret is not affected too much (with regret of 57.59 ± 3.44). These results further validate our theoretical regret analysis and unveil the nature of dLinUCB in a
+piecewise stationary environment.
+
+4.2 Experiments on Yahoo! Today Module
+We compared all the algorithms on the large-scale clickstream dataset made available by the Yahoo Webscope program. This dataset contains 45,811,883 user visits to Yahoo Today Module in a ten-day period in May 2009. For each visit, both the user and each of the 10 candidate articles are associated with a feature vector of six dimensions (including a constant bias term) [18]. In the news recommendation problem, it is generally believed that users' interests on news articles change over time; and it is confirmed in this large-scale dataset by our quantitative analysis. To illustrate our observations, we randomly sampled 5 articles and reported their real-time click-through-rate (CTR) in Figure 3 (c), where each point is the average CTR over 2000 observations. Clearly, there are dramatic changes in those articles' popularity over time. For example, article 1's CTR kept decreasing after its debut, then increased in the next two days, and dropped eventually. Any recommendation algorithm failing to recognize such changes would suffer from a sub-optimal recommendation quality over time.
+The unbiased offline evaluation protocol proposed in [19] is used to compare different algorithms. CTR is used as the performance metric of all bandit algorithms. Following the same evaluation principle used in [18], we normalized the resulting CTR from different algorithms by the corresponding logged random strategy's CTR. We tested two different settings on this dataset based on where to place the bandit model for reward estimation.
+The first setting is to build bandit models for users, i.e., attaching  on the user side to learn users' preferences over articles. We included a non-personalized variant and a personalized variant of all the contextual bandit algorithms. In the non-personalized variant, the bandit parameters are shared across all users, and thus the detected changes are synchronized across users. We name the resulting algorithms as uniform-LinUCB, uniform-adTS, and uniformdLinUCB. In the personalized variant, each individual user is associated with an independent bandit parameter u , and the change is only about him/herself. Since this dataset does not provide user identities, we followed [25] to cluster users into N user groups and assume those in the same group share the same bandit parameter. We name the resulting algorithms as N-LinUCB, N-adTS and N-dLinUCB. To make the comparison more competitive, we also include a recently introduced collaborative bandit algorithm CLUB [12], which combines collaborative filtering with bandit learning.
+From Figure 3 (a), we can find that both the personalized and nonpersonalized variants of dLinUCB achieved significant improvement compared with all baselines. It is worth noticing that uniformdLinUCB obtained around 50% improvement against uniform-LinUCB, 15% against N-LinUCB, and 25% against CLUB. Clearly assuming all the users share the same preference over the recommendation candidates is very restrictive, which is confirmed by the improved performance from the personalized version over the non-personalized
+
+501
+
+Session 4D: Recommender Systems - Methods SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA Qingyun Wu, Naveen Iyer, Hongning Wang
+
+CTR-Ratio CTR-Ratio
+CTR
+
+1.5
+
+1.4
+
+1.3
+
+1.2
+
+1.1
+
+1.0
+
+0.9 0M.a8y01
+
+May02
+
+May03
+
+uniform-dLinUCB uniform-adTS uniform-LinUCB
+
+N-dLinUCB N-adTS N-LinUCB
+
+May04 May05 May06 May07 May08
+Time
+
+CLUB WMDUCB1
+May09 May10
+
+(a) Bandit models on the user side
+
+1.8
+
+1.7
+
+1.6
+
+1.5
+
+1.4 May03
+
+May04
+
+May05
+
+May06
+
+May07
+
+Time
+
+May08
+
+dLinUCB LinUCB adTS
+
+May09
+
+May10
+
+(b) Bandit models on the article side
+
+0.09 0.08 0.07 0.06
+
+Article 1 Article 2 Article 3 Article 4 Article 5
+
+0.05
+
+0.04
+
+0.03
+
+0.02
+
+0.M0a1y01
+
+May03
+
+May05
+Time
+
+May07
+
+May09
+
+(c) Detected changes on sample articles
+
+Figure 3: Performance comparison in Yahoo! Today Module.
+
+version of all bandit algorithms. Because dLinUCB maintains multiple slave models concurrently, each slave model is able to cover preference in a subgroup of users, i.e., achieving personalization automatically. We looked into those created slave models and found they closely correlated with the similarity between user features in different groups created by [25], although such external grouping was not disclosed to uniform-dLinUCB. Although adTS and WMDUCB1 can also detect changes, its slow detection and reaction to the changes made it even worse than LinUCB on this dataset. MetaBandit is sensitive to its hyper-parameters and performed similarly to WMDUCB1, so that we excluded it from this comparison.
+The second setting is to build bandit models for each article, i.e., attaching  on the article side to learn its popularity over time. Based on our quantitative analysis in the data set, we found that articles with short lifespans tend to have constant popularity. To emphasize the non-stationarity in this problem, we removed articles which existed less than 18 hours, and report the resulting performance in Figure 3 (b). We can find that dLinUCB performed comparably to LinUCB at the beginning, while the adTS baselines failed to recognize the popularity of those articles from the beginning, as the popularity of most articles did not change immediately. In the second half of this period, however, we can clearly realize the improvement from dLinUCB. To understand what kind of changes dLinUCB recognized in this data set, we plot the detected changes of five randomly selected articles in Figure 3 (c), in which dotted vertical lines are our detected change points on corresponding articles. As we can find in most articles the critical changes of ground-truth CTR can be accurately recognized. For example, article 1 and article 2 at around May 4, and article 3 at around May 5. Unfortunately, we do not have any detailed information about these articles to verify the changes; otherwise it would be interesting to correspond these detected changes to real-world events. In Figure 3 (b), we excluded the context-free bandit algorithms because they performed much worse and complicate the plots.
+4.3 Experiments on LastFM & Delicious
+The LastFM dataset is extracted from the music streaming service Last.fm, and the Delicious dataset is extracted from the social bookmark sharing service Delicious. They were made availalbe on the HetRec 2011 workshop. The LastFM dataset contains 1892 users and 17632 items (artists). We treat the `listened artists' in each user as positive feedback. The Delicious dataset contains 1861 users and 69226 items (URLs). We treat the bookmarked URLs in each user as positive feedback. Following the settings in [5], we pre-processed these two datasets in order to fit them into the contextual bandit setting. Firstly, we used all tags associated with an item to create a
+
+TF-IDF feature vector to represent it. Then we used PCA to reduce the dimensionality of the feature vectors and retained the first 25 principle components to construct the context vectors, i.e., d = 25. We fixed the size of candidate arm pool to K = 25; for a particular user u, we randomly picked one item from his/her nonzero reward items, and randomly picked the other 24 from those zero reward items. We followed [16] to simulate a non-stationary environment: we ordered observations chronologically inside each user, and built a single hybrid user by merging different users. Hence, the boundary between two consecutive batches of observations from two original users is treated as the preference change of the hybrid user.
+Normalized rewards on these two datasets are reported in Figure 4 (a) & (b). dLinUCB outperformed both LinUCB and adTS on LastFM. As Delicious is a much sparser dataset, both adTS and dLinUCB are worse than LinUCB at the beginning; but as more observations become available, they quickly catch up. Since the distribution of items in these two datasets are highly skewed [5], which makes the observations for each item very sparse, the context-free bandits performed very poorly on these two datasets. We therefore chose to exclude the context-free bandit algorithms from all the comparisons on these two datasets in our result report.
+Each slave model created for this hybrid user can be understood as serving for a sub-population of users. We qualitatively studied those created slave models to investigate what kind of stationarity they have captured. On the LastFM dataset, each user is associated with a list of tags he/she gave to the artists. The tags are usually descriptive and reflect users' preference on music genres or artist styles. In each slave model, we use all the tags from the users being served by this model to generate a word cloud. Figure 5 are four representative groups identified on LastFM, which clearly correspond to four different music genres ­ rock music, metal music, pop music and hip-hop music. dLinUCB recognizes those meaningful clusters purely from user click feedback.
+The way we simulate the non-stationary environment on these two datasets makes it possible for us to assess how well dLinUCB detects the changes. To ensure result visibility, we decide to report results obtained from user groups (otherwise there will be too many change points to plot). We first clustered all users in both of datasets into user groups according to their social network structure using spectral clustering [5]. Then we selected the top 10 user groups according to the number of observations to create the hybrid user. We created a semi-oracle algorithm named as OracleLinUCB, which knows where the boundary is in the environment and resets LinUCB at each change point. The normalized rewards from these two datasets are reported in Figure 4 (c) & (d), in which the vertical lines are the actual change points in the environment and the detected
+
+502
+
+Session 4D: Recommender Systems - Methods Learning Contextual Bandits in a Non-stationary Environment
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+Normalized Accumulated Payoff Normalized Accumulated Payoff
+Normalized accumulated reward Normalized accumulated reward
+
+8.5
+
+dLinUCB
+
+8.0
+
+adTS
+
+LinUCB
+
+7.5
+
+7.0
+
+6.5
+
+6.0
+
+5.5
+
+5.0 0
+
+10000
+
+20000
+
+30000
+
+40000 50000 time
+
+60000
+
+70000
+
+80000
+
+(a) Normalized reward on LastFM
+
+1.8
+
+1.6
+
+1.4
+
+1.2
+
+1.0
+
+dLinUCB
+
+0.8
+
+adTS
+
+LinUCB
+
+0.60
+
+20000
+
+40000
+
+60000
+
+time
+
+80000
+
+100000
+
+(b) Normalized reward on Delicious
+
+14
+
+12
+
+10
+
+8
+
+6
+
+dLinUCB
+
+OracleLinUCB
+
+4
+
+adTS
+
+actuall changes
+
+LinUCB
+
+detected changes
+
+20
+
+5000
+
+10000
+
+15000
+
+20000
+
+time
+
+(c) Cluster detection on LastFM
+
+Figure 4: Performance comparison in LastFM & Delicious.
+
+2.0
+
+1.5
+
+1.0
+
+0.5 0.00
+
+2000
+
+4000
+
+dLinUCB adTS LinUCB
+6000 8000 time
+
+OracleLinUCB actuall changes detected changes
+10000 12000
+
+(d) Cluster detection on Delicious
+
+when serving for multiple users, dLinUCB treats them as identical or totally independent. As existing works have shed light on collaborative bandit learning [11, 24, 25], it is meaningful to study non-stationary bandits in a collaborative environment. Last but not least, currently the master bandit model in dLinUCB does not utilize the available context information for `badness' estimation. It is necessary to incorporate such information to improve the change detection accuracy, which would lead to a further reduced regret.
+
+6 ACKNOWLEDGMENTS
+We thank the anonymous reviewers for their insightful comments. This work was supported in part by National Science Foundation Grant IIS-1553568 and IIS-1618948.
+
+Figure 5: Word cloud of tags from four identified user groups in dLinUCB on LastFM dataset.
+points by dLinUCB. Since OracleLinUCB knows where the change is ahead of time, its performance can be seen as optimal. On LastMF, the observations are denser per user group, so that dLinUCB can almost always correctly identify the changes and achieve quite close performance to this oracle. But on Delicious, the sparse observations make it much harder for change detection; and more early and late detection happened in dLinUCB.
+5 CONCLUSIONS & FUTURE WORK
+In this paper, we develop a contextual bandit model dLinUCB for a piecewise stationary environment, which is very common in many important real-world applications but insufficiently investigated in existing works. By maintaining multiple contextual bandit models and tracking their reward estimation quality over time, dLinUCB adaptively updates its strategy for interacting with a changing environment. We rigorously prove an O(T ST ln ST ) upper regret bound, which is arguably the tightest upper regret bound any algorithm can achieve in such an environment without further assumption about the environment. Extensive experimentation in simulation and three real-world datasets verified the effectiveness and the reliability of our proposed method.
+As our future work, we are interested in extending dLinUCB to a continuously changing environment, such as Brownian motion, where reasonable approximation has to be made as a model becomes out of date right after it has been created. Right now,
+
+REFERENCES
+[1] Yasin Abbasi-yadkori, Dávid Pál, and Csaba Szepesvári. 2011. Improved Algorithms for Linear Stochastic Bandits. In NIPS. 2312­2320.
+[2] Peter Auer. 2002. Using Confidence Bounds for Exploitation-Exploration Tradeoffs. Journal of Machine Learning Research 3 (2002), 397­422.
+[3] Peter Auer, Nicolò Cesa-Bianchi, and Paul Fischer. 2002. Finite-time Analysis of the Multiarmed Bandit Problem. Mach. Learn. 47, 2-3 (May 2002), 235­256.
+[4] P. Auer, N. Cesa-Bianchi, Y. Freund, and Robert E. Schapire. 1995. Gambling in a rigged casino: The adversarial multi-armed bandit problem. In Foundations of Computer Science, 1995. Proceedings., 36th Annual Symposium on. 322­331.
+[5] Nicolò Cesa-Bianchi, Claudio Gentile, and Giovanni Zappella. 2013. A Gang of Bandits. In Pro. NIPS (2013).
+[6] Wei Chu, Lihong Li, Lev Reyzin, and Robert E Schapire. 2011. Contextual bandits with linear payoff functions. In AISTATS'11. 208­214.
+[7] Robert B Cialdini and Melanie R Trost. 1998. Social influence: Social norms,
+conformity and compliance. (1998).
+[8] Joohyun Lee Fang Liu and Ness Shroff. 2018. A Change-Detection based Framework for Piecewise-stationary Multi-Armed Bandit Problem (AAAI'18).
+[9] Sarah Filippi, Olivier Cappe, Aurélien Garivier, and Csaba Szepesvári. 2010. Parametric bandits: The generalized linear case. In NIPS. 586­594.
+[10] AurÃlien Garivier and Eric Moulines. On Upper-Confidence Bound Policies for Non-stationary Bandit Problems. In arXiv preprint arXiv:0805.3415 (2008).
+[11] Claudio Gentile, Shuai Li, Purushottam Kar, Alexandros Karatzoglou, Giovanni
+Zappella, and Evans Etrue. 2017. On Context-Dependent Clustering of Bandits. In ICML'17. 1253­1262. [12] Claudio Gentile, Shuai Li, and Giovanni Zappella. 2014. Online Clustering of Bandits. In ICML'14. 757­765. [13] Avishek Ghosh, Sayak Ray Chowdhury, and Aditya Gopalan. 2017. Misspecified Linear Bandits. CoRR abs/1704.06880 (2017). [14] John C Gittins. 1979. Bandit processes and dynamic allocation indices. Journal of the Royal Statistical Society. Series B (Methodological) (1979), 148­177. [15] Negar Hariri, Bamshad Mobasher, and Robin Burke. Adapting to User Preference
+Changes in Interactive Recommendation.
+[16] Cedric Hartland, Sylvain Gelly, Nicolas Baskiotis, Olivier Teytaud, and Michele
+Sebag. 2006. Multi-armed Bandit, Dynamic Environments and Meta-Bandits.
+(Nov. 2006). https://hal.archives-ouvertes.fr/hal-00113668
+[17] John Langford and Tong Zhang. 2008. The epoch-greedy algorithm for multiarmed bandits with side information. In NIPS. 817­824.
+[18] Lihong Li, Wei Chu, John Langford, and Robert E Schapire. 2010. A contextualbandit approach to personalized news article recommendation. In Proceedings of 19th WWW. ACM, 661­670.
+[19] Lihong Li, Wei Chu, John Langford, and Xuanhui Wang. 2011. Unbiased offline
+evaluation of contextual-bandit-based news article recommendation algorithms. In Proceedings of 4th WSDM. ACM, 297­306.
+
+503
+
+Session 4D: Recommender Systems - Methods SIGIR '18, July 8­12, 2018, Ann Arbor, MI, USA
+
+[20] Shuai Li, Alexandros Karatzoglou, and Claudio Gentile. Collaborative Filtering Bandits. In Proceedings of the 39th International ACM SIGIR.
+[21] Wei Li, Xuerui Wang, Ruofei Zhang, Ying Cui, Jianchang Mao, and Rong Jin.
+2010. Exploitation and exploration in a performance based contextual advertising system. In Proceedings of 16th SIGKDD. ACM, 27­36. [22] Haipeng Luo, Alekh Agarwal, and John Langford. 2017. Efficient Contextual Bandits in Non-stationary Worlds. arXiv preprint arXiv:1708.01799 (2017). [23] Alex Slivkins and Eli Upfal. 2008. Adapting to a Changing Environment: the
+Brownian Restless Bandits, In COLT08'. 343­354.
+[24] Huazheng Wang, Qingyun Wu, and Hongning Wang. 2017. Factorization Bandits for Interactive Recommendation.. In AAAI. 2695­2702.
+[25] Qingyun Wu, Huazheng Wang, Quanquan Gu, and Hongning Wang. 2016. Contextual Bandits in a Collaborative Environment. In Proceedings of the 39th International ACM SIGIR. ACM, 529­538.
+[26] Jia Yuan Yu and Shie Mannor. 2009. Piecewise-stationary Bandit Problems with Side Observations. In Proceedings of the 26th ICML (ICML '09). 1177­1184.
+[27] Yisong Yue and Thorsten Joachims. 2009. Interactively optimizing information retrieval systems as a dueling bandits problem. In Proceedings of 26th ICML. ACM, 1201­1208.
+
+7 APPENDIX
+7.1 Additional Theorems
+If the training instances {(xi , ri )}i Im,t in a linear bandit model come from multiple distributions/environments, we separate the
+training instances in Im,t into two sets Hm,t and H~m,t so that instances from Hm,t are from the target stationary distribution, while instances in H~m,t are not. In this case, we provide the confidence bound for the reward estimation in Theorem 7.1.
+
+Theorem 7.1 (LinUCB with contamination). In LinUCB with
+
+a contaminated instance set H~m,t , with probability at least 1 - 1,
+
+we 2
+
+have |r^t (m) - E[rt ]|  B~t
+
+d ln(1 +
+
+|
+
+Im, t 1
+
+|
+
+ )+ +Ct
+
+, where B~t (m, (m), and Ct =
+
+a)
+i
+
+= ~t xat A-t-11 , ~t H~m,t (xai (i -tc
+
+= )).
+
+Comparing B~t (m, a) with Bt (m, a), we can see that when the
+
+reward deviation of an arm (the 1 -  portion of arms that do
+
+not satisfy Eq (1) in Assumption 1) is small with (1 - )small 
+
+2
+
+d ln(1 +
+
+|
+
+Im, t 1
+
+|
+
+)
+
+/
+
+H~ m, t
+
+, the same confidence bound scaling
+
+can be achieved.
+
+Theorem variables on
+
+7.2 (Chernoff Bound). R such that a  Zi  b.
+
+Let Z1, Z2, ..., Define Wn =
+
+Znin=1bZe ir,afnodr oamll
+
+c > 0 we have,
+
+P( |Wn - E(Wn ) | > cE(Wn ))  2 exp
+
+-2c 2E(Wn )2 n(b - a)2
+
+7.2 Proof of Theorems and Lemmas
+
+Proof sketch of Theorem 3.1 and Theorem 7.1. The proof of
+
+Eq (7) in Theorem 3.1 and Theorem 7.1 are mainly based on the
+
+proof of Theorem 2 in [1] and the concentration property of Gauss-
+
+ian noise.
+
+
+
+Proof of Lemma 3.3. According to Chernoff Bound, we have
+
+P(e^t (m)
+
+
+
+1
+
++
+
+ln(1/ 2 ) 2~ (m)
+
+)
+
+
+
+1
+
+-
+
+2,
+
+which
+
+concludes
+
+the
+
+proof.
+
+
+
+Proof of Lemma 3.4. At time i  tcj+1 , which means the environment has already changed from cj to cj+1 , we have,
+
+P(ei (m) = 1) = P( |r^i - ri | > Bi (m, ai ) +  )
+
+(12)
+
+=P( |(xiT^i
+
+- xiTtcj
+
+- i ) + (xiTtc
+
+-
+
+xiT
+
+ i
+
+)
+
+|
+
+>
+
+Bi (m, ai ) +  )
+
+SIGIR'18, July 8-12, 2018, Ann Arbor, MI, USA Qingyun Wu, Naveen Iyer, Hongning Wang
+
+P( |xiT^i - xiTtcj - i |  B~i (m, ai ) +  ) × P( |xiTtcj - xiTi | > B~i (m, ai ) + Bi (m, ai ) + 2 )
+
+According to Theorem 7.1, we have P |xiT^i - xiTtcj - i | 
+
+B~i (m, ai ) +  1 -1. Define Ucj as the upper bound of B~i (m, ai ) + Btc (m, ai ) + 2. If the change gap cj satisfies cj  Ucj , we have P(ei (m) = 1)  (1 - 1).
+
+Next, we will prove that cj  Ucj can be achieved by a properly set 1. Similar as the proof in Step 2 of Theorem 3.2, where we bound
+
+kc
+
+,
+
+we have 
+
+with
+
+a
+
+high
+
+probability
+
+that
+
+B~i
+
+(m,
+
+ai
+
+)+Btc
+
+j
+
+(m, ai )+2
+
+
+
+2 + Smin
+
+2 >
+
+ + 2
+
+
+
+ 2
+
+(c
+
+j
+
+Scj  1 - 
+-2 -2
+
+(1 - 1) ) and 1 
+
+= Ucj . When cj > 2  + 2,
+
+
+
+1-
+
+1 
+
+(1-
+
+ 2Smin
+
+
+
+ cj -2 -2) ,
+
+cj > Ucj can be achieved.
+
+Eq (12) indicates when the environment has changed for a slave
+
+model m, with a high probability of ei (m) = 1 and slave model m will not be updated, which avoids possible contamination in m.
+
+According to the concentration inequality in Theorem 7.2, with a probability at least 1 - 2, we have,
+
+t
+
+t
+
+ei (m)  E[
+
+ei (m)] -
+
+i =t -
+
+i =t -
+
+ 2
+
+1 ln
+2
+
+ (1 - 1) -
+
+1 ln
+2 2
+
+With simple rewriting, we have when 
+
+
+
+(
+
+2 ln (1-1
+
+2 2
+)-1
+
+)2
+
+,
+
+(1
+
+-
+
+1
+
+)
+
+-
+
+ 2
+
+1
+ln 2
+
+ 1
+
++
+
+ 2
+
+ln
+
+1 2
+
+,
+
+which
+
+means
+
+that
+
+with
+
+a
+
+probability
+
+at least 1 - 2, e^t (m) =
+
+t i =t -
+
+ei
+
+
+
+ 1 +
+
+11
+2 ln 2
+
+
+
+Proof of Lemma 3.6. Under the model selection strategy in line
+
+4 of Algorithm 1, using similar proof techniques as in Theorem 1
+
+of [3], we have
+
+ t -1 t -1
+
+N~cj (m)  l +
+
+1{e^si (m) - dsi (m)  e^s (mcj ) - ds (mcj )}
+
+t =tcj s =1 si =l
+
+(13) in which l = (8 log Scj )/m2 ,mcj . e^si (m) - dsi (m)  e^s (mcj ) - ds (mcj ) implies that at least one of the three following inequalities
+
+must hold,
+
+e^i (mcj )  E[e (mcj )] + di (mcj )
+
+(14)
+
+e^i (m)  E[e(m)] - di (m)
+
+(15)
+
+E[ei (m)] - 2di (m)  E[e(mcj )]
+
+(16)
+
+Intuitively, Eq (14), (15) and (16) correspond to the following three
+
+cases respectively. First, the expected `badness' of the optimal slave
+model mcj is substantially over-estimated. Second, the expected `badness' of the slave model m is substantially under-estimated. Third, the expected `badness' of the two slave models mcj and m
+
+are very close to each other. According to Theorem 7.2, we have P e^i (mcj )  E[e(mcj )] +
+di (mcj )  2 and P e^i (m)  E[e(m)] - di (m)  2. For si  l, we have E[e(m)] - E[e(mcj )] - 2di (m)  0, which means the case in Eq
+
+(16) almost never occurs. Substituting the probability for Eq (14), (15) and (16) into Eq (13), and when 2 = t-4,
+
+N~ cj (m) 
+
+(8 ln Scj )/m2 ,mcj
+
+ t -1 t -1
+
++
+
+2t -4
+
+t =1 s =1 si =l
+
+
+
+(8
+
+ln
+
+Sc
+
+j
+
+)/m2 ,
+
+mcj
+
++1+
+
+2 3
+
+which finishes the proof.
+
+
+
+504
+
+

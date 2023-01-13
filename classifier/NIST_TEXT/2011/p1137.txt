@@ -1,0 +1,94 @@
+Sample Selection for Dictionary-Based Corpus Compression
+
+Christopher Hoobin, Simon Puglisi
+School of Computer Science & Information Technology
+RMIT University, Australia firstname .lastname @rmit.edu.au
+
+Justin Zobel
+Department of Computer Science & Software Engineering
+University of Melbourne, Australia jzobel@unimelb.edu.au
+
+ABSTRACT
+Compression of large text corpora has the potential to drastically reduce both storage requirements and per-document access costs. Adaptive methods used for general-purpose compression are ineffective for this application, and historically the most successful methods have been based on wordbased dictionaries, which allow use of global properties of the text. However, these are dependent on the text complying with assumptions about content and lead to dictionaries of unpredictable size. In recent work we have described an LZ-like approach in which sampled blocks of a corpus are used as a dictionary against which the complete corpus is compressed, giving compression twice as effective than that of zlib. Here we explore how pre-processing can be used to eliminate redundancy in our sampled dictionary. Our experiments show that dictionary size can be reduced by 50% or more (less than 0.1% of the collection size) with no significant effect on compression or access speed.
+Categories and Subject Descriptors
+E.4 [Data]: Coding and Information Theory ­ data compaction and compression; H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval ­ search process
+General Terms
+Algorithms, Performance
+Keywords
+Dictionary Compression, Random Access, Document Retrieval, Sampling
+1. BACKGROUND
+Corpus compression can dramatically improve the efficiency of an information retrieval system, first by reducing storage and second by reducing the cost of disk seek and read operations. There are further benefits in improved bandwidth between levels of the memory hierarchy and more effective caching [6]. Key features of an effective algorithm are that the compression model needs to be determined glob-
+Copyright is held by the author/owner(s). SIGIR'11, July 24­28, 2011, Beijing, China. ACM 978-1-4503-0757-4/11/07.
+
+ally (that is, is the same for all documents in the corpus) and that documents can be independently decoded.
+A traditional approach is to use a semistatic model, where symbols are words that are assigned codes based on their probability distribution [5]. With natural language texts, use of words as symbols and of word­non-word alternation gives good compression, but depends on a definition of "word" that does not lead to excessive numbers of low-value symbols (such as strings of markup) and identifies "words" in the text that have a sufficiently skew distribution. Also, the map of symbols to codeword can easily grow larger than physical memory and the symbol set may be dominated by long arbitrary strings.
+The most widely used general-purpose compression methods use adaptive LZ-based algorithms such as deflate, zlib, or lzma [2]. These exploit local duplication in a text through the use of a sliding window that acts a dictionary, with replacement of substrings by pointers to previous occurrences in the dictionary. These approaches require that decompression commence only at the start of the text or at synchronization points, with a trade-off between access speed and compression effectiveness. No use is made of global properties of the corpus. However, these kinds of methods are used by Lucene and Indri, and a similar method is described for Google's distributed storage system Bigtable [1].
+In recent work we have described how to use LZ-like coding, but with a fixed external dictionary rather than a sliding window [3, 4]. The Lempel-Ziv factorization of a string x relative to a dictionary d is a factorization, x = w1w2 . . . wk, such that each wi is either the longest matching substring in d, or a character c that does not occur in d. Each wi is represented as a pair (pi, li), where pi specifies a offset to a position in d and li denotes the length of the factor in d. If li = 0, pi contains a character c that does not occur in d. Well-known methods can be used to efficiently represent the pi,li pairs. We have shown this technique to be highly effective for compressing collections of related genomes [4] and large web collections [3], outperforming all other methods tested. As our experiments focus on document retrieval, our RLZ implementation is designed to stop factorization at document boundaries.
+2. REDUNDANCY ELIMINATION
+Key to the effectiveness of such a method is that the dictionary be a representative sample of a collection. The aim is to capture global repetition across a collection that adaptive compression algorithms do not detect. We used an ex-
+
+1137
+
+tremely simple approach in which we treated a collection as a single string and took samples of lengths s (say 1024 bytes) at evenly-sized intervals across the collection (with m of say 0.5 Gb or 1.0 Gb). That is, we take m/s samples from n/(m/s) locations, on the assumption (which our experiments confirmed) that any sufficiently frequent material in the corpus would be captured in this process.
+However, although compression effectiveness was high, we observed that a significant percentage of the dictionaries was unused. There was a strong skew in the samples that were used, and, even amongst these, there was redundancy as some samples contained repeated material.
+Such redundancy can be removed in a pre-processing phase, either to reduce memory footprint or to replace samples. For each encoded RLZ pair we incremented a counter corresponding to the sample the factor occurred in. Once the pairs have been processed we sorted the samples by frequency and generated a new dictionary comprised of the most frequently used entries, stopping when we reached a specific usage threshold or byte limit. Such an approach, although simple, gives explicit control of memory use and should maximize compression effectiveness for a given number of samples.
+Results are shown in the tables. Dictionaries were generated from Clueweb09 256 Gb Wikipedia corpus. We generated samples as discussed above, and then pruned them to give a fixed-size dictionary. As can be seen, halving dictionary size led to a small increase in encoding size.
+Even at a ten-fold reduction in dictionary size, compression and document access was still better than with zlib. We observed consistent access speeds of over 100 documents per second simulating document requests for a typical IR system. These requests were generated from ranked listings using the first 5000 queries of TREC's MQ09 query-log. The top 20 ranked documents were used for each query. This is more than double the speed of access to uncompressed documents, or to documents compressed with zlib and lzma in block groups of varied size. Sequential decompression runs at around 10,000 documents per second, a significant increase in access speed compared to our two baseline implementations.
+Experiments were conducted on a 3.0 GHz Intel Xeon processor with 4Gb RAM running a Linux Kernel 2.6.18 and compiled with GCC 4.1.2 using full optimizations. Caches were dropped between each run. All timing results were recorded as wall clock time. Compressed collections used for evaluation are significantly larger than internal memory, so our timings account for disk seek and read latency as they are the dominant cost in document retrieval.
+Our earlier results showed that RLZ is the method of choice for compressing a large corpus. It gives excellent compression, fast retrieval, and can be easily modified for a dynamic environment. In this work we have shown that the dictionary size can be substantially reduced without loss of efficiency.
+3. REFERENCES
+[1] F. Chang, J. Dean, S. Ghemawat, W. C. Hsieh, D. A. Wallach, M. Burrows, T. Chandra, A. Fikes, and R. E. Gruber. Bigtable: A distributed storage system for structured data. ACM Transactions Computer Systems, 26(2):1­26, June 2008.
+
+Table 1: Sequential and Query-log results in documents/second for levels of redundancy elimination with 0.5 Gb, 1.0 Gb and 2.0 Gb RLZ dictionaries, using 1 Kb samples on a 256 Gb Wikipedia corpus.
+
+Orig. (GB)
+0.5 0.5 0.5 0.5
+1.0 1.0 1.0 1.0 2.0 2.0 2.0 2.0 2.0
+
+New. (GB)
+0.4 0.2 0.1
+0.5 0.2 0.1
+1.0 0.5 0.2 0.1
+
+Enc. (%)
+12.74 12.78 14.63 18.02
+11.04 12.02 16.28 19.30
+9.47 10.04 13.19 17.00 19.58
+
+Sequential
+10406.33 9820.51 8613.01 7519.87
+11540.16 10603.05
+7334.68 6653.83 14602.09 12220.75 9384.42 7235.04 6362.05
+
+Query log
+120.38 118.04 120.86 114.50
+123.51 121.99 113.78 109.40 123.54 125.00 112.52 110.43 112.53
+
+Table 2: Sequential and Query-log results in documents/second for baseline ASCII and blocked LZ runs on a 256 Gb Wikipedia corpus. A block size of 0.0 denotes that a single document was stored in each block.
+
+Alg.
+ascii zlib zlib zlib zlib zlib lzma lzma lzma lzma lzma
+
+Block (MB)
+0.0 0.1 0.2 0.5 1.0 0.0 0.1 0.2 0.5 1.0
+
+Enc. (%)
+100.00 24.13 20.54 19.38 18.66 18.43 22.33 17.24 14.29 11.92 10.81
+
+Sequential
+2093.22 2610.56 1690.13
+902.98 355.73 172.56 604.53 437.68 271.41 123.67
+65.62
+
+Query Log
+50.44 98.48 90.00 80.24 64.35 48.63 93.19 86.90 79.36 55.12 32.76
+
+[2] P. Ferragina and G. Manzini. On compressing the textual web. In Proc. 3rd ACM International Conference on Web Search and Data Mining (WSDM'10), pages 391­400, New York, NY, USA, 2010. ACM.
+[3] C. Hoobin, S. Puglisi, and J. Zobel. Relative Lempel-Ziv compression for fast random access (manuscript).
+[4] S. Kuruppu, S. Puglisi, and J. Zobel. Relative Lempel-Ziv compression of genomes for large-scale storage and retrieval. In Proc. 17th Symposium on String Processing and Information Retrieval (SPIRE'10), pages 201­206. Springer, 2010.
+[5] I. H. Witten, A. Moffat, and T. C. Bell. Managing Gigabytes: Compressing and Indexing Documents and Images, Second Edition. Morgan Kaufmann, 1999.
+[6] N. Ziviani, E. S. de Moura, G. Navarro, and R. Baeza-Yates. Compression: A key for next­generation text retrieval systems. Computer, 33:37­44, 2000.
+
+1138
+
+

@@ -1,0 +1,2291 @@
+Machine Learning, 49, 209­232, 2002 c 2002 Kluwer Academic Publishers. Manufactured in The Netherlands.
+
+Near-Optimal Reinforcement Learning in Polynomial Time
+
+MICHAEL KEARNS
+
+mkearns@cis.upenn.edu
+
+Department of Computer and Information Science, University of Pennsylvania, Moore School Building,
+
+200 South 33rd Street, Philadelphia, PA 19104-6389, USA
+
+SATINDER SINGH Syntek Capital, New York, NY 10019, USA
+
+satinder.baveja@syntekcapital.com
+
+Editor: Leslie Kaelbling
+
+Abstract. We present new algorithms for reinforcement learning and prove that they have polynomial bounds on the resources required to achieve near-optimal return in general Markov decision processes. After observing that the number of actions required to approach the optimal return is lower bounded by the mixing time T of the optimal policy (in the undiscounted case) or by the horizon time T (in the discounted case), we then give algorithms requiring a number of actions and total computation time that are only polynomial in T and the number of states and actions, for both the undiscounted and discounted cases. An interesting aspect of our algorithms is their explicit handling of the Exploration-Exploitation trade-off.
+Keywords: reinforcement learning, Markov decision processes, exploration versus exploitation
+
+1. Introduction
+In reinforcement learning, an agent interacts with an unknown environment, and attempts to choose actions that maximize its cumulative payoff (Sutton & Barto, 1998; Barto, Sutton, & Watkins, 1990; Bertsekas & Tsitsiklis, 1996). The environment is typically modeled as a Markov decision process (MDP), and it is assumed that the agent does not know the parameters of this process, but has to learn how to act directly from experience. Thus, the reinforcement learning agent faces a fundamental trade-off between exploitation and exploration (Bertsekas, 1987; Kumar & Varaiya, 1986; Thrun, 1992): that is, should the agent exploit its cumulative experience so far, by executing the action that currently seems best, or should it execute a different action, with the hope of gaining information or experience that could lead to higher future payoffs? Too little exploration can prevent the agent from ever converging to the optimal behavior, while too much exploration can prevent the agent from gaining near-optimal payoff in a timely fashion.
+There is a large literature on reinforcement learning, which has been growing rapidly in the last decade. Many different algorithms have been proposed to solve reinforcement learning problems, and various theoretical results on the convergence properties of these algorithms
+This work was done while both authors were at AT&T labs.
+
+210
+
+M. KEARNS AND S. SINGH
+
+have been proven. For example, Watkins Q-learning algorithm guarantees asymptotic convergence to optimal values (from which the optimal actions can be derived) provided every state of the MDP has been visited an infinite number of times (Watkins, 1989; Watkins & Dayan, 1992; Jaakkola, Jordan, & Singh, 1994; Tsitsiklis, 1994). This asymptotic result does not specify a strategy for achieving this infinite exploration, and as such does not provide a solution to the inherent exploitation-exploration trade-off. To address this, Singh et al. (2000) specify two exploration strategies that guarantee both sufficient exploration for asymptotic convergence to optimal actions, and asymptotic exploitation, for both the Q-learning and SARSA algorithms (a variant of Q-learning) (Rummery & Niranjan, 1994; Singh & Sutton, 1996; Sutton, 1995). Gullapalli and Barto (1994) and Jalali and Ferguson (1989) presented algorithms that learn a model of the environment from experience, perform value iteration on the estimated model, and with infinite exploration converge to the optimal policy asymptotically.
+These results, and to the best of our knowledge, all other results for reinforcement learning in general MDPs, are asymptotic in nature, providing no guarantee on either the number of actions or the computation time the agent requires to achieve near-optimal performance.
+On the other hand, non-asymptotic results become available if one considers restricted classes of MDPs, if the model of learning is modified from the standard one, or if one changes the criteria for success. Thus, Saul and Singh (1996) provide an algorithm and learning curves (convergence rates) for an interesting special class of MDPs problem designed to highlight a particular exploitation-exploration trade-off. Fiechter (1994, 1997), whose results are closest in spirit to ours, considers only the discounted-payoff case, and makes the learning protocol easier by assuming the availability of a "reset" button that allows his agent to return to a set of start-states at arbitrary times. Others have provided non-asymptotic results for prediction in uncontrolled Markov processes (Schapire & Warmuth, 1994; Singh & Dayan, 1998).
+Thus, despite the many interesting previous results in reinforcement learning, the literature has lacked algorithms for learning optimal behavior in general MDPs with provably finite bounds on the resources (actions and computation time) required, under the standard model of learning in which the agent wanders continuously in the unknown environment. The results presented in this paper fill this void in what is essentially the strongest possible sense.
+We present new algorithms for reinforcement learning, and prove that they have polynomial bounds on the resources required to achieve near-optimal payoff in general MDPs. After observing that the number of actions required to approach the optimal return is lower bounded, for any algorithm, by the mixing time T of the optimal policy (in the undiscountedpayoff case) or by the horizon time T (in the discounted-payoff case), we then give algorithms requiring a number of actions and total computation time that are only polynomial in T and the number of states, for both the undiscounted and discounted cases. An interesting aspect of our algorithms is their rather explicit handling of the exploitation-exploration trade-off.
+Two important caveats apply to our current results, as well as all the prior results mentioned above. First, we assume that the agent can observe the state of the environment, which may be an impractical assumption for some reinforcement learning problems. Second, we
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+211
+
+do not address the fact that the state space may be so large that we will have to resort to methods such as function approximation. While some results are available on reinforcement learning and function approximation (Sutton, 1988; Singh, Jaakkola, & Jordan, 1995; Gordon, 1995; Tsitsiklis & Roy, 1996), and for partially observable MDPs (Chrisman, 1992; Littman, Cassandra, & Kaelbling, 1995; Jaakkola, Singh, & Jordan, 1995), they are all asymptotic in nature. The extension of our results to such cases is left for future work.
+The outline of the paper is as follows: in Section 2, we give standard definitions for MDPs and reinforcement learning. In Section 3, we argue that the mixing time of policies must be taken into consideration in order to obtain finite-time convergence results in the undiscounted case, and make related technical observations and definitions. Section 4 makes similar arguments for the horizon time in the discounted case, and provides a needed technical lemma. The heart of the paper is contained in Section 5, where we state and prove our main results, describe our algorithms in detail, and provide intuitions for the proofs of convergence rates. Section 6 eliminates some technical assumptions that were made for convenience during the main proofs, while Section 7 discusses some extensions of the main theorem that were deferred for the exposition. Finally, in Section 8 we close with a discussion of future work.
+
+2. Preliminaries and definitions
+We begin with the basic definitions for Markov decision processes.
+Definition 1. A Markov decision process (MDP) M on states 1, . . . , N and with actions a1, . . . , ak, consists of:
+· The transition probabilities PMa (i j)  0, which for any action a, and any states i and j, specify the probability of reaching state j after executing action a from state i in M. Thus, j PMa (i j ) = 1 for any state i and action a.
+· The payoff distributions, for each state i, with mean RM (i) (where Rmax  RM (i)  0), and variance VarM (i)  Varmax. These distributions determine the random payoff received when state i is visited.
+For simplicity, we will assume that the number of actions k is a constant; it will be easily verified that if k is a parameter, the resources required by our algorithms scale polynomially with k.
+Several comments regarding some benign technical assumptions that we will make on payoffs are in order here. First, it is common to assume that payoffs are actually associated with state-action pairs, rather than with states alone. Our choice of the latter is entirely for technical simplicity, and all of the results of this paper hold for the standard state-action payoffs model as well. Second, we have assumed fixed upper bounds Rmax and Varmax on the means and variances of the payoff distributions; such a restriction is necessary for finite-time convergence results. Third, we have assumed that expected payoffs are always non-negative for convenience, but this is easily removed by adding a sufficiently large constant to every payoff.
+
+212
+
+M. KEARNS AND S. SINGH
+
+Note that although the actual payoffs experienced are random variables governed by the payoff distributions, for most of the paper we will be able to perform our analyses in terms of the means and variances; the only exception will be in Section 5.5, where we need to translate high expected payoffs into high actual payoffs.
+We now move to the standard definition of a stationary and deterministic policy in an MDP.
+
+Definition 2. Let M be a Markov decision process over states 1, . . . , N and with actions a1, . . . , ak. A policy in M is a mapping  : {1, . . . , N }  {a1, . . . , ak}.
+
+Later we will have occasion to define and use non-stationary policies, that is, policies in which the action chosen from a given state also depends on the time of arrival at that state.
+An MDP M, combined with a policy  , yields a standard Markov process on the states, and we will say that  is ergodic if the Markov process resulting from  is ergodic (that is, has a well-defined stationary distribution). For the development and exposition, it will be easiest to consider MDPs for which every policy is ergodic, the so-called unichain MDPs (Puterman, 1994). In a unichain MDP, the stationary distribution of any policy does not depend on the start state. Thus, considering the unichain case simply allows us to discuss the stationary distribution of any policy without cumbersome technical details, and as it turns out, the result for unichains already forces the main technical ideas upon us. Our results generalize to non-unichain (multichain) MDPs with just a small and necessary change to the definition of the best performance we can expect from a learning algorithm. This generalization to multichain MDPs will be given in Section 7. In the meantime, however, it is important to note that the unichain assumption does not imply that every policy will eventually visit every state, or even that there exists a single policy that will do so quickly; thus, the exploitationexploration dilemma remains with us strongly.
+The following definitions for finite-length paths in MDPs will be of repeated technical use in the analysis.
+
+Definition 3. Let M be a Markov decision process, and let  be a policy in M. A T -path in M is a sequence p of T + 1 states (that is, T transitions) of M:
+
+p = i1, i2, . . . , iT , iT +1.
+
+(1)
+
+The probability that p is traversed in M upon starting in state i1 and executing policy  is
+
+PrM [ p] =
+
+T k=1
+
+PM(i
+
+k
+
+)
+
+(ik
+
+i
+
+k
+
++1
+
+).
+
+(2)
+
+We now define the two standard measures of the return of a policy.
+
+Definition 4. Let M be a Markov decision process, let  be a policy in M, and let p be a T -path in M. The (expected) undiscounted return along p in M is
+
+UM
+
+( p)
+
+=
+
+1 T
+
+Ri1 + · · · + RiT
+
+(3)
+
+and the (expected) discounted return along p in M is
+
+VM ( p) = Ri1 +  Ri2 +  2 Ri3 · · · +  T -1 RiT
+
+(4)
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+213
+
+where 0   < 1 is a discount factor that makes future reward less valuable than immediate reward. The T -step undiscounted return from state i is
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+=
+
+PrM [ p]UM ( p)
+
+(5)
+
+p
+
+and the T -step discounted return from state i is
+
+VM (i, T ) = PrM [ p]VM ( p)
+
+(6)
+
+p
+
+where in both cases the sum is over all T -paths p in M that start at i. We define UM (i) =
+
+limT 
+
+UM (i,
+
+T
+
+)
+
+and
+
+VM (i )
+
+=
+
+limT 
+
+VM (i,
+
+T
+
+).
+
+Since
+
+we
+
+are
+
+in
+
+the
+
+unichain
+
+case,
+
+U
+
+ M
+
+(i
+
+)
+
+is independent of i, and we will simply write UM .
+
+Furthermore, we define the optimal T -step undiscounted return from i in M by
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+=
+
+max
+
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+(7)
+
+and similarly, the optimal T -step discounted return from i in M by
+
+VM (i,
+
+T)
+
+=
+
+max
+
+
+VM (i, T )
+
+.
+
+(8)
+
+Also,
+
+U
+
+ M
+
+(i
+
+)
+
+=
+
+limT
+
+
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+and
+
+VM (i ) =
+
+limT  VM (i, T ).
+
+Since
+
+we
+
+are
+
+in
+
+the
+
+unichain
+
+case,
+
+U
+
+ M
+
+(i
+
+)
+
+is
+
+independent
+
+of
+
+i,
+
+and
+
+we
+
+will
+
+simply
+
+write
+
+UM .
+
+The
+
+existence
+
+of these limits is guaranteed in the unichain case.
+
+Finally, we denote the maximum possible T -step return by GmT ax; in the undiscounted
+
+case
+
+G
+
+T max
+
+
+
+Rmax,
+
+while
+
+in
+
+the
+
+discounted
+
+case
+
+GmT ax
+
+
+
+TRmax.
+
+3. The undiscounted case and mixing times
+It is easy to see that if we are seeking results about the undiscounted return of a learning algorithm after a finite number of steps, we need to take into account some notion of the mixing times of policies in the MDP. To put it simply, in the undiscounted case, once we move from the asymptotic return to the finite-time return, there may no longer be a welldefined notion of "the" optimal policy. There may be some policies which will eventually yield high return (for instance, by finally reaching some remote, high-payoff state), but take many steps to approach this high return, and other policies which yield lower asymptotic return but higher short-term return. Such policies are simply incomparable, and the best we could hope for is an algorithm that "competes" favorably with any policy, in an amount of time that is comparable to the mixing time of that policy.
+The standard notion of mixing time for a policy  in a Markov decision process M quantifies the smallest number T of steps required to ensure that the distribution on states after T steps of  is within of the stationary distribution induced by  , where the distance between distributions is measured by the Kullback-Leibler divergence, the variation distance, or some other standard metric. Furthermore, there are well-known methods for bounding this mixing time in terms of the second eigenvalue of the transition matrix PM ,
+
+214
+
+M. KEARNS AND S. SINGH
+
+and also in terms of underlying structural properties of the transition graph, such as the conductance (Sinclair, 1993). It turns out that we can state our results for a weaker notion of mixing that only requires the expected return after T steps to approach the asymptotic return.
+
+Definition 5. Let M be a Markov decision process, and let  be an ergodic policy in M. The
+
+-return mixing time of  is the smallest T
+
+such that for all T
+
+
+
+T
+
+,
+
+|U
+
+ M
+
+(i,
+
+T
+
+) - UM | 
+
+for all i.
+
+Suppose we are simply told that there is a policy  whose asymptotic return UM exceeds some value R in an unknown MDP M, and that the -return mixing time of  is T .
+
+In principle, a sufficiently clever learning algorithm (for instance, one that managed to
+
+discover
+
+
+
+"quickly")
+
+could
+
+achieve
+
+return
+
+close
+
+to
+
+U
+
+ M
+
+-
+
+in not much more than T
+
+steps. Conversely, without further assumptions on M or  , it is not reasonable to expect
+
+any
+
+learning
+
+algorithm
+
+to
+
+approach
+
+return
+
+U
+
+ M
+
+in
+
+many
+
+fewer
+
+than
+
+T
+
+steps.
+
+This
+
+is
+
+simply
+
+because it may take the assumed policy  itself on the order of T steps to approach its
+
+asymptotic return. For example, suppose that M has just two states and only one action (see
+
+figure 1): state 0 with payoff 0, self-loop probability 1 - , and probability of going
+
+to state 1; and absorbing state 1 with payoff R 0. Then for small and , the -return
+
+mixing time is on the order of 1/ ; but starting from state 0, it really will require on the
+
+order of 1/ steps to reach the absorbing state 1 and start approaching the asymptotic
+
+return R.
+
+We now relate the notion of -return mixing time to the standard notion of mixing time.
+
+Lemma 1. Let M be a Markov decision process on N states, and let  be an ergodic policy
+in M. Let T be the smallest value such that for all T  T, for any state i, the probability
+of being in state i after T steps of  is within /(NRmax) of the stationary probability of i under  . Then the -return mixing time of  is at most . 3TRmax
+
+The proof of the lemma follows in a straightforward way from the linearity of expectations, and is omitted. The important point is that the -return mixing time is polynomially
+
+Figure 1. A simple Markov process demonstrating that finite-time convergence results must account for mixing times.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+215
+
+bounded by the standard mixing time, but may in some cases be substantially smaller. This would happen, for instance, if the policy quickly settles on a subset of states with common payoff, but takes a long time to settle to its stationary distribution within this subset. Thus, we will choose to state our results for the undiscounted return in terms of the -return mixing time, but can always translate into the standard notion via Lemma 1.
+With the notion of -return mixing time, we can now be more precise about what type of result is reasonable to expect for the undiscounted case. We would like a learning algorithm such that for any T , in a number of actions that is polynomial in T , the return of the learning algorithm is close to that achieved by the best policy among those that mix in time T . This motivates the following definition.
+
+Definition 6. Let M be a Markov decision process. We define ergodic policies  in M whose -return mixing time is at most T the optimal expected asymptotic undiscounted return among all
+
+T, M
+
+to
+
+. We let
+
+policies
+
+be the
+
+opt (
+
+in
+
+T, M
+
+class of all
+
+T, M
+
+)
+
+denote
+
+.
+
+Thus, our goal in the undiscounted case will be to compete with the policies in
+
+T, M
+
+in
+
+time that is polynomial in T , 1/ and N . We will eventually give an algorithm that meets this
+
+goal for every T and simultaneously. An interesting special case is when T = T , where
+
+T  is the -mixing time of the asymptotically optimal policy, whose asymptotic return is
+
+U . Then in time polynomial in T , 1/ and N , our algorithm will achieve return exceeding
+
+U  - with high probability. It should be clear that, modulo the degree of the polynomial
+
+running time, such a result is the best that one could hope for in general MDPs.
+
+4. The discounted case and the horizon time
+
+For the discounted case, the quantification of which policies a learning algorithm is competing against is more straightforward, since the discounting makes it possible in principle to compete against all policies in time proportional to the horizon time. In other words, unlike in the undiscounted case, the expected discounted return of any policy after T  1/(1 -  ) steps approaches the expected asymptotic discounted return. This is made precise by the following lemma.
+
+Lemma 2. Let M be any Markov decision process, and let  be any policy in M. If
+
+T  (1/(1 -  )) log(Rmax/( (1 -  )))
+
+(9)
+
+then for any state i,
+
+VM (i, T )  VM (i )  VM (i, T ) + .
+
+(10)
+
+We call the value of the lower bound on T given above the -horizon time for the discounted MDP M.
+
+Proof: The lower bound on VM (i) follows trivially from the definitions, since all expected payoffs are nonnegative. For the upper bound, fix any infinite path p, and let R1, R2, . . . be
+
+216
+
+M. KEARNS AND S. SINGH
+
+the expected payoffs along this path. Then
+
+VM ( p) = R1 +  R2 +  2 R3 + · · ·
+
+(11)
+
+T
+
+
+
+
+
+ k-1 Rk + Rmax T
+
+k
+
+(12)
+
+k=1
+
+k=0
+
+= VM ( p ) + Rmax T (1/(1 -  ))
+
+(13)
+
+where p is the T -path prefix of the infinite path p. Solving
+
+Rmax T (1/(1 -  )) 
+
+(14)
+
+for T yields the desired bound on T ; since the inequality holds for every fixed path, it also
+
+holds for the distribution over paths induced by any policy  .
+
+
+
+In the discounted case, we must settle for a notion of "competing" that is slightly different than for the undiscounted case. The reason is that while in the undiscounted case, since the total return is always simply averaged, a learning algorithm can recover from its "youthful mistakes" (low return during the early part of learning), this is not possible in the discounted case due to the exponentially decaying effects of the discounting factor. The most we can ask for is that, in time polynomial in the -horizon time, the learning algorithm has a policy that, from its current state, has discounted return within of the asymptotic optimal for that state. Thus, if time were reinitialized to 0, with the current state being the start state, the learned policy would have near-optimal expected return. This is the goal that our algorithm will achieve for general MDPs in the discounted case.
+
+5. Main theorem
+
+We are now ready to describe our new learning algorithms, and to state and prove our main
+
+theorem: namely, that the new algorithms will, for a general MDP, achieve near-optimal
+
+performance in polynomial time,where the notions of performance and the parameters of
+
+the running time (mixing and horizon times) have been described in the preceding sections.
+
+For ease of exposition only, we will first state the theorem under the assumption that the
+
+learning algorithm is given as input a "targeted" mixing time T , and the optimal return
+
+opt(
+
+T, M
+
+)
+
+achieved
+
+by
+
+any
+
+policy
+
+mixing
+
+within
+
+T
+
+steps
+
+(for
+
+the
+
+undiscounted
+
+case),
+
+or
+
+the
+
+optimal value function V (i) (for the discounted case). This simpler case already contains
+
+the core ideas of the algorithm and analysis, and these assumptions are entirely removed in
+
+Section 6.
+
+Theorem 3 (Main Theorem). Let M be a Markov decision process over N states.
+
+· (Undiscounted case) Recall that
+
+T, M
+
+is the class of all ergodic policies whose
+
+-return
+
+mixing time is bounded by T, and that opt(
+
+T, M
+
+)
+
+is
+
+the
+
+optimal
+
+asymptotic
+
+expected
+
+undiscounted return achievable in
+
+T, M
+
+.
+
+There
+
+exists
+
+an
+
+algorithm
+
+A,
+
+taking
+
+inputs
+
+, , N , T and opt(
+
+T, M
+
+),
+
+such
+
+that
+
+the
+
+total
+
+number
+
+of
+
+actions
+
+and
+
+computation
+
+time
+
+taken by A is polynomial in 1/ , 1/, N , T, and Rmax, and with probability at least 1 - ,
+
+the total actual return of A exceeds opt(
+
+T, M
+
+)-
+
+.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+217
+
+· (Discounted case) Let V (i) denote the value function for the policy with the optimal expected discounted return in M. Then there exists an algorithm A, taking inputs , , N and V (i), such that the total number of actions and computation time taken by A is polynomial in 1/ , 1/, N , the horizon time T = 1/(1 -  ), and Rmax, and with probability at least 1 - , A will halt in a state i, and output a policy ^ , such that VM^ (i )  V (i ) - .
+The remainder of this section is divided into several subsections, each describing a different and central aspect of the algorithm and proof. The full proof of the theorem is rather technical, but the underlying ideas are quite intuitive, and we sketch them first as an outline.
+
+5.1. High-level sketch of the proof and algorithms
+Although there are some differences between the algorithms and analyses for the undiscounted and discounted cases, for now it will be easiest to think of there being only a single algorithm. This algorithm will be what is commonly referred to as indirect or model-based: namely, rather than only maintaining a current policy or value function, the algorithm will actually maintain a model for the transition probabilities and the expected payoffs for some subset of the states of the unknown MDP M. It is important to emphasize that although the algorithm maintains a partial model of M, it may choose to never build a complete model of M, if doing so is not necessary to achieve high return.
+It is easiest to imagine the algorithm as starting off by doing what we will call balanced wandering. By this we mean that the algorithm, upon arriving in a state it has never visited before, takes an arbitrary action from that state; but upon reaching a state it has visited before, it takes the action it has tried the fewest times from that state (breaking ties between actions randomly). At each state it visits, the algorithm maintains the obvious statistics: the average payoff received at that state so far, and for each action, the empirical distribution of next states reached (that is, the estimated transition probabilities).
+A crucial notion for both the algorithm and the analysis is that of a known state. Intuitively, this is a state that the algorithm has visited "so many" times (and therefore, due to the balanced wandering, has tried each action from that state many times) that the transition probability and expected payoff estimates for that state are "very close" to their true values in M. An important aspect of this definition is that it is weak enough that "so many" times is still polynomially bounded, yet strong enough to meet the simulation requirements we will outline shortly. The fact that the definition of known state achieves this balance is shown in Section 5.2.
+States are thus divided into three categories: known states, states that have been visited before, but are still unknown (due to an insufficient number of visits and therefore unreliable statistics), and states that have not even been visited once. An important observation is that we cannot do balanced wandering indefinitely before at least one state becomes known: by the Pigeonhole Principle, we will soon start to accumulate accurate statistics at some state. This fact will be stated more formally in Section 5.5.
+Perhaps our most important definition is that of the known-state MDP. If S is the set of currently known states, the current known-state MDP is simply an MDP MS that is
+
+218
+
+M. KEARNS AND S. SINGH
+
+naturally induced on S by the full MDP M; briefly, all transitions in M between states in S are preserved in MS, while all other transitions in M are "redirected" in MS to lead to a single additional, absorbing state that intuitively represents all of the unknown and unvisited states.
+Although the learning algorithm will not have direct access to MS, by virtue of the definition of the known states, it will have an approximation M^ S. The first of two central technical lemmas that we prove (Section 5.2) shows that, under the appropriate definition of known state, M^ S will have good simulation accuracy: that is, the expected T -step return of any policy in M^ S is close to its expected T -step return in MS. (Here T is either the mixing time that we are competing against, in the undiscounted case, or the horizon time, in the discounted case.) Thus, at any time, M^ S is a partial model of M, for that part of M that the algorithm "knows" very well.
+The second central technical lemma (Section 5.3) is perhaps the most enlightening part of the analysis, and is named the "Explore or Exploit" Lemma. It formalizes a rather appealing intuition: either the optimal (T -step) policy achieves its high return by staying, with high probability, in the set S of currently known states--which, most importantly, the algorithm can detect and replicate by finding a high-return exploitation policy in the partial model M^ S--or the optimal policy has significant probability of leaving S within T steps--which again the algorithm can detect and replicate by finding an exploration policy that quickly reaches the additional absorbing state of the partial model M^ S.
+Thus, by performing two off-line, polynomial-time computations on M^ S (Section 5.4), the algorithm is guaranteed to either find a way to get near-optimal return in M quickly, or to find a way to improve the statistics at an unknown or unvisited state. Again by the Pigeonhole Principle, the latter case cannot occur too many times before a new state becomes known, and thus the algorithm is always making progress. In the worst case, the algorithm will build a model of the entire MDP M, but if that does happen, the analysis guarantees that it will happen in polynomial time.
+The following subsections flesh out the intuitions sketched above, providing the full proof of Theorem 3. In Section 6, we show how to remove the assumed knowledge of the optimal return.
+
+5.2. The simulation lemma
+In this section, we prove the first of two key technical lemmas mentioned in the sketch of Section 5.1: namely, that if one MDP M^ is a sufficiently accurate approximation of another MDP M, then we can actually approximate the T -step return of any policy in M quite accurately by its T -step return in M^ .
+Eventually, we will appeal to this lemma to show that we can accurately assess the return of policies in the induced known-state MDP MS by computing their return in the algorithm's approximation M^ S (that is, we will appeal to Lemma 4 below using the settings M = MS and M^ = M^ S). The important technical point is that the goodness of approximation required depends only polynomially on 1/T , and thus the definition of known state will require only a polynomial number of visits to the state.
+We begin with the definition of approximation we require.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+219
+
+Definition 7. Let M and M^ be Markov decision processes over the same state space. Then we say that M^ is an -approximation of M if:
+
+· For any state i,
+
+RM (i ) -   RM^ (i )  RM (i ) + ;
+
+(15)
+
+· For any states i and j, and any action a,
+
+PMa (i j ) -   PMa^ (i j )  PMa (i j ) + .
+
+(16)
+
+We now state and prove the Simulation Lemma, which says that provided M^ is sufficiently close to M in the sense just defined, the T -step return of policies in M^ and M will be similar.
+
+Lemma 4 (Simulation Lemma). Let M be any Markov decision process over N states.
+
+·
+
+(Undiscounted case) Let M^ be an O((
+
+/(NTG
+
+T max
+
+))2)-approximation
+
+of
+
+M
+
+.
+
+Then
+
+for
+
+any
+
+policy  in
+
+T, M
+
+/2,
+
+1
+
+and
+
+for
+
+any
+
+state
+
+i,
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+-
+
+ UM^ (i, T )  UM (i, T ) + .
+
+(17)
+
+· (Discounted case) Let T  (1/(1 -  )) log(Rmax/( (1 -  ))), and let M^ be an O( /
+
+(NTG
+
+T max
+
+))2)-approximation
+
+of
+
+M.
+
+Then
+
+for
+
+any
+
+policy
+
+
+
+and
+
+any
+
+state
+
+i,
+
+VM (i ) -  VM^ (i )  VM (i ) + .
+
+(18)
+
+Proof: Let us fix a policy  and a start state i. Let us say that a transition from a state i
+
+to a state j under action a is -small in M if PMa (i j )  . Then the probability that T steps from state i following policy  will cross at least one -small transition is at most
+
+NT. This is because the total probability of all -small transitions in M from any state i
+
+under action (i ) is at most  N , and we have T independent opportunities to cross such a
+
+transition.
+
+This
+
+implies
+
+that
+
+the
+
+total
+
+expected
+
+contribution
+
+to
+
+either
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+or
+
+VM
+
+(i,
+
+T
+
+)
+
+by the walks of  that cross at least one -small transition of M is at most NTGmT ax.
+
+of at
+
+SlMeiam)s,tiltaohrnelyet,ostia-nslcmceoaPlnlMtarti(rbaiunjtsii)otinontooeifmitMhpeliriesUs aPM^tMa(^mi(,ioTsjt)
+
+)   +  (since M^ is an -approximation
+
+or (
+
+V+M^(i),NTT)GbmTyaxt.hWe we aclakns
+
+of  thus
+
+that cross bound the
+
+difference between UM to these walks by ( +
+
+(i, 2
+
+)TN)TaGnmTdaUx.MW^ (ie,
+
+T ) (or between VM (i, T ) will eventually determine
+
+and VM^ (i, T a choice for
+
+)) 
+
+restricted and solve
+
+(
+
++
+
+2
+
+)NTG
+
+T max
+
+
+
+/4
+
+(19)
+
+for .
+Thus, for now we restrict our attention to the walks of length T that do not cross any -small transition of M. Note that for any transition satisfying PMa (i j ) > , we can convert the additive approximation
+
+PMa (i j ) -   PMa^ (i j )  PMa (i j ) + 
+
+(20)
+
+220
+
+M. KEARNS AND S. SINGH
+
+to the multiplicative approximation
+
+(1 - )PMa (i j )  PMa^ (i j )  (1 + )PMa (i j )
+
+(21)
+
+where = /. Thus, for any T -path p that, under  , does not cross any -small transitions of M, we have
+
+(1 - )T PrM [ p]  PrM^ [ p]  (1 + )T PrM [ p].
+
+(22)
+
+For any T -path p, the approximation error in the payoffs yields
+
+UM ( p) -   UM^ ( p)  UM ( p) + 
+
+(23)
+
+and
+
+VM ( p) - T   VM^ ( p)  VM ( p) + T .
+
+(24)
+
+Since these inequalities hold for any fixed T -path that does not traverse any -small transitions in M under  , they also hold when we take expectations over the distributions on such T -paths in M and M^ induced by  . Thus,
+
+(1 -
+
+)T
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+-
+
+
+
+-
+
+/4
+
+
+
+U
+
+ M^
+
+(i,
+
+T
+
+)
+
+
+
+(1
+
++
+
+)T
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
++
+
+
+
++
+
+/4
+
+(25)
+
+and
+
+(1 - )T VM (i, T ) - T  - /4  VM^ (i, T )  (1 + )T VM (i, T ) + T  + /4 (26)
+
+where the additive /4 terms account for the contributions of the T -paths that traverse -small transitions under , as bounded by Eq. (19).
+For the upper bounds, we will use the following Taylor expansion:
+
+log(1 + )T = T log(1 + ) = T ( - 2/2 + 3/3 - · · ·)  T /2.
+
+(27)
+
+Now to complete the analysis for the undiscounted case, we need two conditions to hold:
+
+(1 + )T UM (i, T )  UM (i, T ) + /8
+
+(28)
+
+and
+
+(1 + )T   /8,
+
+(29)
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+221
+
+because then (1 +
+
+)T [UM (i, T ) + ] +
+
+/4
+
+
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
++
+
+/2. The first condition would
+
+be satisfied if (1 +
+
+)T  1 +
+
+/8G
+
+T max
+
+;
+
+solving
+
+for
+
+we obtain T
+
+/2 
+
+/8G
+
+T max
+
+or
+
+
+
+/(4TG
+
+T max
+
+).
+
+This
+
+value
+
+of
+
+also implies that (1 + )T is a constant and therefore
+
+satisfying the second condition would require that  = O( ).
+
+
+
+Recalling the earlier constraint given by Eq. (19), if we choose  = , then we find that
+
+(
+
++
+
+2
+
+)NTG
+
+T max
+
+
+
+ 3 NTG
+
+T max
+
+
+
+/4
+
+(30)
+
+and
+
+ = / =  
+
+4T
+
+G
+
+T max
+
+(31)
+
+and  = O( ) are all satisfied by the choice of  given in the lemma. A similar argument
+
+yields the desired lower bound, which completes the proof for the undiscounted case. The
+
+analysis for the discounted case is entirely analogous, except we must additionally appeal
+
+to Lemma 2 in order to relate the T -step return to the asymptotic return.
+
+
+
+The Simulation Lemma essentially determines what the definition of known state should
+be: one that has been visited enough times to ensure (with high probability) that the
+estimated transition probabilities and the estimated payoff for the state are all within O(( /(NTGmT ax))2) of their true values. The following lemma, whose proof is a straightforward application of Chernoff bounds, makes the translation between the number of visits
+to a state and the desired accuracy of the transition probability and payoff estimates.
+
+Lemma 5. Let M be a Markov decision process. Let i be a state of M that has been visited
+at least m times, with each action a1, . . . , ak having been executed at least m/k times from i. Let P^Ma (i j) denote the empirical probability transition estimates obtained from the m visits to i. For
+
+m=O
+
+NTG
+
+T max
+
+4 Varmax log(1/)
+
+(32)
+
+with probability at least 1 - , we have
+
+P^Ma (i j ) - PMa (i j ) = O
+
+NTG
+
+T max
+
+2
+
+(33)
+
+for all states j and actions a, and
+
+R^ M (i ) - RM (i ) = O
+
+NTG
+
+T max
+
+2
+
+(34)
+
+where Varmax = maxi [VarM (i)] is the maximum variance of the random payoffs over all states.
+
+Thus, we get our formal definition of known states:
+
+222
+
+M. KEARNS AND S. SINGH
+
+Definition 8. Let M be a Markov decision process. We say that a state i of M is known if each action has been executed from i at least
+
+mknown = O NTGmT ax
+
+4Varmax log(1/)
+
+(35)
+
+times.
+
+5.3. The "explore or exploit" lemma
+Lemma 4 indicates the degree of approximation required for sufficient simulation accuracy, and led to the definition of a known state. If we let S denote the set of known states, we now specify the straightforward way in which these known states define an induced MDP. This induced MDP has an additional "new" state, which intuitively represents all of the unknown states and transitions.
+
+Definition 9. Let M be a Markov decision process, and let S be any subset of the states of M. The induced Markov decision process on S, denoted MS, has states S  {s0}, and transitions and payoffs defined as follows:
+
+· For any state i  S, RMS (i) = RM (i); all payoffs in MS are deterministic (zero variance) even if the payoffs in M are stochastic.
+
+· RMS (s0) = 0.
+
+· ·
+
+For any action a, For any states i,
+
+PMa S j
+
+(s0s0) = 1. Thus, s0 S, and any action
+
+is a,
+
+an absorbing state. PMa S (i j ) = PMa (i j ).
+
+Thus,
+
+transitions
+
+in
+
+M
+
+between states in S are preserved in MS.
+
+· For any state i  S and any action a, PMa S (i s0) = j/S PMa (i j ). Thus, all transitions in
+
+M that are not between states in S are redirected to s0 in MS.
+
+Definition 9 describes an MDP directly induced on S by the true unknown MDP M,
+and as such preserves the true transition probabilities between states in S. Of course, our
+algorithm will only have approximations to these transition probabilities, leading to the following obvious approximation to MS: if we simply let M^ denote the obvious empirical approximation to M2, then M^ S is the natural approximation to MS. The following lemma establishes the simulation accuracy of M^ S, and follows immediately from Lemma 4 and Lemma 5.
+
+Lemma 6. Let M be a Markov decision process, and let S be the set of currently known
+
+states of M. Then with probability at least 1 - ,
+
+· (Undiscounted case) For any policy  in
+
+T, MS
+
+/2,
+
+and
+
+for
+
+any
+
+state
+
+i,
+
+U
+
+ MS
+
+(i,
+
+T
+
+)
+
+-
+
+
+
+U
+
+ M^ S
+
+(i,
+
+T
+
+)
+
+
+
+U
+
+ MS
+
+(i,
+
+T
+
+)
+
++
+
+.
+
+(36)
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+223
+
+· (Discounted case) Let T  (1/(1 -  )) log(Rmax/( (1 -  ))). Then for any policy  and any state i,
+
+VMS (i ) -  VM^ S (i )  VMS (i ) + .
+
+(37)
+
+Let us also observe that any return achievable in MS (and thus approximately achievable in M^ S) is also achievable in the "real world" M:
+
+Lemma 7. Let M be a Markov decision process, and let S be the set of currently known
+
+states of M. Then for any policy  and VMS (i, T )  VM (i, T ).
+
+in
+
+M, any
+
+state
+
+i
+
+
+
+S,
+
+and any
+
+T
+
+,
+
+U
+
+ MS
+
+(i
+
+,
+
+T
+
+)
+
+
+
+UM (i, T )
+
+Proof: Follows immediately from the facts that MS and M are identical on S, the expected
+
+payoffs are non-negative, and that outside of S no payoff is possible in MS.
+
+
+
+We are now at the heart of the analysis: we have identified a "part" of the unknown MDP M that the algorithm "knows" very well, in the form of the approximation M^ S to MS. The key lemma follows, in which we demonstrate the fact that MS (and thus, by the Simulation Lemma, M^ S) must always provide the algorithm with either a policy that will yield large immediate return in the true MDP M, or a policy that will allow rapid exploration of an
+unknown state in M (or both).
+
+Lemma 8 (Explore or Exploit Lemma). Let M be any Markov decision process, let S
+
+be any subset of the states of M, and let MS be the induced Markov decision process on
+
+M. For any i  S, any T, and any 1 >  > 0, either there exists a policy  in MS such
+
+that
+
+U
+
+ MS
+
+(i,
+
+T
+
+)
+
+
+
+UM
+
+(i,
+
+T
+
+)
+
+-
+
+
+
+(respectively,
+
+VM S
+
+(i,
+
+T
+
+)
+
+
+
+VM
+
+(i,
+
+T
+
+)
+
+-
+
+),
+
+or
+
+there
+
+exists
+
+a
+
+policy  in MS such that the probability that a walk of T steps following  will terminate
+
+in s0 exceeds /GmT ax.
+
+Proof: We give the proof for the undiscounted case; the argument for the discounted case
+
+is
+
+analogous.
+
+Let
+
+
+
+be
+
+a
+
+policy
+
+in
+
+M
+
+satisfying
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+=
+
+UM
+
+(i
+
+,
+
+T
+
+),
+
+and
+
+suppose
+
+that
+
+U
+
+ MS
+
+(i,
+
+T
+
+)
+
+<
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+-
+
+
+
+(otherwise,
+
+
+
+already
+
+witnesses
+
+the
+
+claim
+
+of
+
+the
+
+lemma).
+
+We
+
+may write
+
+U
+
+ M
+
+(i,
+
+T
+
+)
+
+=
+
+PrM [ p]UM ( p)
+
+(38)
+
+p
+
+= PrM [q]UM (q) + PrM [r ]UM (r )
+
+(39)
+
+q
+
+r
+
+where the sums are over, respectively, all T -paths p in M that start in state i, all T -paths q in M that start in state i and in which every state in q is in S, and all T -paths r in M that start in state i and in which at least one state is not in S. Keeping this interpretation of the variables p, q and r fixed, we may write
+
+PrM [q]UM (q) =
+
+PrMS
+
+[q ]U MS
+
+(q )
+
+
+
+U
+
+ M
+
+S
+
+(i,
+
+T
+
+).
+
+(40)
+
+q
+
+q
+
+224
+
+M. KEARNS AND S. SINGH
+
+The equality follows from the fact that for any path q in which every state is in S, PrM [q] =
+
+PrMS [q]
+
+and
+
+UM (q)
+
+=
+
+UMS (q),
+
+and
+
+the
+
+inequality
+
+from
+
+the
+
+fact
+
+that
+
+U
+
+ M
+
+S
+
+(i
+
+,
+
+T)
+
+takes
+
+the
+
+sum over all T -paths in MS, not just those that avoid the absorbing state s0. Thus
+
+PrM [q]UM (q)  UM (i, T ) - 
+
+(41)
+
+q
+
+which implies that
+
+PrM [r ]UM (r )  .
+
+(42)
+
+r
+
+But
+
+PrM
+
+[r
+
+]UM
+
+(r )
+
+
+
+G
+
+T max
+
+PrM [r ]
+
+(43)
+
+r
+
+r
+
+and so
+
+PrM
+
+[r
+
+]
+
+
+
+/G
+
+T max
+
+(44)
+
+r
+
+as desired.
+
+
+
+5.4. Off-line optimal policy computations
+Let us take a moment to review and synthesize. The combination of Lemmas 6, 7 and 8 establishes our basic line of argument:
+· At any time, if S is the set of current known states, the T -step return of any policy  in M^ S (approximately) lower bounds the T -step return of (any extension of)  in M.
+· At any time, there must either be a policy in M^ S whose T -step return in M is nearly optimal, or there must be a policy in M^ S that will quickly reach the absorbing state--in which case, this same policy, executed in M, will quickly reach a state that is not currently in the known set S.
+In this section, we discuss how with two off-line, polynomial-time computations on M^ S, we can find both the policy with highest return (the exploitation policy), and the one with the highest probability of reaching the absorbing state in T -steps (the exploration policy). This essentially follows from the fact that the standard value iteration algorithm from the dynamic programming literature is able to find T -step optimal policies for an arbitrary MDP with N states in O(N 2T ) computation steps for both the discounted and the undiscounted cases.
+For the sake of completeness, we present the undiscounted and discounted value iteration algorithms (Bertsekas & Tsitsiklis, 1989) below. The optimal T -step policy may be nonstationary, and is denoted by a sequence   = {1, 2, 3, . . . , T }, where t(i ) is the optimal action to be taken from state i on the tth step.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+225
+
+T -step Undiscounted Value Iteration:
+
+Initialize: for all i  M^ S, UT +1(i ) = 0.0
+
+For t = T, T - 1, T - 2, . . . , 1:
+
+for for
+
+all all
+
+i, i,
+
+Ut (i ) = t(i ) =
+
+RM^ S (i ) + maxa argmaxa[RM^ S (i )
+
+j
++
+
+PMa^ S (i j )Ut+1( j ) j PMa^ S (i j )Ut+1( j )]
+
+Undiscounted value iteration works backwards in time, first producing the optimal policy for time step T , then the optimal policy for time step T - 1, and so on. Observe that for finite T a policy that maximizes cumulative T -step return will also maximize the average T -step return.
+
+T -step Discounted Value Iteration:
+
+Initialize: for all i  M^ S, VT +1(i ) = 0.0
+
+For t = T, T - 1, T - 2, . . . , 1:
+
+for for
+
+all all
+
+i, i,
+
+Vt (i ) = RM^ S (i ) +  maxa t(i ) = argmaxa[RM^ S (i ) +
+
+j
+
+
+PMa^ S (i j )Vt+1( j ) j PMa^ S (i j )Vt+1( j )]
+
+Again, discounted value iteration works backwards in time, first producing the optimal
+policy for time step T , then the optimal policy for time step T - 1, and so on. Note that the total computation involved is O(N 2T ) for both the discounted and the
+undiscounted cases.
+Our use of value iteration will be straightforward: at certain points in the execution of the algorithm, we will perform value iteration off-line twice: once on M^ S (using either the
+undiscounted or discounted version, depending on the measure of return), and a second time on what we will denote M^ S (on which the computation will use undiscounted value iteration, regardless of the measure of return).
+The MDP M^ S has the same transition probabilities as M^ S, but different payoffs: in M^ S, the absorbing state s0 has payoff Rmax and all other states have payoff 0. Thus we reward exploration (as represented by visits to s0) rather than exploitation. If ^ is the policy returned by value iteration on M^ S and ^ is the policy returned by value iteration on M^ S, then Lemma 8 guarantees that either the T -step return of ^ from our current known state approaches the
+optimal achievable in M (which for now we are assuming we know, and can thus detect), or
+the probability that ^ reaches s0, and thus that the execution of ^ in M reaches an unknown
+or unvisited state in T steps with significant probability (which we can also detect).
+
+5.5. Putting it all together
+All of the technical pieces we need are now in place, and we now give a more detailed description of the algorithm, and tie up some loose ends. In Section 6, we remove the assumption that we know the optimal returns that can be achieved in M.
+
+226
+
+M. KEARNS AND S. SINGH
+
+In the sequel, we will use the expression balanced wandering to denote the steps of the algorithm in which the current state is not a known state, and the algorithm executes the action that has been tried the fewest times before from the current state. Note that once a state becomes known, by definition it is never involved in a step of balanced wandering again. We use mknown to denote the number of visits required to a state before it becomes a known state (different for the undiscounted and discounted cases), as given by Definition 8.
+We call the algorithm the Explicit Explore or Exploit (or E3) algorithm, because whenever the algorithm is not engaged in balanced wandering, it performs an explicit off-line computation on the partial model in order to find a T -step policy guaranteed to either exploit or explore. In the description that follows, we freely mix the description of the steps of the algorithm with observations that will make the ensuing analysis easier to digest.
+
+The Explicit Explore or Exploit (E3) Algorithm:
+
+· (Initialization) Initially, the set S of known states is empty. · (Balanced Wandering) Any time the current state is not in S, the algorithm performs
+balanced wandering. · (Discovery of New Known States) Any time a state i has been visited mknown times during
+balanced wandering, it enters the known set S, and no longer participates in balanced
+wandering. · Observation: Clearly, after N (mknown - 1) + 1 steps of balanced wandering, by the
+Pigeonhole Principle some state becomes known. This is the worst case, in terms of
+the time required for at least one state to become known. More generally, if the to-
+tal number of steps of balanced wandering the algorithm has performed ever exceeds
+N mknown, then every state of M is known (even if these steps of balanced wandering are not consecutive). This is because each known state can account for at most mknown steps of balanced wandering. · (Off-line Optimizations) Upon reaching a known state i  S during balanced wandering, the algorithm performs the two off-line optimal policy computations on M^ S and M^ S described in Section 5.4:
+
+­ (Attempted Exploitation) If the resulting exploitation policy ^ achieves return from i in M^ S that is at least U  - /2 (respectively, in the discounted case, at least V (i) - /2), the algorithm executes ^ for the next T steps (respectively, halts and outputs i and ^ ).
+
+Here T is the given /2-mixing time given to the algorithm as input (respectively, the
+
+horizon time).
+
+­ (Attempted Exploration) Otherwise, the algorithm executes the resulting exploration
+
+policy ^ (derived from the off-line computation on M^ S) for T steps in M, which by
+
+Lemma 8 is guaranteed to have probability at least
+
+/(2G
+
+T max
+
+)
+
+of
+
+leaving
+
+the
+
+set
+
+S.
+
+· (Balanced Wandering) Any time an attempted exploitation or attempted exploration visits a state not in S, the algorithm immediately resumes balanced wandering.
+· Observation: Thus, every action taken by the algorithm in M is either a step of balanced wandering, or is part of a T -step attempted exploitation or attempted exploration.
+
+This concludes the description of the algorithm; we can now wrap up the analysis.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+227
+
+One of the main remaining issues is our handling of the confidence parameter  in the statement of the main theorem: for both the undiscounted and discounted case, Theorem 3 ensures that a certain performance guarantee is met with probability at least 1 - . There are essentially three different sources of failure for the algorithm:
+
+· At some known state, the algorithm actually has a poor approximation to the next-state distribution for some action, and thus M^ S does not have sufficiently strong simulation accuracy for MS.
+· Repeated attempted explorations fail to yield enough steps of balanced wandering to
+result in a new known state. · (Undiscounted case only) Repeated attempted exploitations fail to result in actual return
+near U .
+
+Our handling of the failure probability  is to simply allocate /3 to each of these sources
+
+of failure. The fact that we can make the probability of the first source of failure (a "bad"
+
+known state) controllably small is quantified by Lemma 6. Formally, we use  = /3N in
+
+Lemma 6 to meet the requirement that all states in MS be known simultaneously.
+
+For the second source of failure (failed attempted explorations), a standard Chernoff
+
+bound analysis suffices: by Lemma 8, each attempted exploration can be viewed as an
+
+independent Bernoulli trial with probability at least
+
+/(2G
+
+T max
+
+)
+
+of
+
+"success"
+
+(at
+
+least
+
+one
+
+step of balanced wandering). In the worst case, we must make every state known before
+
+we can exploit, requiring N mknown steps of balanced wandering. The probability of having fewer than N mknown steps of balanced wandering will be smaller than /3 if the number of
+
+(T -step) attempted explorations is
+
+O
+
+G
+
+T max
+
+N log(N /)mknown .
+
+(45)
+
+We can now finish the analysis for the discounted case. In the discounted case, if we ever discover a policy ^ whose return from the current state i in M^ S is close to V (i) (attempted exploitation), then the algorithm is finished by arguments already detailed--since (with high probability) M^ S is a very accurate approximation of part of M, ^ must be a near-optimal policy from i in M as well (Lemma 7). As long as the algorithm is not finished, it must be
+engaged in balanced wandering or attempted explorations, and we have already bounded
+the number of such steps before (with high probability) every state is in the known set S. If and when S does contain all states of M, then M^ S is actually an accurate approximation of the entire MDP M, and then Lemma 8 ensures that exploitation must be possible (since
+exploration is not). We again emphasize that the case in which S eventually contains all of
+the states of M is only the worst case for the analysis--the algorithm may discover it is
+able to halt with a near-optimal exploitation policy long before this ever occurs.
+Using the value of mknown given for the discounted case by Definition 8, the total number of actions executed by the algorithm in the discounted case is thus bounded by T times the
+maximum number of attempted explorations, given by Eq. (45), for a bound of
+
+O
+
+NTG
+
+T max
+
+log(N /)mknown .
+
+(46)
+
+228
+
+M. KEARNS AND S. SINGH
+
+The total computation time is bounded by O(N 2T ) (the time required for the off-line computations) times the maximum number of attempted explorations, giving
+
+O N 3T GmT ax log(N /)mknown .
+
+(47)
+
+For the undiscounted case, things are slightly more complicated, since we do not want to simply halt upon finding a policy whose expected return is near U , but want to achieve actual return approaching U , which is where the third source of failure (failed attempted
+exploitations) enters. We have already argued that the total number of T -step attempted
+explorations the algorithm can perform before S contains all states of M is polynomially
+bounded. All other actions of the algorithm must be accounted for by T -step attempted
+exploitations. Each of these T -step attempted exploitations has expected return at least U  - /2. The probability that the actual return, restricted to just these attempted exploitations, is less than U  - 3 /4, can be made smaller than /3 if the number of blocks exceeds O((1/ )2 log(1/)); this is again by a standard Chernoff bound analysis. However, we also
+need to make sure that the return restricted to these exploitation blocks is sufficient to
+dominate the potentially low return of the attempted explorations. It is not difficult to show that provided the number of attempted exploitations exceeds O(GmT ax/ ) times the number of attempted explorations (bounded by Eq. (45)), both conditions are satisfied, for a total number of actions bounded by O(T / ) times the number of attempted explorations, which
+is
+
+O
+
+NT
+
+G
+
+T max
+
+2 log(N /)mknown .
+
+(48)
+
+The total computation time is thus O(N 2T / ) times the number of attempted explorations, and thus bounded by
+
+O N 3T GmT ax 2 log(N /)mknown .
+
+(49)
+
+This concludes the proof of the main theorem. We remark that no serious attempt to minimize these worst-case bounds has been made; our immediate goal was to simply prove polynomial bounds in the most straightforward manner possible. It is likely that a practical implementation based on the algorithmic ideas given here would enjoy performance on natural problems that is considerably better than the current bounds indicate. (See Moore and Atkeson (1993) for a related heuristic algorithm.)
+
+6. Eliminating knowledge of the optimal returns and the mixing time
+
+In order to simplify our presentation of the main theorem, we made the assumption that
+
+the learning algorithm was given as input the targeted mixing time T and the optimal
+
+return opt(
+
+T, M
+
+)
+
+achievable
+
+in
+
+this
+
+mixing
+
+time
+
+(in
+
+the
+
+undiscounted
+
+case),
+
+or
+
+the
+
+value
+
+function V (i) (in the discounted case; the horizon time T is implied by knowledge of the
+
+discounting factor  ). In this section, we sketch the straightforward way in which these
+
+assumptions can be removed without changing the qualitative nature of the results, and
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+229
+
+briefly discuss some alternative approaches that may result in a more practical version of the
+
+algorithm.
+
+Let us begin by noting that knowledge of the optimal returns opt(
+
+T, M
+
+)
+
+or
+
+V (i )
+
+is
+
+used
+
+only in the Attempted Exploitation step of the algorithm, where we must compare the return
+
+possible from our current state in M^ S with the best possible in the entire unknown MDP M.
+
+In the absence of this knowledge, the Explore or Exploit Lemma (Lemma 8) ensures us that
+
+it is safe to have a bias towards exploration. More precisely, any time we arrive in a known
+
+state i, we will first perform the Attempted Exploration off-line computation on the modified known-state MDP M^ S described in Section 5.4, to obtain the optimal exploration policy ^ . Since it is a simple matter to compute the probability that ^ will reach the absorbing state s0 of M^ S in T steps, we can then compare this probability to the lower bound /(2GmT ax) of Lemma 8. As long as this lower bound is exceeded, we may execute ^ in an attempt to visit
+
+a state not in S. If this lower bound is not exceeded, Lemma 8 guarantees that the off-line computation on M^ S in the Attempted Exploitation step must result in an exploitation policy
+^ that is close to optimal. As before, in the discounted case we halt and output ^ , while in
+
+the undiscounted case we execute ^ in M and continue.
+
+Note that this exploration-biased solution to removing knowledge of opt(
+
+T, M
+
+)
+
+or
+
+V (i )
+
+results in the algorithm always exploring all states of M that can be reached in a reasonable
+
+amount of time, before doing any exploitation. Although this is a simple way of removing the
+
+knowledge while keeping a polynomial-time algorithm, practical variants of our algorithm
+
+might pursue a more balanced strategy, such as the standard approach of having a strong
+
+bias towards exploitation instead, but doing enough exploration to ensure rapid convergence
+
+to the optimal performance. For instance, we can maintain a schedule (t)  [0, 1], where
+
+t is the total number of actions taken in M by the algorithm so far. Upon reaching a known
+
+state, the algorithm performs Attempted Exploitation (execution of ^ ) with probability
+
+1 - (t), and Attempted Exploration (execution of ^ ) with probability (t). For choices such as (t) = 1/t, standard analyses ensure that we will still explore enough that M^ S
+
+will, in polynomial time, contain a policy whose return is near the optimal of M, but the
+
+return we have enjoyed in the meantime may be much greater than the exploration-biased
+
+solution given above. Note that this approach is similar in spirit to the " -greedy" method
+
+of augmenting algorithms such as Q-learning with an exploration component, but with a
+
+crucial difference: while in -greedy exploration, we with probability (t) attempt a single
+
+action designed to visit a rarely visited state, here we are proposing that with probability
+
+(t) we execute a multi-step policy for reaching an unknown state, a policy that is provably justified by M^ S.
+For the undiscounted case, it still remains to remove our assumption that the algorithm
+
+knows the targeted mixing time T . Indeed, we would like to state our main theorem for any
+
+value of T : that is, for any T , as long as we run the algorithm for a number of steps that is
+
+polynomial in T and the other parameters, the total return will exceed opt(
+
+T, M
+
+)
+
+-
+
+with
+
+high probability. This is easily accomplished: ignoring all other parameters, we already have
+
+an algorithm A(T ) that, given T as input, runs for P(T ) steps for some fixed polynomial
+
+P(·) and meets the desired criterion. We now propose a new algorithm A , which does not
+
+need T as input, and simply runs A sequentially for T = 1, 2, 3, . . . . For any T , the amount
+
+of time A must be run before A has executed A(T ) is
+
+T t =1
+
+P (t )
+
+
+
+TP(T
+
+)
+
+=
+
+P
+
+(T
+
+),
+
+which
+
+230
+
+M. KEARNS AND S. SINGH
+
+is still polynomial in T . We just need to run A for sufficiently many steps after the first P (T ) steps to dominate any low-return periods that took place in those P (T ) steps, similar to the analysis done for the undiscounted case towards the end of Section 5.5. We again note that this solution, while sufficient for polynomial time, is far from the one we would implement in practice: for instance, we would clearly want to modify the algorithm so that the many sequential executions of A shared and accumulated common partial models of M.
+
+7. The multichain case
+
+The main issue in extending our results to arbitrary multichain MDPs is that the asymptotic undiscounted return for any policy  is not independent of the start state. This makes the undiscounted case for multichain MDPs look a lot like the usual discounted case. Indeed, our results extend to arbitrary multichain MDPs in the discounted case without any modification. Therefore, one way to deal with the undiscounted-case multichain MDPs is to only ask that given polynomial time our algorithm will be in a state for which it has a policy that has an expected return that is near-optimal for that state. Another way is to modify what we can expect when we compete against a policy: instead of expecting to compete against the largest asymptotic return over any start state for that policy, we can compete against the lowest asymptotic return over any start state for that policy. Thus, we modify Definitions 5 and 6 as follows:
+
+Definition 5. Let M be a Markov decision process, and let  be any policy in M. The -
+
+return mixing time of  is the smallest T such that for all T
+
+
+
+T,
+
+|UM (i, T
+
+)
+
+-
+
+U
+
+ M
+
+(i
+
+)|
+
+
+
+for all i.
+
+Definition 6. Let M be an arbitrary Markov decision class of all policies in M whose -return mixing time
+
+process. We is at most T
+
+define . We let
+
+T, M
+
+to
+
+opt(
+
+be the
+
+T, M
+
+)
+
+=
+
+max  policies
+
+T, [mini
+
+M
+in
+
+T, M
+
+U .
+
+ M
+
+(i
+
+)],
+
+be
+
+the
+
+optimal
+
+expected
+
+asymptotic
+
+undiscounted
+
+return
+
+among
+
+all
+
+Under these refined definitions, all of our undiscounted-case results on unichain MDPs extend without modification to arbitrary MDPs.
+
+8. Future work There are a number of interesting lines for further research.
+
+· Practical implementation. Although the polynomial bounds proven here are far too large to immediately claim the practical relevance of our algorithm, we feel that the underlying algorithmic ideas are very promising and will eventually result in a competitive algorithm. We are currently examining the practical issues and choices that arise for an implementation, some of which were discussed briefly in Section 6, and we hope to report on an implementation and experiments soon.
+
+NEAR-OPTIMAL REINFORCEMENT LEARNING
+
+231
+
+· A model-free version. Partially related to the last item, it would be nice to find an algorithm similar to ours that did not require maintaining a partial model, but only a policy (or perhaps several). We are currently investigating this as well.
+· Large state spaces. It would be interesting to study the applicability of recent methods for dealing with large state spaces, such as function approximation, to our algorithm. This has been recently investigated in the context of factored MDPs (Kearns & Koller, 1999).
+
+Acknowledgments
+We give warm thanks to Tom Dean, Tom Dietterich, Tommi Jaakkola, Leslie Kaelbling, Michael Littman, Lawrence Saul, Terry Sejnowski, and Rich Sutton for valuable comments. Satinder Singh was supported by NSF grant IIS-9711753 for the portion of this work done while he was at the University of Colorado, Boulder.
+
+Notes
+1. Note that the lemma for the undiscounted case is stated with respect to those policies whose /2-return mixing time is T, as opposed to -return mixing time. However, the /2-return and -return mixing times are linearly related by standard eigenvalue arguments.
+2. That is, the states of M^ are simply all the states visited so far, the transition probabilities of M^ are the observed transition frequencies, and the rewards are the observed rewards.
+
+References
+Barto, A. G., Sutton, R. S., & Watkins, C. (1990). Sequential decision problems and neural networks. In D. S. Touretzky (Ed.), Advances in neural information processing systems 2 (pp. 686­693). San Mateo, CA: Morgan Kaufmann.
+Bertsekas, D. P. (1987). Dynamic programming: Deterministic and stochastic models. Englewood Cliffs, NJ: Prentice-Hall.
+Bertsekas, D. P., & Tsitsiklis, J. N. (1989). Parallel and distributed computation: Numerical methods. Englewood Cliffs, NJ: Prentice-Hall.
+Bertsekas, D. P., & Tsitsiklis, J. N. (1996). Neuro-dynamic programming. Belmont, MA: Athena Scientific. Chrisman, L. (1992). Reinforcement learning with perceptual aliasing: The perceptual distinctions approach. In
+AAAI-92. Fiechter, C. (1994). Efficient reinforcement learning. In COLT94: Proceedings of the Seventh Annual ACM
+Conference on Computational Learning Theory (pp. 88­97). New York: ACM Press. Fiechter, C. (1997). Expected mistake bound model for on-line reinforcement learning. In Machine Learning:
+Proceedings of the Fourteenth International Conference, ICML97 (pp. 116­124). San Mateo, CA: Morgan Kaufmann. Gordon, G. J. (1995). Stable function approximation in dynamic programming. In A. Prieditis, & S., Russell (Eds.), Machine Learning: Proceedings of the Twelth International Conference (pp. 261­268). San Mateo, CA: Morgan Kaufmann. Gullapalli, V., & Barto, A. G. (1994). Convergence of indirect adaptive asynchronous value iteration algorithms. In J. D. Cowan, G. Tesauro, & J. Alspector (Eds.), Advances is neural information processing systems 6 (pp. 695­ 702). San Mateo, CA: Morgan Kauffman. Jaakkola, T., Jordan, M. I., & Singh, S. (1994). On the convergence of stochastic iterative dynamic programming algorithms. Neural Computation, 6:6, 1185­1201.
+
+232
+
+M. KEARNS AND S. SINGH
+
+Jaakkola, T., Singh, S., & Jordan, M. I. (1995). Reinforcement learning algorithm for partially observable Markov decision problems. In G. Tesauro, D. S. touretzky, & T. K. Leen (Eds.), Advances in neural information processing systems 7 (pp. 345­352). San Mateo, CA: Morgan Kaufmann.
+Jalali, A., & Ferguson, M. (1989). A distributed asynchronous algorithm for expected average cost dynamic programming. In Proceedings of the 29th Conference on Decision and Control, Honolulu, Hawaii (pp. 1283­ 1288).
+Kearns, M., & Koller, D. (1999). Efficient reinforcement learning in factored MDPs. In Proceeding of the Sixteenth International Joint Conference on Artificial Intelligence (pp. 740­747). Morgan Kaufmann.
+Kumar, P. R., & Varaiya, P. P. (1986). Stochastic systems: Estimation, identification, and adaptive control. Englewood Cliffs, N.J.: Prentice Hall.
+Littman, M., Cassandra, A., & Kaelbling., L. (1995). Learning policies for partially observable environments: Scaling up. In A. Prieditis, & S. Russell (Eds.), Proceedings of the Twelfth International Conference on Machine Learning (pp. 362­370). San Francisco, CA: Morgan Kaufmann.
+Moore, A. W., & Atkeson, C. G. (1993). Prioritized sweeping: Reinforcement learning with less data and less real time. Machine Learning, 12:1.
+Puterman, M. L. (1994). Markov decision processes : Discrete stochastic dynamic programming. New York: John Wiley & Sons.
+Rummery, G. A., & Niranjan, M. (1994). On-line Q-learning using connectionist systems. Technical Report CUED/F-INFENG/TR 166, Cambridge University Engineering Dept.
+Saul, L., & Singh, S. (1996). Learning curve bounds for markov decision processes with undiscounted rewards. In COLT96: Proceedings of the Ninth Annual ACM Conference on Computational Learning Theory.
+Schapire, R. E., & Warmuth, M. K. (1994). On the worst-case analysis of temporal-difference learning algorithms. In W. W. Cohen, & H. Hirsh (Eds.), Machine Learning: Proceedings of the Eleventh International Conference (pp. 266­274). San Mateo, CA: Morgan Kaufmann.
+Sinclair, A. (1993). Algorithms for random generation and counting: A Markov chain approach. Boston: Birkhauser.
+Singh, S., & Dayan, P. (1998). Analytical mean squared error curves for temporal difference learning. Machine Learning, 32:1, 5­40.
+Singh, S., Jaakkola, T., & Jordan, M. I. (1995). Reinforcement learning with soft state aggregation. In Advances in neural information processing systems 7. San Mateo, CA: Morgan Kaufmann.
+Singh, S., Jaakkola, T., Littman, M. L., & Szepesvari, C. (2000). Convergence results for single-step on-policy reinforcement learning algorithms. Machine Learning, 38:3, 287­308.
+Singh, S., & Sutton, R. S. (1996). Reinforcement learning with replacing eligibility traces. Machine Learning, 22, 123­158.
+Sutton, R. S. (1988). Learning to predict by the methods of temporal differences. Machine Learning, 3, 9­44. Sutton, R. S. (1995). Generalization in reinforcement learning: Successful examples using sparse coarse coding.
+In D. S. Touretzky, M. C. Mozer, & M. E. Hasselmo (Eds.), Advances in neural information processing systems 8 (pp. 1038­1044). Cambridge, MA: MIT Press. Sutton, R. S., & Barto, A. G. (1998). Reinforcement learning: An introduction. Cambridge, MA: MIT Press. Thrun, S. B. (1992). The role of exploration in learning control. In D. A. White, & D. A. Sofge (Eds.), Handbook of intelligent control: Neural, fuzzy and adaptive approaches. Florence, KY: Van Nostrand Reinhold. Tsitsiklis, J. (1994). Asynchronous stochastic approximation and Q-learning. Machine Learning, 16:3, 185­202. Tsitsiklis, J., & Roy, B. V. (1996). Feature-based methods for large scale dynamic programming. Machine Learning, 22, 59­94. Watkins, C. J. C. H. (1989). Learning from delayed rewards. Ph.D. thesis, Cambridge Univ., Cambridge, England, UK. Watkins, C. J. C. H., & Dayan, P. (1992). Q-learning. Machine Learning, 8:3/4, 279­292.
+Received March 17, 1999 Revised October 4, 2001 Accepted October 4, 2001 Final manuscript October 4, 2001
+
+

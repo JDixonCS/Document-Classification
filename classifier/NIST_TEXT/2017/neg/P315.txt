@@ -1,0 +1,1262 @@
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Personalized Key Frame Recommendation
+
+Xu Chen
+Tsinghua University xu-ch14@mails.tsinghua.edu.cn
+
+Yongfeng Zhang
+
+Qingyao Ai
+
+University of Massachuse s Amherst University of Massachuse s Amherst
+
+zhangyf07@gmail.com
+
+aiqy@cs.umass.edu
+
+Hongteng Xu
+Georgia Institute of Technology hxu42@gatech.edu
+
+Junchi Yan
+East China Normal University IBM Research -- China jcyan@sei.ecnu.edu.cn
+
+Zheng Qin
+Tsinghua University qinzh@mails.tsinghua.edu.cn
+
+ABSTRACT
+Key frames are playing a very important role for many video applications, such as on-line movie preview and video information retrieval. Although a number of key frame selection methods have been proposed in the past, existing technologies mainly focus on how to precisely summarize the video content, but seldom take the user preferences into consideration. However, in real scenarios, people may cast diverse interests on the contents even for the same video, and thus they may be a racted by quite di erent key frames, which makes the selection of key frames an inherently personalized process. In this paper, we propose and investigate the problem of personalized key frame recommendation to bridge the above gap. To do so, we make use of video images and user time-synchronized comments to design a novel key frame recommender that can simultaneously model visual and textual features in a uni ed framework. By user personalization based on her/his previously reviewed frames and posted comments, we are able to encode di erent user interests in a uni ed multi-modal space, and can thus select key frames in a personalized manner, which, to the best of our knowledge, is the rst time in the research eld of video content analysis. Experimental results show that our method performs be er than its competitors on various measures.
+KEYWORDS
+Key Frame; Personalization; Recommender Systems; Collaborative Filtering; Video Content Analysis
+1 INTRODUCTION
+All along, key frames are of fundamental importance for the videobased applications, for example, users in the on-line movie websites can readily preview a video under the help the exhibited key frames even without watching the whole content, video search engines can e ciently return the results by matching the queries with the
+* Both authors contributed equally to this work.  Corresponding author. Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '17, August 7­11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3080776
+
+key frames of the candidate items. Although key frame extraction methods [10, 22, 58] have been widely investigated in the past, the proposed technologies mostly aim to summarize the video content, but seldom consider user preferences on the extracted key frames. However, in many applications, di erent people may be interested in various video contents, and thus may be a racted by quite di erent key frames. Without the guidance of tailored key frames, users may easily miss their potentially favorite videos.
+erefore, in this paper, we would like to ask "whether it is possible to design an e ective model to select and recommend personalized key frames according to users' di erent tastes."
+In real scenarios, the main challenge to answer the above question is the lack of users' personalized interaction information that reveals their "frame-level" viewing preferences. Fortunately, the emerging of video sharing websites such as Niconico1, BiliBili2, and AcFun3 may shed light on this problem, where users are allowed to express opinions directly to the frames of interest by time-synchronized comments (or TSCs, rst introduced in [49], see Figure 1) in a real-time manner. Intuitively, the user behaviors of commenting on a frame can be regarded as implicit feedback re ecting the frame-level preference, while the image features of the reviewed frame and the text features in the posted timesynchronized comment can further help to model the user speci c (or ner-grained) preference from di erent perspectives. For example in Figure 1, user A expresses her preference on a frame with time-synchronized comment "... I like his overcoat, it looks cool and also must be very comfortable with good quality". On one hand, from the content of the time-synchronized comment we can indicate that the user express a positive sentiment on this frame, and the particular aspect that a racts her a ention is the quality of the clothes. On the other hand, from the frame image, we can further infer the visual features of her interests, such as clothing texture, which are usually di cult to describe with text. By leveraging all the historical implicit feedback as well as the features (image and text) of users' interest, we can collaboratively match a target user with her potentially favorite frames.
+Based on the above motivation and intuition, we describe and analyze a novel Key Frame Recommender by modeling user timesynchronized Comments and the key frame Images simultaneously (called KFRCI). e main building block of our proposed method is to integrate the power of model-based collaborative ltering and
+1h p://www.nicovideo.jp 2h p://www.bilibili.com 3h p://www.acfun.cn
+
+315
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+long-short term memory network. e carefully designed collaborative ltering component aims to capture user preferences based on image features, while the modi ed long-short term memory network component aims to model user time-synchronized comments to excavate her personalized opinions toward di erent frames. Furthermore, by integrating these two components, we build a uni ed framework that can encode user preference in a multi-modal space so as to facilitate comprehensive user pro ling and accurate key frame recommendation.
+Compared with previous works, the main contributions of our paper are as follows:
+· We propose and investigate the problem of personalized key frame recommendation, and to the best of our knowledge, this is the rst work to select video key frames based on users' personalized preferences.
+· For be er addressing the above novel problem, we present a novel neural architecture that combines collaborative ltering and long-short term memory network together to jointly model user time-synchronized comments and video key frame images.
+· We conduct extensive experiments to demonstrate the effectiveness of our proposed models, and also we present detailed analysis on the parameters as well as the e ects of di erent information sources (image and text) in our framework.
+In the rest of the paper, we rst introduce the related work in section 2, and then formally de ne our problem in section 3. Our framework is illustrated in section 4. In section 5, we verify the e ectiveness of our method with experimental results. Conclusions and outlooks of this work are presented in section 6.
+2 RELATED WORK
+2.1 Review-based Recommendation
+Recommender system is a well studied eld with many e ective models proposed [5, 7, 17, 19, 35, 39]. Recently, for be er capturing user preferences, user reviews has a racted more and more research interest [3, 42, 43], and many review-based models have been proposed to improve the recommendation performance [2, 4, 9, 11, 29, 31, 37, 41, 45, 46, 51, 56] or enhance the interpretability [16, 38, 50, 50, 57].
+According to the review processing methods, these models can be generally classi ed into two categories. On one hand, some methods leverage the review text on document- or review-level, which take every piece of user review as a whole for global analysis. Speci cally, [31, 41] link the latent factors in rating data with the topics in the textual review to generate more accurate recommendations, and [9, 51] propose to leverage probabilistic graphical method to include more exible prior knowledge for review modeling. To be er capture the local semantic information in user reviews, [56] combine traditional matrix factorization technology with word2vec [34] for more precise review modeling and recommendation.,
+On the other hand, some approaches try to leverage textual reviews on a feature- or aspect-level, which rst extract product features and user sentiments from user reviews, and then represent the unstructured free-text reviews as structured feature-opinion
+
+Figure 1: A simple example of TSC. Di erent users may express real-time opinions directly upon their interested frames. e comments are manually translated into English by the authors.
+pairs to facilitate ner-grained user preference modeling. Particularly, [57] use multi-matrix factorization to generate explainable recommendations based on the extracted product features. [4] further captures user favorite product features in a learning to rank manner.
+Compared with the aforementioned methods, we leverage longshort term memory network in our model to capture the word sequential properties mirrored in the time-synchronized comments, which has mostly been ignore by the previous works.
+2.2 Image-based Recommendation
+Recently, there is a trend to incorporate visual features into the research of personalized recommendation [8, 15, 32]. Speci cally, [15] infuses the image features into the traditional ranking-based method to improve the performance of Top-N recommendation. [8] combines the product images and item descriptions together to make dynamic predictions. [32] leverages visual features to discover di erent relationships between items.
+Generally, these methods aim to take advantage of image features to boost the performance of traditional item recommendation, such as product recommendation in E-commerce. Instead, we aim at a very di erent task of key frame (which itself is an image) recommendation, where image is not a side information but the target to process. Besides, previous works did not capture user preference from the time-synchronized comments, which is another main di erence when compared with our model.
+2.3 Time-synchronized Comments
+Time-Synchronized Comments (TSC) is rst introduced in [49] for automatic video shot tagging, where the authors proposed a novel method to extract time-synchronized video tags by automatically exploiting crowd-sourcing comments. [52] further leverages TSC to extract highlight shots for a video with a frequency-based method. However, the extracted highlight shots are static and could not provide tailed key frames for di erent users, which is the inherent di erence from the personalized key frame recommendation task targeted in our work.
+
+316
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+2.4 Key Frame Extraction
+A similar research direction to our work is key frame extraction (or video summarization), it has a racted much research interest and many models have been proposed in the past. Early works [13, 28] usually extract visual features of frames at rst, and then cluster frames accordingly to generate key frames. To improve the performance, other types of information beyond visual features are considered in recent work, including the viewer a ention [30, 53, 54], audio signal [23], subtitles [27], etc. Moreover, semantic information has also been exploited to summarize videos, including special events [47, 48], key people and objects [24, 26], and story-lines [25]. Compared with these models, our work essentially make a further step forward by distinguishing user preferences on the extracted key frames.
+3 PRELIMINARIES AND PROBLEM DEFINITION
+3.1 Dataset Inspection
+e data used in our work is crawled from a well-known video sharing website Bilibili4. We obtained the time-synchronized comments from the movie category till December 10th, 2015. To be er understand the insights of this dataset, we conducted preliminary statistic analyses, which are listed as Table 1 and Figure 2.
+Table 1: Overall statistics of the time-synchronized comment (TSC) dataset.
+
+Total number of users (#users) Total number of movies (#movies)
+Total number of TSCs (#TSCs)
+Ave. TSCs per movie Ave. users per movie Ave. TSCs per user Max/Min number of TSCs for a movie Max/Min number of users for a movie Max/Min number of TSCs for a user
+
+1,133,750 7,166
+11,842,166
+1,652.5 465.9 10.4
+8,028/101 3,370/1 68,236/1
+
+As can be seen in Figure 2, the quantity of active users is relatively small, and most users only sent a small number of TSCs, which conforms to the "long tail" theory that is frequently observed in user behavior analysis. Similar results can also be found between the number of users and movies.
+
+3.2 Problem Formalization
+
+Suppose there are N users u = {u1, u2, ..., uN } and M videos v =
+
+{ 1, 2, ..., M }. We rst segment each movie i  v into L shots
+
+l
+
+i
+
+=
+
+{l
+
+1
+i
+
+,
+
+l
+
+2
+i
+
+,
+
+...,
+
+l
+
+L
+i
+
+},
+
+and
+
+then
+
+generate
+
+key
+
+frames
+
+correspond-
+
+ingly leveraging existing methods such as [33, 36]. e key frame
+
+in shot l j i is de ned as k j i , and K represents the whole set of key
+
+frames among all the videos.
+
+Suppose the visual features of key frame k is de ned as vslk , and let user u's time-synchronized comment on key frame k be tscuk with sentiment polarity poluk , which is determined by the Stanford sentiment analysis toolkit5. e word list in tscuk is de ned as wtscuk = {wt0scuk , wt1scuk , ..., wtsuscku-k1}, where suk is the length of the comment.
+
+Given all the visual features V SL = {vslk |k  K } as well as users'
+
+historical time-synchronized comments W = {wtscuk |u  u, k 
+
+K } and their corresponding sentiments POL = {poluk |u  u, k 
+
+K }, for a target user u and one of her unseen movie i  V with pre-
+
+selected
+
+key
+
+frames
+
+{k
+
+1
+i
+
+,
+
+k2i
+
+,
+
+...k
+
+L
+i
+
+},
+
+our
+
+task
+
+is
+
+to
+
+nd a function
+
+(·) to re-rank these key frames according to u s interest, that
+
+is,
+
+( {k 1 i
+
+, k2i
+
+,
+
+...,
+
+k
+
+L
+i
+
+} |u , W
+
+,
+
+POL,V SL)
+
+=
+
+{k
+
+o1
+i
+
+,
+
+k
+
+o
+
+2
+i
+
+,
+
+...k
+
+oL
+i
+
+},
+
+where
+
+{o1, o2, ..., oL} is an ordering of {1, 2, ..., L}. e top n key frames
+
+among the nal results are at last recommended (shown) to user
+
+u. To make more clear presentation, we list the notations used
+
+throughout the paper in Table 2.
+
+4 KEY FRAME RECOMMENDER
+We rst propose an improved collaborative ltering method to capture users' frame-level preference by making use of image visual features. en to model the textual features mirrored in timesynchronized comments, we modify the long short term memory network by infusing per-user personalization information. Lastly, we design a uni ed framework to jointly model frame images as well as time-synchronized comments.
+For clarity and integrality, we rst re-describe the widely used matrix factorization (MF) model as a neural network. Formally, let pu and qk represent the latent factors of user u and item k, then the likeness (or score) of u to k can be predicted as ^uk = pTu qk . In the context of neural network (see Figure 3), the user/item IDs with one-hot format can be seen as inputs fed into the architecture, then the embedding layer projects these sparse representations into denser vectors, which can be regarded as the latent factors in matrix factorization models. At last, the nal result ^uk is computed as the vector inner product between pu and qk .
+
+Figure 2: On the le is the relation between the number of comments and users, while on the right is the relation between the number of users and movies.
+
+4.1 Image-based Model
+To capture user preference from frame images, we fuse the visual features into the above framework. Speci cally, our principled design is shown in Figure 4. Suppose the dimension of the user/frame
+
+4h p://www.bilibili.com
+
+5h ps://nlp.stanford.edu/sentiment/
+
+317
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 2: Notations and descriptions.
+
+Notations u v li
+k, kj i , K
+vslk, V S L
+tscuk, poluk
+wtscuk , W
+
+pu, qk O +, O -
+
+K ne N word
+ht
+
+D
+
+Weupkri me0a,
+
+eeup,krWe1
+
+,
+i
+
+. ,
+
+. ., w
+
+oeuuptkrpeuDt
+
+M ERG E (), LOGI ST IC (), LST M () ^uimk a e , ^uTkSC , ^uinkt e r at ed
+
+Descriptions
+
+e set of N users
+
+{u1, u2, ..., uN }. e set of M movies
+
+{ 1, 2, ..., M }.
+
+e set of L
+
+{l 1 i
+
+,
+
+l2i
+
+,
+
+.
+
+.
+
+.l
+
+L i
+
+}
+
+for
+
+i.
+
+shots movie
+
+An arbitrary key frame, the key frame of shot l j i , and the set of all key frames.
+
+e preprocessed visual feature of
+
+frame k, and the set of all visual
+
+features.
+
+u's time-synchronized comment
+
+on key frame k , and the polarity
+
+of t scuk
+
+e
+
+word
+
+list
+
+{wt0scuk , wt1scuk , . . .wtssucku-k1 } in t scuk , and the set of all
+
+time-synchronized comments.
+
+Latent factors of user u and frame
+
+k.
+
+e set of positive, and sampled
+
+negative feedbacks.
+
+Number of negative instances.
+
+Size of the word vocabulary.
+
+e hidden state in LSTM at itera-
+
+tion t
+
+e number of non-linear layers.
+
+Preference embeddings of u on k .
+
+Weighting matrix that maps vslk into a K dimensional vector, the
+
+coe cient matrix used to weight
+
+eeuuppkkrr
+
+ei-1 , and eD into a
+
+a vector scalar.
+
+that
+
+maps
+
+e merge function, logistic func-
+
+tion, and LSTM network.
+
+User u's predicted likeness score to frame k when using image, TSC, and integrated information.
+
+latent factors (embedding) is d, then each visual feature is rst mapped into a d dimensional vector, which is then merged with the frame latent factor to generate a new embedding (blue circle in the
+gure). Lastly, the user latent factors together with the newly generated embedding are fed into the inner product layer to compute the nal prediction.
+Image enhanced key frame representation. Again, let pu and qk be the latent factors of user u and key frame k, respectively. We rst use Ca e deep learning framework [21] to generate visual features from the original frame images, where we adopted the Ca e reference model with 5 convolutional layers followed by 3 fully-connected layers that has been pre-trained on 1.2 million ImageNet (ILSVRC2010) images. For frame k, we use the output of FC7, namely, the second fully-connected layer, as the nal visual feature vslk , which is a feature vector of length 4096.
+
+Sparse one-hot representation
+
+User 
+
+Item 
+
+0 1 0 0 0 0 ... 0
+
+0 0 0 0 1 0 ... 0
+
+Embedding layer
+
+Embedding layer
+
+$
+
+&
+
+Inner Product ($&
+Figure 3: Matrix Factorization as Neural Network.
+
+Let W ima e  Rd×4096 be the weighting matrix that maps vslk into a d dimensional vector, then the new key frame representation
+can be derived as:
+
+qk = MERGE (qk ,W ima e · vslk )
+
+(1)
+
+where MERGE : Rd × Rd  Rd is a function that merges two d dimension vectors into one. e particular choice of MERGE in our model is a simple element-wise multiplication, i.e.,
+
+MERGE (a1, a2, ..., aK ), (b1, b2, ..., bK ) = (a1b1, a2b2, ..., aK bK ) (2)
+however, it is not necessarily restricted to this function and many choices can be used in practice according to the speci c application scenario.
+Sentiment-based user preference modeling. Intuitively, users would comment on their favorite frames with positive sentiment.
+erefore, we rst determine the polarity of each time-synchronized comment by the Stanford Sentiment analysis toolkit6, and then for simplicity, we set the polarity of tscuk ­ i.e., poluk ­ as 1 if the result is er positi e, positi e, or neutral, and 0 otherwise.
+In our framework, we take the prediction of a user's likeness to a frame as a binary classi cation problem, where 1 means a user likes a frame, and 0 otherwise; the likeness of user u to frame k ­ i.e., ^uimk a e  [0, 1] ­ can be predicted as:
+
+^uimk a e = LOGIST IC (pu · qk ).
+
+(3)
+
+where LOGIST IC (x )
+
+=
+
+1 1+e -x
+
+is the logistic function, and "·" de-
+
+notes inner product.
+
+en we use the binary cross-entropy as our loss function to
+
+model user preference, whose superiority has been explored and
+
+demonstrated in [18], and the nal objective function to be maxi-
+
+mized is:
+
+6h ps://nlp.stanford.edu/sentiment/
+
+318
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+User  0 1 0 0 0 0 ... 0
+Embedding layer $
+
+Frame  0 0 0 0 1 0 ... 0
+Embedding layer &
+
+Image  &
+ ()*+, ()*+, 0 &
+
+&
+
+Merge
+
+Inner Product 3$()& *+,
+
+Figure 4: e framework of image-based model. e preprocessed image feature is merged with frame latent factors to derive a new embedding, which is then multiplied by the user latent factors to generate the prediction.
+
+Element-wise Product
+
+Sum 4$5&67
+
+$(&)*+
+
+User  0 1 0 0 0 0 ... 0
+Embedding layer $
+
+Frame  0 0 0 0 1 0 ... 0
+Embedding layer &
+
+. softmax
+
+/ softmax
+
+.
+
+0 softmax
+/
+
+1 softmax
+0
+
+LSTM LSTM LSTM LSTM
+
+Embedding layer
+Word one-hot representation 0 0 1 0 ... 0 -
+
+Embedding layer
+0100...0 .
+
+Embedding layer
+
+Embedding layer
+
+0000...1 0001...0
+
+/
+
+0
+
+Figure 5: e framework of text-based model. e prefer-
+
+ence
+
+embedding
+
+eup
+
+r k
+
+e0
+
+is
+
+fed
+
+as
+
+an
+
+extra
+
+input
+
+to
+
+LSTM
+
+at
+
+each step. e likeness score of user u to frame k can be
+
+simply predicted by applying logistic function to the inner
+
+product between pu and qk .
+
+L1 = lo
+
+( ^uimk a
+
+e)
+
+uk (1 -
+
+^uimk a
+
+e
+
+1-
+)
+
+uk
+
+(u,k )
+
+= lo
+
+^uimk a e
+
+(1 - ^uimk a e )
+
+(4)
+
+(u,k ) O +
+
+(u,k ) O -
+
+=
+
+lo ^uimk a e +
+
+lo (1 - ^uimk a e )
+
+(u,k ) O +
+
+(u,k ) O -
+
+where uk is the ground truth that would be 1 if u has commented on k with poluk = 1, and 0 otherwise. O+ is the set of positive feedbacks, i.e., O+ = {(u, k )|u has commented on k, poluk = 1}, while O- is the set of sampled negative feedback, namely, O-  One  O, where One = {(u, k )|u has commented on k, poluk = 0}, and O = {(u, k )|u has not commented on k }. In the training phase, for each positive feedback (u, k ), we uniformly sample Kne
+negative instances, and the parameters can be learned via stochastic
+gradient descent (SGD).
+
+4.2 Text-based Model
+Existing review-based recommendation methods mostly consider the words in a comment as independent elements, and they usually ignore the word sequential information ­ which is yet very important for understanding the semantic of a comment. In Figure 1 for example, user D wrote the review "A tall man and a short woman", where if we leave out the consideration of word sequential information, it would be computationally identical to "A tall woman and a short man", which obviously expresses a completely opposite meaning.
+To capture the word sequential information, we make use of the long short term memory (LSTM) [20] network, which has been successfully applied to a number of sequence modeling tasks such as machine translation [1], image caption [44], and video classi cation [55].
+Preference-aware LSTM. Intuitively, the content of a timesynchronized comment on a frame is in uenced by both the user preference and the frame itself. When it comes to our model, as a result, the word generation process in LSTM should be in uenced
+
+by both the user and the frame latent factors. So in our framework
+
+as shown in Figure 5, we rst merge the user and frame latent
+
+factors into a preference embedding using element-wise vector
+
+multiplication, and then feed it as an extra input to LSTM at each
+
+step.
+
+An alternative strategy is to only use the preference embedding
+
+as the "Zero State" of LSTM. However, we have empirically veri ed
+
+that this approach leads to unfavored performance for the task of
+
+personalized key frame recommendation.
+
+Formally, suppose the time-synchronized comment of user u on frame k is tscuk with words wtscuk = {wt0scuk , wt1scuk , ...wtsuscku-k1}, where suk is the length of the comment, and the size of the word vocabulary is de ned as N word . We formalize our architecture into
+
+an encoder-decoder framework similar to [6, 40].
+
+More speci cally, the user embedding and the frame embedding
+
+are rst where
+
+eniscoeldeemdeinntto-waijsoeinmt uplrteipfelriceantcieonem. beednd,inggiveeupnkreeup0kr=e0paundqakll,
+
+the previously predicted words, the decoder predicts each word at
+
+iteration step t by a conditional distribution:
+
+h1 = LST M (wt0scuk , eupkr e0 )
+
+(5)
+
+ht
+
+=
+
+LST
+
+M
+
+(ht
+
+-1,
+
+wtt
+
+-1 scu
+
+k
+
+,
+
+eupkr e0
+
+)
+
+t
+
+
+
+{2, 3, ...suk }
+
+(6)
+
+p
+
+(w
+
+t t
+
+s
+
+cuk
+
+|eupkr e0 , wt0s:tc-u1k
+
+)
+
+=
+
+SOFT MAX
+
+(ht
+
+)
+
+(7)
+
+where SOFT MAX () is an N word -way so max, ht is the hidden state in LSTM at iteration t , wt0s:tc-u1k = {wtts-c1uk , wtts-c2uk , ..., wt0scuk } is the set of all previous words before iteration t, LST M () is the long short term memory (LSTM) net. At last, by simultaneously predicting users' likeness and time-synchronized comments, our
+nal objective function to be maximized is:
+
+L2 =
+
+suk -1
+lo
+
+p
+
+(w
+
+t t
+
+s
+
+cu
+
+k
+
+|eupkr
+
+e0
+
+,
+
+wt0s:tc-u1k
+
+)
+
+(u,k ) O + O - t =1
+
+(8)
+
++
+
+lo ^uTkSC +
+
+lo (1 - ^uTkSC )
+
+(u,k ) O +
+
+(u,k ) O -
+
+319
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+LSTM LSTM LSTM LSTM
+......
+LSTM LSTM LSTM LSTM
+
+User  0 1 0 0 0 0 ... 0
+Embedding layer
+#
+
+Frame  0 0 0 0 1 0 ... 0
+Embedding layer
+%
+
+Image 
+%  3:76( 3:76( > %
+
+%
+
+Merge
+
+Element-wise Product
+
+Sum
+
+#&%'()
+
+, softmax
+
+softmax
+
+. softmax
+
+/ softmax
+
+2#34%5(6'75(
+
+,
+
+-
+
+.
+
+Embedding layer
+
+Embedding layer
+
+Embedding layer
+
+Embedding layer
+
+0010...0 0100...0 0000...1 0001...0
+
+Word one-hot representation
+
++
+
+,
+
+-
+
+.
+
+Figure 6: A model that directly combines the methods pro-
+posed in section 4.1 and 4.2. e output of the linear
+element-wise multiplication layer is directly used as an input of LSTM and to generate ^uinkte r ated .
+
+where ^uTkSC = LOGIST IC (pu · qk ) is the prediction of user u's likeness score on frame k.
+
+4.3 Integrated Recommender
+
+In this subsection, we propose to jointly model frame image and
+
+time-synchronized comment in a uni ed framework.
+
+Deep feature adapting. Intuitively, we may directly combine
+
+the above two models for user preference learning, which is shown
+
+in Figure 6. However, as image and text features come from quite dif-
+
+ferent and heterogeneous information sources, the linear element-
+
+wise multiplication layer (see Figure 6) can be extremely biased
+
+when directly adapting such di erent information. To overcome
+
+this weakness, we stack several fully connected layers on top of
+
+the element-wise multiplication layer to capture the non-linear
+
+relationship among di erent features.
+
+Formally, suppose the output of the element-wise multiplication
+
+layer
+
+is:
+
+eup
+
+r k
+
+e0
+
+,
+
+and
+
+there
+
+are
+
+totally
+
+D
+
+non-linear
+
+layers.
+
+en the
+
+output of each non-linear layer and the nal output can be derived
+
+as:
+
+eup
+
+r k
+
+e0
+
+= pu
+
+qk
+
+(9)
+
+eup
+
+r k
+
+ei
+
+=
+
+nl (W i
+
+·
+
+eup
+
+r k
+
+ei
+
+-1
+
+)
+
+i
+
+
+
+{1, 2, ...D}
+
+(10)
+
+^uinkt e
+
+r at ed
+
+= LOGIST IC (wout put
+
+·
+
+eup
+
+r k
+
+eD
+
+)
+
+(11)
+
+where nl is the active function, where we select Recti er (ReLU)
+
+in our model because (1) it is practically more reasonable from
+
+a biological perspective [12], and (2) it can usually prevent deep
+
+models from layer, W i is wout put is a
+
+otvvheeecrt-ocor ethinagcti.meenuaptpkrsmeieaupitsrkritexhDeuiosneutdotpatuotscowafleatihrgehsoit-atehsupktrnoeoicn-o-1ln,indauenacdrt
+
+logistic. Note that wout put is a parameter that needs to be learned
+
+by the model.
+
+For now, we have described the key components (image model-
+
+ing, text modeling and the D non-linear layers) of our nal frame-
+
+work, and we further fuse them together (see Figure 7). Careful
+
+User  0 1 0 0 0 0 ... 0
+Embedding layer
+#
+
+Frame  0 0 0 0 1 0 ... 0
+Embedding layer
+%
+
+Image 
+% 3:76( 3:76( > %
+
+%
+
+Merge
+
+Element-wise Product #&%'()
+Non-linear Layers
+
+, softmax
+
+softmax
+
+. softmax
+
+/ softmax
+
+Non-linear Layers #&%'(BCBD
+
+,
+
+-
+
+.
+
+Non-linear Layers E#5&#5 #&%'(A
+
+2#3%45(6'75(
+
+Embedding layer
+0 0 1 0 ... 0
+
+Word one-hot representation
+
++
+
+Embedding layer
+0100...0 ,
+
+Embedding layer
+0 0 0 0 ... 1 -
+
+Embedding layer
+0001...0 .
+
+Figure 7: Our integrated recommender. D fully connected layers are introduced to capture the non-linear relationship between image and text features. Either the output of linear element-wise multiplication layer or the results from a non-linear layer can be used to initialize LSTM. ^uinkte r ated is generated from the last non-linear layer.
+
+readers might have found that, except for the original preference
+
+embedding as the extra
+
+eupkr e0 input
+
+,
+
+any
+
+one
+
+of
+
+{eupkr e1 ,
+
+eup
+
+r k
+
+e2
+
+,
+
+...eupkr eD
+
+}
+
+of LSTM at each step, suppose we use
+
+can be used
+
+eup
+
+r k
+
+ei
+
+ni
+
+t
+
+as
+
+the extra input, where init  {0, 1, 2, ...D} is a pre-de ned constant.
+
+Our nal framework can be learned by maximizing the following
+
+objective function:
+
+L3 = 
+(u,k ) O +
+
+suk -1
+
+lo
+
+p
+
+w
+
+t t
+
+s
+
+cu
+
+k
+
+|eupkr
+
+ei
+
+ni
+
+t
+
+,
+
+wt0s:tc-u1k
+
++
+
+O - t =1
+
+(1 - )
+
+lo ^uinkt e r at ed +
+
+lo 1 - ^uinkt e r at ed
+
+(u,k ) O +
+
+(u,k ) O -
+
+(12)
+
+where  is a weighting parameter that balances the e ects of di er-
+
+ent optimization objectives. Once the model has been learned, for
+
+a user u and a key frame k with visual feature vslk , we can readily predict the likeness score of u to k by Equation (11), according to
+
+which we can further recommend u with the key frames that the
+
+user is most likely interested in.
+
+5 EXPERIMENTS
+In this section, we evaluate our proposed models focusing on the following three key research questions:
+
+RQ 1: What is the performance of our nal framework for the task of personalized key frame recommendation? RQ 2: What are the e ects of di erent types of information for personalized key frame recommendation? RQ 3: Can the stacked non-linear layers promote the performance of personalized key frame recommendation?
+
+We begin by introducing the experimental setup, and then report and analyze the experimental results to answer these research questions.
+
+320
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+5.1 Experimental Setup
+Dataset preprocess. e raw comments are generally pre-preprocessed (word segmentation and stop-word ltering) by an opensource Chinese natural language processing toolbox Jieba7. A er that, we conduct more detailed pre-processing according to the special inherent characteristics of time-synchronized comments, and this is conducted on two aspects: on one hand, we manually remove the meaningless reviews, e.g., the ones at the beginning of the movies that are generally not relevant to the movie content; on the other hand, we map the slangs that express the same meaning (e.g., 2333..., namely, several 3's following a 2, which means "happiness" in online language environment) into a uni ed word (e.g., wonderful8) for more accurate modeling.
+In our crawled dataset, the time stamp is recorded when a user sent an edited comment, however, the actual favored frame should be the one corresponding to the time when he/she began to type the comment, rather than the frame when the comment was posted out. As a result, we revise the time stamp by subtracting the time of typing according to the length of the comment and a person's general typewriting speed (approximately 40 words/minute). We pre-segment each movie as 1000 shots, and use the rst frame as a shot's key frame. Because the frames in a shot are always very similar, all the commenting behaviors in a shot are seen as reviewing on its key frame, and we do not deliberately distinguish a shot from its key frame in the rest of the paper. To avoid "cold-start" problem, we remove those users with less than 100 time-synchronized comments, and nally sample a smaller dataset containing 40 users' 29,137 comments (20,312 positive (poluk = 1) and 8,825 negative (poluk = 0)) on 11,000 key frames. Baselines. To demonstrate the e ectiveness of our models, we adopt the following methods as baselines for performance comparison:
+· MostPopular: is is a non-personalized static method utilizing user reviews, where for each user it just selects the most popularly positive key frames as the nal results.
+· PMF: e Probabilistic Matrix Factorization method proposed in [35], which is a frequently used state-of-the-art approach for rating-based optimization and prediction. We set the score of user u to key frame k as 1, if u commented on k with poluk = 1, and 0 otherwise.
+· BPR: is is a well known ranking-based method [39] for user implicit feedback modeling, the preference pairs are constructed between the positively commented key frames and the other ones. In our experiments, we randomly sample one negative instance for each positive feedback.
+· HFT: is is a stat-of-the-art method in terms of making rating prediction with textual reviews [31], as the rating information is absent in our dataset. We set the ratings of one's positively commented key frames as 1, and 0 otherwise for each user.
+7h ps://github.com/fxsjy/jieba/tree/jieba3k 8Manually translated into English by the authors
+
+· VBPR: is is a stat-of-the-art visual-based recommendation method [15]. Similar to [15], the image features are pre-generated from the original key frame pictures using the Ca e deep learning framework [21].
+· KFRI: is is a Key Frame Recommender based only on Image features, which is proposed in section 4.1 with L1 as its objective function.
+· KFRC: is is a Key Frame Recommender based only on Comments, which is proposed in section 4.2 with L2 as its objective function.
+Evaluation method. If a user comments on a key frame with positive sentiment (poluk = 1), then this frame would be the one that a racts her, so the empirical experiments are conducted by comparing the predicted key frames with the true positive ones (poluk = 1). 30% of each user's positive key frames (poluk = 1) are selected as the test dataset, while the others are used for training. We adapt F1-score and normalized discounted cumulative gain (NDCG) to evaluate the performance of the baselines and our proposed models. Parameter settings. e hyper-parameters in our frameworks are tuned by conducting 5-fold cross validation, while the model parameters are rst randomly initialized according to a uniform distribution in the range of (0, 1), and then updated by conducting stochastic gradient descent (SGD). e learning rate of SGD is determined by grid searching in the range of {1, 0.1, 0.01, 0.001, 0.0001}. We set the number of non-linear layers as D = 3, and to learn more abstractive features, their dimensions are empirically set as {40, 20, 10} to form a tower structure [14].
+We evaluate di erent number of latent factors K in the range of {50, 100, 150, 200, 250, 300} for both user and frame vector representations. e number of negative samples Kne is empirically set as 5, while the weighting parameter  is set as 0.5 to make different optimization parts equally contribute to the nal results. For be er performance, we leverage grid search technology to determine the batch size in the range of {64, 128, 256, 512, 1024}. When implementing the baselines, 5-fold cross validation and grid search technology are used to determine the parameters. Our experiments are conducted by predicting Top-5,10, and 20 favorite key frames respectively. All the models are repeated for 10 times, and we report the average as well as bound values as the nal results for clear illustration.
+5.2 Performance of Our Models (RQ1)
+Di erent models (except MostPopular) may reach their best performance at various number of latent factors, so for each baseline, we implement it by se ing the dimension as 50,100,150,200,250 and 300 respectively, and the best result is nally reported. From Figure 8, we can see: KFRCI achieves the best performance on both F1 and N DCG when recommending di erent number of key frames. It can on average enhance the performance by about 7.8% and 6.7% upon F1-score and N DCG respectively when compared with VBPR, which performs best among all the methods. Paired t-tests on the results also verify that the improvements are statistically signi cant
+
+321
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Figure 8: Comparison between our method and baseline methods. e values on the bar indicate the average performance of the corresponding models.
+on 0.01 level. Among the baselines, PMF, as expected, performs be er than MostPopular due to the consideration of diverse personalities. By directly optimizing the ranking objective, BPR shows be er e ectiveness compared with PMF on both F1 and N DCG, which is consistent with the observations in [39]. By introducing textual or visual features, HFT/VBPR on average outperforms BPR by about 3.5%/5.4% on F1 and 8.6%/6.1% on N DCG respectively.
+5.3 E ects of Di erent Information (RQ2)
+For capturing more comprehensive user preference, frame images and time-synchronized comments are combined together in our
+nal framework for joint modeling. However, di erent information sources may play di erent roles, in this section, we would like to study the in uence of diverse information for our task of personalized key frame recommendation. To begin with, we compare our nal framework KFRCI with KFRI and KFRC, which only use image or text information in their modeling processes. For fair comparison and to avoid disturbance of the deep architecture, we do not use any non-linear layers in KFRCI. e other parameters follow the above se ings. From the results shown in Figure 10, we can see:
+1. All the models can reach their best performance when the dimension falls in the range of [100, 150], while additional dimensions do not help promoting the performance. e reason may be that too many latent factors can lead to the over- ing problem, which would weaken our models' generalization ability on the test dataset.
+2. KFRI performs slightly be er than KFRC in most cases, which tells us that, in our dataset, image features maybe more important compared with time-synchronized comments for the task of personalized key frame recommendation. is may be of the reason that although time-synchronized comments are helpful, they are too diverse and may include too much noise for capturing user inherent preference.
+3. It is highly encouraging that although we did not use any nonlinear layer, KFRCI exhibits higher performance compared with both KFRC and KFRI across all the dimensions. is observation demonstrates that the integration of visual and textual features can
+
+indeed help excavate more accurate user preference, which is in line with our intuition in Section 1.
+Weighting parameter . In this section, we study how the performance of KFRCI changes as the weighting parameter  increases from 0.1 to 0.9. In this experiment, the number of user/frame latent factors is xed as 100, while the other parameters follow the settings in section 5.1. We predict Top-20 user favorite key frames, the results are shown in Figure 9, from which we can see: the performance (F1@20) of KFRCI continues to rise until  reaches around 0.3, then a er hovering approximately stable in the range of [0.3, 0.5], it begins to drop rapidly with the increase of . is observation indicates that we should make a suitable balance between the two components in our nal framework. Besides, similar results can be observed on N DCG@20.
+Figure 9: e in uence of weighting parameter . For clear comparison, we also list the performances of the other models, although they don't change with . MostPopular is not listed herein because its performance is much lower.
+5.4 Promotion of the Deep Architecture (RQ3)
+In this section, we would like to test whether deep architectures are helpful to our task. To do so, we evaluate the performance of our
+nal model KFRCI based on F1 and N DCG by changing the number of non-linear layers. Note that when there is no non-linear layer, we are actually evaluating the straightforward model as shown in Figure 6. In this experiment, the dimensions of the non-linear layers from the rst layer to the output layer are set as {40, 20, 10, 5}, and the number of user/frame latent factors is xed as 100. e output non-linear layer is used to link LSTM. All the other parameters follow the above se ings.
+e results are shown in Table 3, from which we can see that our model can reach its best performance when there are two or three non-linear layers, and introducing more non-linear layers does not bring positive e ects. ese observations indicate that deep model may be helpful for personalized key frame recommendation, however, only relatively small number of non-linear layers are required to capture the complex relationship among heterogeneous features.
+"Extra input" of LSTM. When there are multiple non-linear layers, an obvious problem is that, which output should be selected as the "Extra input" of LSTM. So we further evaluate our model by using di erent layers' output eupkr einit as the LSTM "Extra input". Note that init = 0 means directly linking the output of element-wise
+
+322
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Figure 10: Evaluating the performances of our models when using di erent features. e dimension of the latent factors ranging from 50 to 300.
+
+Table 3: e e ect of deep architecture.
+
+number of layers
+F1@5 N DCG@5
+F1@10 N DCG@10
+F1@20 N DCG@20
+
+0
+0.012 0.060
+0.071 0.092
+0.103 0.120
+
+1
+0.014 0.064
+0.073 0.094
+0.104 0.123
+
+2
+0.015 0.065 0.074 0.095
+0.106 0.124
+
+3 0.014 0.063
+0.075 0.096
+0.104 0.123
+
+4
+0.013 0.062
+0.072 0.091
+0.103 0.121
+
+multiplication layer to the LSTM. In this experiment, we use 3 nonlinear layers with the dimensions of {40, 20, 10}, other parameters follow the above se ings.
+From the results on F1@20 and N DCG@20 shown in Table 4, we see that it can lead to improved performance when init = 1, 2 or 3 compared with init = 0, which manifests that introducing nonlinear operations is important for be er adapting the user/frame latent factors with the underlying motivations for generating timesynchronized comments.
+
+Table 4: e e ects of di erent LSTM "Extra inputs".
+
+init
+F1@20 N DCG@20
+
+0
+0.103 0.121
+
+1
+0.104 0.122
+
+2 0.105 0.124
+
+3
+0.104 0.123
+
+6 CONCLUSIONS AND OUTLOOK
+In the paper, we propose the problem of personalized key frame recommendation for the rst time. To do so, we propose to leverage the rich time-synchronized comment information in video sharing websites, and further design a novel framework that combines model-based collaborative ltering and long-short term memory network together to model user commented key frames and timesynchronized comments simultaneously. Comprehensive evaluation veri ed the e ectiveness of our framework.
+is is a rst step towards our goal in personalized key frame recommendation, and there is much room for further improvements. For example, more other information (e.g. audio features) can be included to capture more comprehensive user preference, which may also bring us more inspiring insights on the inherent natures of the user preference pa erns upon video key frames. Beyond personalized key frame recommendation, our work also points to promising future directions in personalized video summarization, personalized image captioning, and personalized story telling based on images or videos.
+ACKNOWLEDGMENT
+is work was supported in part by the Center for Intelligent Information Retrieval and in part by NSF IIS-1160894, NSFC 61602176 and NSFC 61672231. Any opinions, ndings and conclusions or recommendations expressed in this material are those of the authors and do not necessarily re ect those of the sponsor.
+REFERENCES
+[1] D. Bahdanau, K. Cho, and Y. Bengio. Neural machine translation by jointly learning to align and translate. arXiv preprint arXiv:1409.0473, 2014.
+
+323
+
+Session 3B: Filtering and Recommending 2
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+[2] Y. Bao, H. Fang, and J. Zhang. Topicmf: Simultaneously exploiting ratings and reviews for recommendation. In AAAI, pages 2­8, 2014.
+[3] Y. Cao, J. Li, X. Guo, S. Bai, H. Ji, and J. Tang. Name list only? target entity disambiguation in short texts. In EMNLP, pages 654­664, 2015.
+[4] X. Chen, Z. Qin, Y. Zhang, and T. Xu. Learning to rank features for recommendation over multiple categories. In Proceedings of the 39th international ACM SIGIR conference on Research & development in information retrieval. ACM, 2016.
+[5] X. Chen, P. Wang, Z. Qin, and Y. Zhang. Hlbpr: A hybrid local bayesian personal ranking method. In Proceedings of the 25th International Conference Companion on World Wide Web, pages 21­22. International World Wide Web Conferences Steering Commi ee, 2016.
+[6] K. Cho, B. Van Merrie¨nboer, C. Gulcehre, D. Bahdanau, F. Bougares, H. Schwenk, and Y. Bengio. Learning phrase representations using rnn encoder-decoder for statistical machine translation. arXiv preprint arXiv:1406.1078, 2014.
+[7] P. Covington, J. Adams, and E. Sargin. Deep neural networks for youtube recommendations. In Proceedings of the 10th ACM Conference on Recommender Systems, pages 191­198. ACM, 2016.
+[8] Q. Cui, S. Wu, Q. Liu, and L. Wang. A visual and textual recurrent neural network for sequential prediction. arXiv preprint arXiv:1611.06668, 2016.
+[9] Q. Diao, M. Qiu, C.-Y. Wu, A. J. Smola, J. Jiang, and C. Wang. Jointly modeling aspects, ratings and sentiments for movie recommendation (jmars). In Proceed-
+ings of the 20th ACM SIGKDD international conference on Knowledge discovery and data mining, pages 193­202. ACM, 2014. [10] N. Ejaz, T. B. Tariq, and S. W. Baik. Adaptive key frame extraction for video summarization using an aggregation mechanism. Journal of Visual Communication and Image Representation, 23(7):1031­1040, 2012. [11] G. Ganu, N. Elhadad, and A. Marian. Beyond the stars: Improving rating predictions using review text content. In WebDB, volume 9, pages 1­6. Citeseer, 2009. [12] X. Glorot, A. Bordes, and Y. Bengio. Deep sparse recti er neural networks. In Aistats, volume 15, page 275, 2011. [13] Y. Gong and X. Liu. Video summarization using singular value decomposition. In Computer Vision and Pa ern Recognition, 2000. Proceedings. IEEE Conference on, volume 2, pages 174­180. IEEE, 2000. [14] K. He, X. Zhang, S. Ren, and J. Sun. Deep residual learning for image recognition. arXiv preprint arXiv:1512.03385, 2015. [15] R. He and J. McAuley. Vbpr: visual bayesian personalized ranking from implicit feedback. arXiv preprint arXiv:1510.01784, 2015. [16] X. He, T. Chen, M.-Y. Kan, and X. Chen. Trirank: Review-aware explainable recommendation by modeling aspects. In Proceedings of the 24th ACM International on Conference on Information and Knowledge Management, pages 1661­1670. ACM, 2015. [17] X. He, M. Gao, M.-Y. Kan, and D. Wang. Birank: Towards ranking on bipartite graphs. IEEE Transactions on Knowledge and Data Engineering, 29(1):57­71, 2017. [18] X. He, L. Liao, H. Zhang, L. Nie, X. Hu, and T.-S. Chua. Neural collaborative
+ltering. In Proceedings of the 26th International Conference Companion on World Wide Web (WWW), pages 173­182. International World Wide Web Conferences Steering Commi ee, 2017. [19] X. He, H. Zhang, M.-Y. Kan, and T.-S. Chua. Fast matrix factorization for online recommendation with implicit feedback. In Proceedings of the 39th International ACM SIGIR conference on Research and Development in Information Retrieval, pages 549­558. ACM, 2016. [20] S. Hochreiter and J. Schmidhuber. Long short-term memory. Neural computation, 9(8):1735­1780, 1997. [21] Y. Jia, E. Shelhamer, J. Donahue, S. Karayev, J. Long, R. Girshick, S. Guadarrama, and T. Darrell. Ca e: Convolutional architecture for fast feature embedding. In Proceedings of the 22nd ACM international conference on Multimedia, pages 675­678. ACM, 2014. [22] R. M. Jiang, A. H. Sadka, and D. Crookes. Advances in video summarization and skimming. In Recent Advances in Multimedia Signal Processing and Communications, pages 27­50. Springer, 2009. [23] W. Jiang, C. Co on, and A. C. Loui. Automatic consumer video summarization by audio and visual analysis. In ICME, pages 1­6, 2011. [24] A. Khosla, R. Hamid, C.-J. Lin, and N. Sundaresan. Large-scale video summarization using web-image priors. In CVPR, pages 2698­2705, 2013. [25] G. Kim, L. Sigal, and E. P. Xing. Joint summarization of large-scale collections of web images and videos for storyline reconstruction. In CVPR, 2014. [26] Y. J. Lee, J. Ghosh, and K. Grauman. Discovering important people and objects for egocentric video summarization. In CVPR, pages 1346­1353, 2012. [27] L. Li, K. Zhou, G.-R. Xue, H. Zha, and Y. Yu. Video summarization via transferrable structured learning. In WWW, pages 287­296. ACM, 2011. [28] Y. Li, T. Zhang, and D. Tre er. An overview of video abstraction techniques. Technical report, Technical Report HPL-2001-191, HP Laboratory, 2001. [29] H. Liu, J. He, T. Wang, W. Song, and X. Du. Combining user preferences and user opinions for accurate recommendation. Electronic Commerce Research and Applications, 12(1):14­23, 2013. [30] Y.-F. Ma, X.-S. Hua, L. Lu, and H.-J. Zhang. A generic framework of user attention model and its application in video summarization. IEEE transactions on
+
+multimedia, 7(5):907­919, 2005. [31] J. McAuley and J. Leskovec. Hidden factors and hidden topics: understanding
+rating dimensions with review text. In Proceedings of the 7th ACM conference on Recommender systems, pages 165­172. ACM, 2013. [32] J. McAuley, C. Targe , Q. Shi, and A. van den Hengel. Image-based recommendations on styles and substitutes. In Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 43­52. ACM, 2015. [33] E. Mendi and C. Bayrak. Shot boundary detection and key frame extraction using salient region detection and structural similarity. In Proceedings of the 48th Annual Southeast Regional Conference, pages 66­67, 2010. [34] T. Mikolov, K. Chen, G. Corrado, and J. Dean. E cient estimation of word representations in vector space. arXiv preprint arXiv:1301.3781, 2013. [35] A. Mnih and R. Salakhutdinov. Probabilistic matrix factorization. In Advances in neural information processing systems, pages 1257­1264, 2007. [36] A. Nagasaka and Y. Tanaka. Automatic video indexing and full-video search for object appearances. Journal of Information Processing, 15(2):316, 1992. [37] J. Peng, Y. Zhai, and J. Qiu. Learning latent factor from review text and rating for recommendation. In 2015 7th International Conference on Modelling, Identi cation and Control (ICMIC), pages 1­6. IEEE, 2015. [38] Z. Ren, S. Liang, P. Li, S. Wang, and M. de Rijke. Social collaborative viewpoint regression with explainable recommendations. Under submission, page 10, 2016. [39] S. Rendle, C. Freudenthaler, Z. Gantner, and L. Schmidt- ieme. Bpr: Bayesian personalized ranking from implicit feedback. In Proceedings of the 25th Conference on Uncertainty in Arti cial Intelligence, pages 452­461. AUAI Press, 2009. [40] I. Sutskever, O. Vinyals, and Q. V. Le. Sequence to sequence learning with neural networks. In Advances in neural information processing systems, pages 3104­3112, 2014. [41] Y. Tan, M. Zhang, Y. Liu, and S. Ma. Rating-boosted latent topics: Understanding users and items with ratings and reviews. In IJCAI. AAAI, 2016. [42] D. Tang, B. Qin, and T. Liu. Learning semantic representations of users and products for document level sentiment classi cation. In ACL, pages 1014­1023, 2015. [43] D. Tang, B. Qin, T. Liu, and Y. Yang. User modeling with neural network for review rating prediction. In IJCAI, pages 1340­1346, 2015. [44] O. Vinyals, A. Toshev, S. Bengio, and D. Erhan. Show and tell: A neural image caption generator. In Proceedings of the IEEE Conference on Computer Vision and Pa ern Recognition, pages 3156­3164, 2015. [45] H. Wang, N. Wang, and D.-Y. Yeung. Collaborative deep learning for recommender systems. In SIGKDD, pages 1235­1244, 2015. [46] H. Wang, S. Xingjian, and D.-Y. Yeung. Collaborative recurrent autoencoder: Recommend while learning to ll in the blanks. In NIPS, pages 415­423, 2016. [47] M. Wang, R. Hong, G. Li, Z.-J. Zha, S. Yan, and T.-S. Chua. Event driven web video summarization by tag localization and key-shot identi cation. Multimedia, IEEE Transactions on, 14(4):975­985, 2012. [48] Z. Wang, M. Kumar, J. Luo, and B. Li. Sequence-kernel based sparse representation for amateur video summarization. In Proceedings of the 2011 joint ACM workshop on Modeling and representing events, pages 31­36, 2011. [49] B. Wu, E. Zhong, B. Tan, A. Horner, and Q. Yang. Crowdsourced time-sync video tagging using temporal and personalized topic modeling. In SIGKDD, pages 721­730, 2014. [50] C.-Y. Wu, A. Beutel, A. Ahmed, and A. J. Smola. Explaining reviews and ratings with paco: Poisson additive co-clustering. In Proceedings of the 25th International Conference Companion on World Wide Web, pages 127­128. International World Wide Web Conferences Steering Commi ee, 2016. [51] Y. Wu and M. Ester. Flame: A probabilistic model combining aspect based opinion mining and collaborative ltering. In WSDM, pages 199­208. ACM, 2015. [52] Y. Xian, J. Li, C. Zhang, and Z. Liao. Video highlight shot extraction with timesync comment. In Workshop on Hot Topics in Planet-scale mobile computing and online Social networking, pages 31­36, 2015. [53] H. Xu, Y. Zhen, and H. Zha. Trailer generation via a point process-based visual a ractiveness model. In IJCAI, pages 2198­2204, 2015. [54] J. You, G. Liu, L. Sun, and H. Li. A multiple visual models based perceptive analysis framework for multilevel video summarization. CSVT, IEEE Transactions on, 17(3):273­285, 2007. [55] J. Yue-Hei Ng, M. Hausknecht, S. Vijayanarasimhan, O. Vinyals, R. Monga, and G. Toderici. Beyond short snippets: Deep networks for video classi cation. In Proceedings of the IEEE Conference on Computer Vision and Pa ern Recognition, pages 4694­4702, 2015. [56] W. Zhang, Q. Yuan, J. Han, and J. Wang. Collaborative multi-level embedding learning from reviews for rating prediction. In IJCAI. ACM, 2016. [57] Y. Zhang, G. Lai, M. Zhang, Y. Zhang, Y. Liu, and S. Ma. Explicit factor models for explainable recommendation based on phrase-level sentiment analysis. In Proceedings of the 37th international ACM SIGIR conference on Research & development in information retrieval, pages 83­92. ACM, 2014. [58] Y. Zhuang, Y. Rui, T. S. Huang, and S. Mehrotra. Adaptive key frame extraction using unsupervised clustering. In Image Processing, 1998. ICIP 98. Proceedings. 1998 International Conference on, volume 1, pages 866­870. IEEE, 1998.
+
+324
+
+

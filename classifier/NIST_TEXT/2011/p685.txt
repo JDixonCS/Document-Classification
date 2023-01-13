@@ -1,0 +1,1403 @@
+Regularized Latent Semantic Indexing
+
+Quan Wang
+
+Jun Xu, Hang Li
+
+Nick Craswell
+
+MOE-Microsoft Key Laboratory of Microsoft Research Asia
+
+Microsoft
+
+Statistics&Information Technology No. 5 Danling Street
+
+Bellevue, Washington, USA
+
+Peking University, China
+
+Beijing, China
+
+nickcr@microsoft.com
+
+v-quwan@microsoft.com {junxu,hangli}@microsoft.com
+
+ABSTRACT
+Topic modeling can boost the performance of information retrieval, but its real-world application is limited due to scalability issues. Scaling to larger document collections via parallelization is an active area of research, but most solutions require drastic steps such as vastly reducing input vocabulary. We introduce Regularized Latent Semantic Indexing (RLSI), a new method which is designed for parallelization. It is as effective as existing topic models, and scales to larger datasets without reducing input vocabulary. RLSI formalizes topic modeling as a problem of minimizing a quadratic loss function regularized by 1 and/or 2 norm. This formulation allows the learning process to be decomposed into multiple suboptimization problems which can be optimized in parallel, for example via MapReduce. We particularly propose adopting 1 norm on topics and 2 norm on document representations, to create a model with compact and readable topics and useful for retrieval. Relevance ranking experiments on three TREC datasets show that RLSI performs better than LSI, PLSI, and LDA, and the improvements are sometimes statistically significant. Experiments on a web dataset, containing about 1.6 million documents and 7 million terms, demonstrate a similar boost in performance on a larger corpus and vocabulary than in previous studies.
+Categories and Subject Descriptors: H.3.1 [Information Storage and Retrieval]: Content Analysis and Indexing
+General Terms: Experimentation
+Keywords: Topic Modeling, Regularization, Sparse Methods
+1. INTRODUCTION
+Recent years have seen significant progress on topic modeling technologies in machine learning, information retrieval, natural language processing, and other related fields. Given a collection of text documents, a topic model represents the relationship between terms and documents through latent topics. A topic is defined as a probability distribution of terms or a cluster of weighted terms. A document is then viewed as a bag of terms generated from a mixture of latent topics. Various topic modeling methods, such as Latent Semantic Indexing (LSI) [10], Probabilistic Latent Seman-
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+tic Indexing (PLSI) [16], and Latent Dirichlet Allocation (LDA) [3] have been proposed and successfully applied in various settings.
+One of the main challenges in topic modeling is scaling to millions or even billions of documents while maintaining a representative vocabulary of terms, which is necessary in many applications such as web search. A typical approach is to approximate the learning processes of an existing topic model.
+In this work, instead of modifying existing methods, we introduce a new topic modeling method that is intrinsically scalable: Regularized Latent Semantic Indexing (RLSI). Topic modeling is formalized as minimization of a quadratic loss function on termdocument occurrences regularized by 1 and/or 2 norm. Specifically, in RLSI the text collection is represented as a term-document matrix, where each entry represents the occurrence (or tf-idf score) of a term in a document. The term-document matrix is then approximated by the product of two matrices: the term-topic matrix which represents the latent topics with terms and the topicdocument matrix which represents the documents with topics. Finally, the quadratic loss function is defined as the squared Frobenius norm of the difference between the term-document matrix and the output of the topic model. Both 1 norm and 2 norm may be used for regularization. We particularly propose using 1 norm on topics and 2 norm on document representations, which can result in a model with compact and readable topics and useful for retrieval. Note that we call our new method RLSI because it makes use of the same quadratic loss function as LSI. RLSI differs from LSI in that it uses regularization rather than orthogonality to constrain the solutions.
+The learning process of RLSI iteratively updates the term-topic matrix given the fixed topic-document matrix, and updates the topicdocument matrix given the fixed term-topic matrix. The formulation of RLSI makes it possible to decompose the learning problem into multiple sub-optimization problems and conduct learning in parallel. Specifically, for both the term-topic matrix and the topicdocument matrix, the update in each iteration is decomposed into many sub-optimization problems. These may be run in parallel, which is the main reason that RLSI can scale up. We describe our implementation of RLSI in MapReduce [9]. The MapReduce system maps the sub-optimization problems over multiple processors and then merges (reduces) the results from the processors. During this process, documents and terms are distributed and processed automatically.
+For probabilistic topic models like LDA and PLSI, the scalability challenge mainly comes from the necessity of simultaneously updating the term-topic matrix to meet the probability distribution assumptions. When the number of terms is large, which is inevitable in real applications, this problem becomes particularly severe. For LSI, the challenge is due to the orthogonality assumption in the for-
+
+685
+
+mulation, and as a result the problem needs to be solved by Singular Value Decomposition (SVD) and thus is hard to be parallelized.
+Regularization is a well-known technique in machine learning. In our setting, if we employed 2 norm on topics and 1 norm on document representations, RLSI becomes Sparse Coding [19, 25], which is a method used in computer vision and other fields. As far as we know, regularization for topic modeling has not been widely studied, in terms of the performance of different norms or their scalability advantages.
+Experimental results on a large web dataset show that 1) RLSI can scale up well and help improve search relevance. Specifically, we show that RLSI can efficiently run on 1.6 million documents and 7 million terms on 16 distributed machines. In contrast, existing methods on parallelizing LDA were demonstrated on far fewer documents and/or far fewer terms. Experiments on three TREC datasets show that 2) The readability and coherence of RLSI topics is equal or better than those learned by LDA, PLSI and LSI. 3) RLSI topics can be used in retrieval with better performance than LDA, PLSI, and LSI (sometimes statistically significant). 4) The best choice of regularization is 1 on topics and 2 on document representations in terms of topic readability and retrieval performance.
+2. RELATED WORK
+Studies on topic modeling fall into two categories: probabilistic approaches and non-probabilistic (matrix factorization) approaches. In the probabilistic approaches, a topic is defined as a probability distribution over terms and documents are defined as data generated from mixtures of topics. To generate a document, one chooses a distribution over topics. Then, for each term in that document, one chooses a topic according to the topic distribution, and draws a term from the topic according to its term distribution. For example, PLSI [16] and LDA [3] are two widely-used generative models. In the non-probabilistic approaches, the term-document matrix is projected into a K-dimensional topic space in which each axis corresponds to a topic. In the topic space, each document is represented as a linear combination of the K topics. LSI [10] is a representative non-probabilistic model. It decomposes the term-document matrix with SVD under the assumption that topics are orthogonal. See also Non-negative Matrix Factorization (NMF) [17, 18] and Sparse Coding methods [19, 25].
+It has been demonstrated that topic modeling is useful for knowledge discovery, relevance ranking in search, and document classification [23, 35]. In fact, topic modeling is becoming one of important technologies in machine learning, information retrieval, and other related fields.
+Most efforts to improve topic modeling scalability have modified existing learning methods, such as LDA. Newman, et al. [24] proposed Approximate Distributed LDA (AD-LDA), in which each processor performs a local Gibbs sampling iteration followed by a global update. Two recent papers implemented AD-LDA as PLDA [34] and modified AD-LDA as PLDA+ [21], using MPI [32] and MapReduce [9]. In [2], the authors proposed purely asynchronous distributed LDA algorithms based on Gibbs Sampling or Bayesian inference, called Async-CGB or Async-CVB, respectively. In AsyncCGB and Async-CVB, each processor performs a local computation step followed by a step of communicating with other processors. In all the methods, the local processors need to maintain and update a dense term-topic matrix, usually in memory, which becomes a bottleneck for improving the scalability. In this paper, we propose a new topic model learning algorithm which can efficiently scale up to large text corpora. The key ingredient of our method is to make the formulation of learning decomposable and thus make the process of learning parallelizable. In [1, 15], online versions
+
+of stochastic LDA were proposed. In this paper, we consider batch learning of topic models, which is a different setting from online learning. For other related work refer to [23, 31, 36].
+Regularization is a common technique in machine learning to prevent over-fitting. Typical examples of regularization in machine learning include the use of 1 and 2 norms. Regularization via 1 norm uses the sum of absolute values of parameters and thus has the effect of causing many parameters to be zero and selecting a sparse model as solution [14, 26]. Regularization via 2 norm, on the other hand, uses the sum of squares of parameters and thus can make a smooth regularization and effectively deal with over-fitting.
+Sparse methods have recently received a lot of attention in machine learning community. They aim to learn sparse representations (simple models) hidden in the input data by using 1 norm regularization. Sparse Coding algorithms [19, 25] are proposed which can be used for discovering basis functions, to capture meta-level features in the input data. One justification to the sparse methods is that human brains have similar sparse mechanism for information processing. For example, when Sparse Coding algorithms are applied to natural images, the learned bases resemble the receptive fields of neurons in the visual cortex [25]. Previous work on sparse methods mainly focused on image processing (e.g., [28]). In this paper we propose using sparse methods (1 norm regularization) in topic modeling, particularly to make the learned topics sparse. The use of sparse methods for topic modeling was also proposed very recently by Chen et al. [8]. Their motivation was not to improve scalability and they made an orthogonality assumption (requiring an SVD). In [33], the authors also proposed to discover sparse topics based on a modified version of LDA.
+3. SCALABILITY OF TOPIC MODELS
+One of the key problems in topic modeling is to improve scalability, to handle millions of documents or even more. As collection size increases, so does vocabulary size, rather than a maximum vocabulary being reached. For example, in the 1.6 million web documents in our experiment, there are more than 7 million unique terms even after pruning the low frequency ones (e.g., with term frequency in the whole collection less than 2). This means that both matrices, term-topic and topic-document, grow as the number of documents increases.
+LSI needs to be solved by SVD due to the orthogonality assumption. The time complexity of computing SVD is normally of order O(min{MN2, N M2}), where M denotes number of rows of the input matrix and N number of columns. Thus, it appears to be very difficult to make LSI scalable and efficient.
+For PLSI and LDA, it is necessary to maintain the probability distribution constraints of the term-topic matrix. When the matrix is large, there is a cost for maintaining the probabilistic framework. One possible solution is to reduce the number of terms, but the negative consequence is that it can sacrifice learning accuracy.
+How to make existing topic modeling methods scalable is still a challenging problem. In this paper, we adopt a different approach, that is, to develop new methods which can work equally well or even better, but are scalable by design.
+4. RLSI
+4.1 Problem Formulation
+We are given a set of documents D with size N, containing terms from a vocabulary V with size M. A document is simply represented as an M-dimensional vector d, where the mth entry denotes the score of the mth term, for example, a Boolean value indicating
+
+686
+
+Table 1: Table of notations. Notation Meaning
+
+M N K D  RM×N dn dmn U  RM×K uk umk V  RK×N vn vkn
+
+Number of terms in vocabulary
+Number of documents in collection
+Number of topics
+Term-document matrix [d1, · · · , dN ] The nth document Weight of the mth term in document dn Term-topic matrix [u1, · · · , uK ] The kth topic Weight of the mth term in topic uk Topic-document matrix [v1, · · · , vN ] Representation of dn in the topic space Weight of the kth topic in vn
+
+occurrence, term frequency, tf-idf, or joint probability of the term
+
+and document. The N documents in D are then represented in an
+
+M × N term-document matrix D = [d1, · · · , dN], in which each row
+
+corresponds to a term and each column corresponds to a document.
+
+A topic is defined over terms in the vocabulary and is also repre-
+
+sented as an M-dimensional vector u, where the mth entry denotes
+
+the weight of the mth term in the topic. Intuitively, the terms with
+
+larger weights are more indicative to the topic. Suppose that there
+
+are K topics in the collection. The K topics can be summarized
+
+into an M × K term-topic matrix U = [u1, · · · , uK], in which each
+
+column corresponds to a topic.
+
+Topic modeling means discovering the latent topics in the doc-
+
+ument collection as well as modeling the documents by represent-
+
+ing them as mixtures u1, · · · , uK, document
+
+of dn
+
+the topics. is succinctly
+
+Mreporreespenretecdisaeslyd, ngivenkK=to1pvikcnsuk
+
+=
+
+Uvn, where vkn denotes the weight of the kth topic uk in document
+
+dn. The larger value of vkn, the more important role topic uk plays in the document. Let V = [v1, · · · , vN] be the topic-document ma-
+
+trix, where column vn stands for the representation of document dn
+
+in the latent topic space. Table 1 gives a summary of notations.
+
+Different topic modeling techniques choose different schemas to
+
+model matrices U and V and impose different constraints on them.
+
+For example, in u1, · · · , uK are
+
+the generative topic models probability distributions so
+
+such that
+
+asmMP=L1 SumI kan=d
+
+LDA, 1 for
+
+k = 1, · · · , K; In LSI, topics u1, · · · , uK are orthogonal and thus
+
+SVD can be applied.
+
+Regularized Latent Semantic Indexing (RLSI) learns latent top-
+
+ics as well as representations of documents from the given text col-
+
+lections in the following way.
+
+Document dn is approximated as Uvn where U is the term-topic
+
+matrix and vn is the representation of dn in the latent topic space.
+The goodness of the approximation is measured by the squared 2 norm of the difference between dn and Uvn : dn - Uvn22. Further-
+more, regularization is made on topics and document representa-
+
+tions. Specifically, we suggest 1 norm regularization on term-topic matrix U (i.e., topics u1, · · · , uK) and 2 on topic-document matrix V (i.e., document representations v1, · · · , vN) to favor a model with
+
+compact and readable topics and useful for retrieval.
+
+Thus, given a text collection D = {d1, . . . , dN}, RLSI amounts to
+
+solving the following optimization problem:
+
+N
+
+K
+
+N
+
+min
+U,{vn }
+
+n=1
+
+dn
+
+-
+
+Uvn22
+
++
+
+1
+
+k=1
+
+uk 1
+
++
+
+2
+
+n=1
+
+vn22
+
+,
+
+(1)
+
+where 1  0 is the parameter controlling the regularization on uk: the larger value of 1, the more sparse uk; and 2  0 is the
+parameter controlling the regularization on vn: the larger value of 2, the larger amount of shrinkage on vn.
+
+Algorithm 1 Regularized Latent Semantic Indexing
+Require: D  RM×N 1: V(0)  RK×N  random matrix 2: for t = 1 : T do 3: U(t)  UpdateU(D, V(t-1)) 4: V(t)  UpdateV(D, U(t))
+5: end for 6: return U(T), V(T)
+
+In general, the regularization on topics and document represen-
+tations (the second term and the third term) can be either 1 norm or 2 norm. When they are 2 and 1 respectively, the method is equivalent to Sparse Coding [19, 25]. When both of them are 1, the model is similar to the double sparse model proposed in [28]1.
+
+4.2 Regularization Strategy
+We propose using the formulation above (i.e., regularization via 1 norm on topics and 2 norm on document representations), because in our experience this regularization strategy leads to a model with compact and readable topics and useful for retrieval.
+First, 1 norm regularization on topics has the effect of making them compact. We do this under the assumption that the essence of a topic can be captured via a small number of terms, which is reasonable in practice. In many applications, small and concise topics are more useful. For example, small topics can be interpreted as sets of synonyms, roughly corresponding to the WordNet synsets used in natural language processing.
+Second, 1 norm can make the topics readable, no matter whether it is imposed on topics or document representations, according to our experiments. This has advantages in applications such as text summarization and visualization.
+Third, there are four ways of combining 1 and 2 norms. We perform retrieval experiments across multiple test collections, showing that better ranking performance is achieved with 1 norm on topics and 2 norm on document representations.
+Last, in both learning and using of topic models, topic sparsity means that we can efficiently store and process topics. We can also leverage existing techniques on sparse matrix computation [4, 20], which are efficient and scalable.
+
+4.3 Optimization
+The optimization Eq. (1) is convex with respect to U when V is fixed and convex with respect to V when U is fixed. However, it is not convex with respect to both of them. Following the practice in Sparse Coding [19], we optimize the function in Eq. (1) by alternately minimizing it with respect to term-topic matrix U and topic-document matrix V. This procedure is summarized in Algorithm 1. Note that for simplicity we describe the algorithm when 1 norm is imposed on topics and 2 norm on document representations; one can easily extend it to other regularization strategies.
+
+4.3.1 Update of Matrix U
+Holding V = [v1, · · · , vN] fixed, the update of U amounts to the following optimization problem:
+
+M K
+
+min
+U
+
+D
+
+-
+
+UV2F
+
++
+
+1
+
+|umk| ,
+
+(2)
+
+m=1 k=1
+
+where  · F is the Frobenius norm and umk is the (mk)th entry of
+1Note that both Sparse Coding and double sparse model formulate optimization problems in constrained forms instead of regularized forms. The two forms are equivalent.
+
+687
+
+U. Let d¯m = (dm1, · · · , dmN )T and u¯ m = (um1, · · · , umK )T be the column vectors whose entries are those of the mth row of D and U
+respectively. Thus, Eq. (2) can be rewritten as
+
+M
+
+M
+
+min
+{u¯ m} m=1
+
+d¯m - VT u¯ m
+
+2 2
+
++
+
+1
+
+u¯ m1 ,
+
+m=1
+
+which can be decomposed into M optimization problems that can be solved independently, with each corresponding to one row of U:
+
+min
+u¯ m
+
+d¯m - VT u¯ m
+
+2 2
+
++
+
+1
+
+u¯ m1
+
+,
+
+(3)
+
+for m = 1, · · · , M. Eq. (3) is an 1-regularized least squares problem, whose ob-
+jective function is not differentiable and it is not possible to di-
+
+rectly apply gradient-based methods. A number of techniques can
+
+be used here, such as interior point method [7], coordinate descent
+
+with soft-thresholding [13, 14], Lars-Lasso algorithm [12, 26], and
+
+feature-sign search [19]. Here we choose coordinate descent with
+
+soft-thresholding. Let v¯k = (vk1, · · · , vkN )T be the column vector whose entries are
+those of the kth row of V, VT \k the matrix of VT with the kth column removed, and u¯ m\k the vector of u¯ m with the kth entry removed, and
+we can rewrite the objective function in Eq.(3) as
+
+L (u¯ m) ===uu2m2md¯kkmskv-¯kk-V22T2-\ukm2u¯kumm\rkkm(-kd¯-umm -kv¯Vk sT22k\lk+uu¯mml1\k+)uT¯mv¯1\kk|u+m1 k+|1+|u1cmo|kun|m+skt|,const
+lk
+
+where si j and ri j are the (i j)th entries of K × K matrix S = VVT and M × K matrix R = DVT , respectively, and const is a constant with
+
+respect to umk. Then, we can conduct the minimization over umk
+
+while keeping all the uml fixed for which l k. Furthermore, L (u¯ m)
+
+is differentiable with respect to umk except for the point umk = 0.
+
+Forcing the partial derivative to be zero leads to
+
+umk = 
+
+( rmk - l
+
+) k skluml -
+
+1 2
+
+1
+
+,
+
+( rmk - l
+
+skk ) k skluml
+
++
+
+1 2
+
+1
+
+,
+
+skk
+
+if umk > 0, if umk < 0,
+
+which can be approximated by the following update rule:
+
+umk 
+
+(
+
+
+
+rmk - l
+
+k skluml
+
+-
+
+1 2
+
+) 1 +
+
+sign
+
+( rmk
+
+-
+
+
+l
+
+skk
+
+) k skluml
+,
+
+where (·)+ denotes the hinge function. The algorithm for updating U is summarized in Algorithm 2.
+
+4.3.2 Update of Matrix V
+
+The update of V with U fixed is a least squares problem with 2 norm regularization. It can also be decomposed into N optimization problems, with each corresponding to one vn and can be solved in parallel:
+
+min
+vn
+
+dn
+
+-
+
+Uvn22
+
++
+
+2
+
+vn22
+
+,
+
+for n = 1, · · · , N. It is a standard 2-regularized least squares prob-
+
+lem (also known as Ridge Regression in statistics) and the solution is:
+
+vn
+
+=
+
+( UT U
+
++
+
+2
+
+)-1 I
+
+UT dn.
+
+Ainlvgeorrsiitohnm(U3TsUho+wst2hIe)-p1rioscheadrudr,ew. (eIfcaKniesmlaprlgoeysgurcahdtihenatt
+
+the matrix descent in
+
+the update of vn.)
+
+Algorithm 2 UpdateU
+
+Require: D  RM×N , V  RK×N
+
+1: S  VVT
+
+2: R  DVT
+
+3: for m = 1 : M do
+
+4: u¯ m  0
+
+5: repeat
+
+6:
+
+for k = 1 : K do
+
+7:
+
+wmk  rmk - l k skluml
+
+8:
+
+umk
+
+
+
+(|wmk
+
+|-
+
+1 2
+
+1
+
+)+
+
+sign(wmk
+
+)
+
+skk
+
+9: end for
+
+10: until convergence
+
+11: end for
+
+12: return U
+
+Algorithm 3 UpdateV
+
+Require: 1:  
+
+(UDTUR+M×2NI,)U-1
+
+
+
+RM×K
+
+2:   UT D
+
+3: for n = 1 : N do
+
+4: vn  n, where n is the nth column of 
+
+5: end for
+
+6: return V
+
+4.4 Implementation on MapReduce
+MapReduce [9] is a computing model that supports distributed computing on large datasets. MapReduce expresses a computing task as a series of Map and Reduce operations and performs the task by executing the operations in a distributed computing environment. In this paper, we implement RLSI on MapReduce, referred to as Distributed RLSI, as shown in Figure 1. At each iteration the algorithm updates U and V using the following MapReduce operations:
+
+Map-1 Broadcast S = VVT and map R = DVT on m (m = 1, · · · , M) such that all of the entries in the mth row of R are shuffled to
+the same machine in the form of m, r¯m, S, where r¯m is the column vector whose entries are those of the mth row of R.
+
+Reduce-1 Take m, r¯m, S and emit m, u¯ m, where u¯ m is the optimal solution for the mth optimization problem (Eq. (3)). We
+
+have U = [u¯ 1, · · · , u¯ M]T .
+
+Map-2
+
+Broadcast
+
+
+
+=
+
+( UT
+
+U
+
++
+
+2
+
+)-1 I
+
+and
+
+map
+
+
+
+=
+
+UT D
+
+on
+
+n
+
+(n = 1, · · · , are shuffled
+
+N) to
+
+such that the same
+
+the entries machine in
+
+in the nth the form
+
+cooflunm, nno,f,
+
+where n is the nth column of .
+
+Reduce-2
+
+Take
+
+n, n, 
+
+and
+
+emit
+
+n, vn
+
+=
+
+n
+
+ .
+
+We have V
+
+=
+
+[v1, · · · , vN ].
+
+Note that the data partitioning schemas for R in Map-1 and for 
+
+in Map-2 are different. R is split such that entries in the same row
+
+(corresponding to one term) are shuffled to the same machine while
+
+ is split such that entries in the same column (corresponding to
+
+one document) are shuffled to the same machine.
+
+There are a number of large scale matrix multiplication opera-
+
+tions in operation Map-1 (DVT and VVT ) and Map-2 (UT D and
+
+UT U ). These matrix multiplication operations can also be con-
+
+ducted can be
+
+coanlcMulaapteRdedaus cenNi=n1frdansvtTnruacntudretheuffis cfuielnlytlpy.arAalsleelxizaemdp. lFe,oDr dVeT-
+
+tails please refer to [4, 20].
+
+688
+
+R=DVT
+
+Map-1 Reduce-1
+R : (m,rm)
+
+... ...
+
+S=VVT S : (m,S)
+
+V
+Reduce-2 Map-2
+
+m, rm,S
+
+U
+
+:(n, n)
+
+=UTD
+
+n,n , 
+
+:(n, )
+
+=(UTU+2I)-1
+
+Figure 1: Update of U and V on MapReduce.
+
+4.5 Discussion
+We discuss the properties of RLSI with 1 norm on U and 2 norm on V as example.
+4.5.1 Relationship with Other Methods
+Despite having better scalability properties, RLSI is closely related to existing topic modeling methods such as LSI, PLSI, and Sparse Coding. In [30], the relationship between LSI and PLSI are discussed, from the view point of loss function and regularization. We describe their framework, so we can describe RLSI in the context of existing approaches. In that framework, topic modeling is considered as a problem of optimizing the following general loss function
+min B (D||UV) + R (U, V) ,
+(U,V)C
+where B(··) is generalized Bregman divergence with non-negative values and is equal to zero if and only if the two inputs are equivalent; R(·, ·)  0 is the regularization on the two inputs; C is the solution space; and  is a coefficient making trade-off between the divergence and regularization.
+Different choices of B, R, and C lead to different topic modeling techniques. Table 2 shows the relationship between RLSI and existing methods of LSI, PLSI,and Sparse Coding. (Suppose that we first conduct normalization m,n dmn = 1 in PLSI [11].) Viewing topic modeling methods in this framework, the major question is how to conduct regularization as well as optimization to make the learned topics coherent and readable.
+4.5.2 Probabilistic and Non-probabilistic Models
+Many non-probabilistic topic modeling techniques, such as LSI, Sparse Coding, and RLSI can be translated into a probabilistic framework, as shown in Figure 2.
+In the probabilistic framework, columns of the term-topic matrix uk's are assumed to be independent from each other and columns of the topic-document matrix vn's are regarded as latent variables. Next, each document dn is assumed to be generated according to a Gau(ssian distributi)on conditioned on U and vn, i.e., p (dn|U, vn)  exp - dn - Uvn22 . Furthermore, all the pairs (dn, vn) are conditionally independent given U.
+Different techniques use different priors or constraints on uk's and vn's. Table 3 lists the priors or constraints used in LSI, Sparse Coding, and RLSI, respectively. It can be shown that LSI, Sparse Coding, and RLSI can be obtained with Maximum A Posteriori
+
+U
+
+dn
+
+vn
+
+n = 1, ..., N
+
+Figure 2: Probabilistic framework for non-probabilistic methods.
+
+Table 3: Priors/constraints in different non-probabilistic methods.
+
+Method
+
+Prior/Constraint on uk Prior/Constraint on vn
+
+LSI Sparse Coding RLSI
+
+orthonormality
+uk22  1 p (uk)  exp (-1 uk1)
+
+orthogonality p (vn)  exp((- vn1)) p (vn)  exp -2 vn22
+
+(MAP) Estimation [22]. That is to say, the techniques can be understood in the same framework.
+
+4.5.3 Scalability Comparison
+
+As explained, several methods for improving the efficiency and
+
+scalability of existing topic models, especially LDA have been pro-
+
+posed. Table 4 shows the space and time complexities of AD-LDA
+
+[24], Async-CBS, Async-CVB [2], and Distributed RLSI, where
+
+AvgDL is the average document length in the collection and  is
+
+the sparsity of topics.
+
+The space complexity of AD-LDA (also Async-CGS and Async-
+
+CVB)
+
+is
+
+of
+
+order
+
+N ×AvgDL+N K P
+
++
+
+MK,
+
+where
+
+MK
+
+is
+
+for
+
+storing
+
+the
+
+term-topic matrix on each processor. For a large text collection, the
+
+vocabulary size M will be very large and thus the space complexity
+
+will be very high. This will hinder it from being applied to large
+
+datasets in real applications.
+
+The
+
+space
+
+complexity
+
+of
+
+Distributed
+
+RLSI
+
+is
+
+N ×AvgDL+(1+) M K +2N K P
+
++
+
+K2
+
+for
+
+updating
+
+U
+
+and
+
+V,
+
+where
+
+K2
+
+is
+
+for
+
+storing
+
+S
+
+or
+
+,
+
+(1+)MK P
+
+is
+
+for
+
+storing
+
+U
+
+and
+
+R
+
+in
+
+P
+
+processors,
+
+and
+
+2NK P
+
+is
+
+for
+
+storing
+
+V
+
+and
+
+
+
+in P processors. Since K  M, it is clear that Distributed RLSI has
+
+better scalability. We can reach the same conclusion when compar-
+
+ing Distributed RLSI with other parallel/distributed topic modeling
+
+methods. The key is that Distributed RLSI can distribute both terms
+
+and documents over P processors. The sparsity on the term-topic
+
+matrix can also help save the space in each processor.
+
+The time complexities of different topic modeling methods are
+
+also listed. For Distributed RLSI, I is the number of inner itera-
+
+tions in Algorithm 2; TU and TV are for the matrix operations in Algorithms 2 and 3 (e.g., VVT , DVT , UT U, UT D, and matrix inver-
+
+sion), respectively:
+
+TU
+
+=
+
+{ AvgDL ×
+max P
+
+NK
+
++ nnz(R) log P,
+
+NK2 P
+
+} + K2 log P ,
+
+TV
+
+=
+
+{ AvgDL × NK max
+P
+
++ nnz() log P,
+
+M(K)2 P
+
+} + K2 log P + K3 ,
+
+where nnz(·) is the number of nonzero entries in the input matrix. For details please refer to [20]. Note that the time complexities of these methods are comparable.
+
+5. RELEVANCE RANKING
+Topic models can be used in a wide variety of applications. We apply RLSI to relevance ranking in information retrieval (IR) and evaluate its performance in comparison to existing topic modeling methods. The use of topic modeling techniques such as LSI was proposed in IR many years ago [10]. A more recent paper [35] demonstrated improvements in retrieval performance by applying topic modeling on modern test collections. We do not replicate their precise ranking approach here, since it relies on a probabilistic topic model, but we achieve similar gains.
+
+689
+
+Table 2: Optimization framework for different topic modeling methods.
+
+Method
+
+B (D||UV)
+
+R (U, V)
+
+Constraint on U
+
+Constraint on V
+
+LSI PLSI Sparse Coding RLSI
+
+
+mn
+
+(D - dmn
+
+UV2F
+
+log
+
+dmn (UV)mn
+
+)
+
+D - UV2F
+
+D - UV2F
+
+--
+
+--
+
+
+k
+
+uk
+
+n1,vn n1vn 22
+
+UT U = I
+UT 1 = 1, umk  0 uk22  1 --
+
+VVT = 2 ( is diagonal) 1T V1 = 1, vkn  0
+-- --
+
+Table 4: Complexity of parallel/distributed topic models.
+
+Method
+
+Space complexity Time complexity (per iter)
+
+AD-LDA Async-CGS Async-CVB Distributed RLSI
+
+N ×AvgDL+N K N ×AvgDPL+N K N ×AvgDPL+2N K
+P
+
++ MK + 2MK + 4MK
+
+N ×AvgDL+(1+) M K +2N K P
+
++ K2
+
+N K ×AvgDL N K ×APvgDL
+P
+
++ +
+
+MK log MK log
+
+P P
+
+MK P
+
++
+
+MK log P
+
+I M K2 +N K2 P
+
++ TU
+
++ TV
+
+The advantage of incorporating topic modeling in relevance ranking is to reduce "term mismatch". Traditional relevance models, such as VSM [29] and BM25 [27], are all based on term matching. The term mismatch problem arises when the authors of documents and the users of search system use different terms to describe the same concepts, and thus relevant documents get low relevance scores. For example, if a query contains the term "airplane" but a relevant document instead contains the term "aircraft", then there is a mismatch and the document may not be easily distinguished from an irrelevant one. In the topic space, however, it is very likely that the two terms are in the same topic, and thus the use of matching score in the topic space can help improve relevance ranking. In practice it is beneficial to combine topic matching scores with term matching scores, to leverage both broad topic matching and specific term matching.
+To do so, given a query and document, we must calculate their matching scores in both term space and topic space. For query q, we represent it in the topic space:
+
+vq
+
+=
+
+arg
+
+min
+v
+
+q
+
+-
+
+Uv22
+
++
+
+2v22,
+
+where vector q is the tf-idf representation of query q in the term space2. Similarly, for document d (and its tf-idf representation d in the term space) we represent it in the topic space as vd. The matching score between the query and the document in the topic space is, then, calculated as the cosine similarity between vq and vd:
+
+stopic(q, d)
+
+=
+
+vq, vd . vq2 · vd2
+
+(4)
+
+The topic matching score stopic(q, d) is combined with the conventional term matching score sterm(q, d), for final relevance ranking. There are several ways to conduct the combination. A simple and effective approach is to use a linear combination. The final relevance ranking score s(q, d) is:
+
+s(q, d) = stopic(q, d) + (1 - )sterm(q, d),
+
+(5)
+
+where   [0, 1] is the coefficient. sterm(q, d) can be calculated with any of the conventional relevance models such as VSM and BM25.
+Another combination approach is to incorporate the topic matching score as a feature in a learning to rank model, e.g., LambdaRank [5]. In this paper, we use both approaches in our experiments.
+
+2Using vq = arg minv q-Uv22 +2v1 if 1 norm is imposed on V
+
+Dataset
+# terms # documents # queries
+
+Table 5: Dataset statistics.
+
+AP
+
+WSJ
+
+OHSUMED
+
+83,541 106,029 26,457
+
+29,528 45,305 14,430
+
+250 250
+
+106
+
+Web dataset
+7,014,881 1,562,807 10,680
+
+6. EXPERIMENTS
+We have conducted experiments to compare different RLSI regularization strategies, to compare RLSI with existing methods, and to test scalability and retrieval performance of RLSI using several datasets.
+6.1 Experimental Settings
+Our three TREC datasets were AP, WSJ, and OHSUMED, which have been widely used in relevance ranking experiments. We also used a large real-world web dataset from a commercial web search engine, containing about 1.6 million documents and 10 thousand queries. Each dataset consists of a document collection, a set of queries, and relevance judgments on some documents with respect to each query. For all four datasets, only the retrieved documents were included and a standard list of stop words was removed. For the Web dataset, we further discarded the terms whose frequencies in the whole dataset are less than two. Table 5 gives some statistics on the datasets.
+In AP and WSJ the relevance judgments are at two levels: "relevant" or "irrelevant". In OHSUMED, the relevance judgments are at three levels: "definitely relevant", "partially relevant", and "not relevant". In the Web dataset, there are five levels: "perfect", "excellent", "good", "fair", and "bad". In the experiments of retrieval performance, we used MAP and NDCG at the positions of 1, 3, 5, and 10 for evaluating retrieval performance. In calculating MAP, we consider "definitely relevant" and "partially relevant" in OHSUMED, and "perfect", "excellent", and "good" in Web dataset as "relevant".
+In the experiments on TREC datasets (Section 6.2 and Section 6.3), no validation set was used since we only had small query sets, making it difficult to hold out a validation set of meaningful size in each case. Instead, we chose to evaluate each model in a predefined grid of parameters, showing its performance under the best parameter choices. In the experiments on the Web dateset (Section 6.4), the queries were randomly split into training/validation/test sets, with 6000/2000/2680 queries, respectively. We trained the ranking models with the training set, selected the best models with the validation set, and evaluated the performances of the methods with the test set.
+The experiments on AP, WSJ, and OHSUMED were conducted on a server with Intel Xeon 2.33GHZ CPU, 16GB RAM. The experiments on the Web dataset were conducted on a distributed system and the Distributed RLSI was implemented with SCOPE language [6].
+6.2 Regularization in RLSI
+Our comparison of different RLSI regularization strategies was
+
+690
+
+Table 7: Performance of the RLSI variants.
+
+RLSI (U1-V2) RLSI (U2-V1) RLSI (U1-V1)
+
+Readability  
+
+Compactness ×
+
+Retrieval performance
+× ×
+
+RLSI (U2-V2)
+
+×
+
+×
+
+×
+
+carried out on AP, WSJ, and OHSUMED datasets. Regularization on U and V via either 1 or 2 norm gives us four RLSI variants: RLSI (U1-V2), RLSI (U2-V1), RLSI (U1-V1), and RLSI (U2-V2), where RLSI (U1-V2) means, for example, applying 1 norm on U and 2 norm on V. Parameters K, 1, 2, and  were respectively set in ranges of [10, 50], [0.01, 1], [0.01, 1], and [0.1, 1] for all variants.
+We first compared the RLSI variants in terms of topic readabil-
+ity, by looking at the contents of topics they generated. As example,
+Table 6 shows 10 topics (randomly selected) and the average topic
+compactness (AvgComp) on AP dataset, for all four RLSI variants, when K = 20 and 1 and 2 are the optimal parameters for the retrieval experiment described next. Here, average topic compactness
+is defined as average ratio of terms with non-zero weights per topic.
+For each topic, its top 5 weighted terms are shown. From the results, we have found that 1) If 1 norm is imposed on either U or V, RLSI can always discover readable topics; 2) Without 1 norm regularization (i.e., RLSI( U2-V2 )), many topics are not readable; 3) If 1 norm is only imposed on V (i.e. RLSI (U2-V1)), then the discovered topics are not compact or sparse (e.g., AvgComp = 1). We also conducted the same experiments on WSJ and OHSUMED
+and observed similar phenomena. The examining topics on them
+are not shown due to space limitation.
+We also compared the RLSI variants in terms of retrieval perfor-
+mance. Specifically, for each of the RLSI variants, we combined topic matching scores (stopic(q, d) in Eq. (5)) with term matching scores given by conventional IR models of VSM or BM25.
+Since BM25 performed better than VSM on AP and WSJ, and
+VSM performed better than BM25 on OHSUMED, we combined
+the topic matching scores with BM25 on AP and WSJ, and with
+VSM on OHSUMED. The methods we tested were denoted as "BM25+RLSI (U1-V2)", "BM25+RLSI (U2-V1)", "BM25+RLSI (U1-V1)", "BM25+RLSI (U2-V2)", etc. Figures 3, 4, and 5 show the retrieval performance of RLSI variants achieved by the
+best parameter setting on AP, WSJ, and OHSUMED, respectively.
+From the results, we can see that 1) All of these methods can im-
+prove over the baseline and in most cases the improvement is statistically significant (t-test, p-value < 0.05); 2) Among the RLSI variants, RLSI (U1-V2) performs best and RLSI (U2-V2) performs worst.
+Table 7 summarizes the experimental results in terms of topic
+readability, topic compactness, and retrieval performance. From the result, we can see that in RLSI, 1 norm regularization is essential for discovering readable topics, and the discovered topics will also be compact if 1 norm is imposed on U. Furthermore, between the two RLSI variants with good topic readability and compactness, i.e., RLSI (U1-V2) and RLSI (U1-V1), RLSI (U1-V2) performs better in improving retrieval performance. Thus we conclude that it is a better practice to apply 1 norm on U and 2 norm on V in RLSI, for achieving good topic readability, topic compact-
+ness, and retrieval performance. We will use RLSI (U1-V2) in the following experiments and
+denote it as RLSI for simplicity.
+
+0.49 0.47 0.45 0.43 0.41 0.39 0.37 0.35
+MAP NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+BM25 BM25+RLSI (UL1-VL2) BM25+RLSI (UL2-VL1) BM25+RLSI (UL1-VL1) BM25+RLSI (UL2-VL2)
+
+Figure 3: Retrieval performance of RLSI variants on AP.
+
+0.42 0.4
+0.38 0.36 0.34 0.32
+0.3 0.28 0.26
+MAP NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+BM25 BM25+RLSI (UL1-VL2) BM25+RLSI (UL2-VL1) BM25+RLSI (UL1-VL1) BM25+RLSI (UL2-VL2)
+
+Figure 4: Retrieval performance of RLSI variants on WSJ.
+
+6.3 Comparison of Topic Models
+In this experiment, we compared RLSI with LDA, PLSI, and LSI on AP, WSJ, and OHSUMED datasets.
+We first compared RLSI with LDA, PLSI, and LSI in terms of topic readability, by looking at the topics they generated. We made use of the tools available on Internet for creating the baselines3. The number of topics K was again set to 20 for all the methods. In RLSI, 1 and 2 were the optimal parameters used in Section 6.2 (i.e., 1 = 0.5 and 2 = 1.0). For LDA, PLSI, and LSI, there was no additional parameter to tune.
+Table 8 shows 10 randomly selected topics discovered by RLSI, LDA, PLSI, and LSI and the average topic compactness (AvgComp) on AP dataset. For each topic, its top 5 weighted terms are shown. From the results, we have found 1) RLSI can discover readable and compact (e.g., AvgComp = 0.0075) topics; 2) PLSI and LDA can discover coherent and readable topics as expected, however the discovered topics are not compact (e.g., AvgComp = 0.9534 and AvgComp = 1, respectively); 3) LDA performs better than PLSI. There is some redundancy in the topics discovered by PLSI; 4) The topics discovered by LSI were hard to understand, and this may be due to its orthogonality assumption. We also conducted the same experiments on WSJ and OHSUMED and observed similar phenomena. The results on them are not shown due to space limitation.
+We also tested the performance of RLSI in terms of retrieval performance, in comparison to LSI, PLSI, LDA. The experimental settings was similar to that of used in Section 6.2. Parameters K and  were respectively set in ranges of [10, 50] and [0.1, 1] for all four methods, and parameters 1 and 2 in RLSI were respectively set in ranges of [0.01, 1] and [0.01, 1]. Figures 6, 7, and 8 show retrieval performance achieved by the best parameter setting on AP, WSJ, and OHSUMED, respectively. From the results, we can see that
+3LSI: http://tedlab.mit.edu/~dr/SVDLIBC/; PLSI: http://www.lemurproject.org/; LDA: http://www. cs.princeton.edu/~blei/lda-c/
+
+691
+
+RLSI (U1-V2) AvgComp = 0.0075
+RLSI (U2-V1) AvgComp = 1
+RLSI (U1-V1) AvgComp = 0.0197
+RLSI (U2-V2) AvgComp = 1
+
+Topic 1
+opec oil cent barrel price nuclear treaty missile weapon soviet court prison judge sentence trial dukakis oil opec cent bush
+
+Table 6: Topics discovered by RLSI variants from AP dataset.
+
+Topic 2 Topic 3
+
+Topic 4 Topic 5
+
+Topic 6 Topic 7
+
+africa south african angola apartheid
+
+aid virus infect test patient
+
+school student teacher educate college
+
+noriega panama panamanian delval canal
+
+percent billion rate 0 trade
+
+plane crash flight air airline
+
+court judge prison trial sentence plane crash air flight airline palestinian israeli israel arab plo
+
+noriega panama panamanian delval canal dukakis bush jackson democrat campaign soviet noriega panama drug quake
+
+africa south african angola apartheid israeli palestinian israel arab plo school student bakker trade china
+
+cent opec oil barrel price africa south african angola apartheid africa south iran african dukakis
+
+israeli palestinian israel arab plo soviet treaty missile nuclear gorbachev dukakis bush democrat air jackson
+
+dukakis bush jackson democrat campaign school student teacher educate college soviet treaty student nuclear missile
+
+Topic 8
+israeli palestinian israel arab plo student school teacher educate college yen trade dollar market japan drug cent police student percent
+
+Topic 9
+nuclear soviet treaty missile weapon plane crash flight air airline cent opec oil barrel price percent billion price trade cent
+
+Topic 10
+bush dukakis campaign quayle bentsen percent billion rate 0 trade noriega panama panamanian delval canal soviet israeli missile israel treaty
+
+RLSI AvgComp = 0.0075
+LDA AvgComp = 1
+PLSI AvgComp = 0.9534
+LSI AvgComp = 1
+
+Table 8: Topics discovered by RLSI, LDA, PLSI, and LSI from AP dataset.
+
+Topic 1 Topic 2 Topic 3 Topic 4 Topic 5
+
+Topic 6 Topic 7 Topic 8
+
+opec oil cent barrel price soviet nuclear union state treaty company million share billion stock
+
+africa south african angola apartheid school student year educate university israeli iran israel palestinian arab
+
+aid virus infect test patient dukakis democrat campaign bush jackson year state new nation govern
+
+school student teacher educate college party govern minister elect nation year state new nation 0
+
+noriega panama panamanian delval canal year new time television film bush dukakis democrat campaign republican
+
+percent billion rate 0 trade water year fish animal 0 court charge attorney judge trial
+
+plane crash flight air airline price year market trade percent soviet treaty missile nuclear gorbachev
+
+israeli palestinian israel arab plo court charge case judge attorney year state new nation govern
+
+soviet percent police govern state
+
+567 234 0 percent 12
+
+0 yen dollar percent tokyo
+
+earthquake quake richter scale damage
+
+drug school test court dukakis
+
+0 dukakis bush jackson dem
+
+israel israeli student palestinian africa
+
+yen dukakis bush dollar jackson
+
+Topic 9
+nuclear soviet treaty missile weapon air plane flight crash airline plane flight airline crash air urgent oil opec dukakis cent
+
+Topic 10
+bush dukakis campaign quayle bentsen iran iranian ship iraq navy year state new people nation student school noriega panama teacher
+
+0.55
+
+0.53
+
+0.51
+
+0.49
+
+0.47
+
+0.45
+
+0.43
+
+0.41
+
+0.39
+
+0.37
+
+0.35
+
+MAP
+
+NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+VSM VSM+RLSI (UL1-VL2) VSM+RLSI (UL2-VL1) VSM+RLSI (UL1-VL1) VSM+RLSI (UL2-VL2)
+
+Figure 5: Retrieval performance of RLSI variants on OHSUMED.
+
+0.49
+
+0.47
+
+0.45
+
+0.43
+
+0.41
+
+0.39
+
+0.37
+
+0.35
+
+MAP
+
+NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+BM25 BM25+LSI BM25+PLSI BM25+LDA BM25+RLSI
+
+Figure 6: Retrieval performance on AP.
+
+RLSI can significantly improve the baseline (t-test, p-value < 0.05), going beyond the simple term matching paradigm. Among the different topic modeling methods, RLSI performs slightly better than the other methods, and sometimes the improvements are statisti-
+
+cally significant (t-test, p-value < 0.05). We conclude that RLSI is a proper choice for combining topic matching and term matching.
+6.4 Experiment on Web Dataset
+We tested the scalability of RLSI using a large real-world web
+
+692
+
+0.43
+
+0.41
+
+0.39
+
+0.37 BM25
+
+0.35
+
+BM25+LSI
+
+0.33
+
+BM25+PLSI
+
+0.31
+
+BM25+LDA
+
+BM25+RLSI 0.29
+
+0.27
+
+0.25
+
+MAP
+
+NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+Figure 7: Retrieval performance on WSJ.
+
+0.55
+
+0.53
+
+0.51
+
+0.49
+
+0.47
+
+VSM
+
+VSM+LSI 0.45
+
+VSM+PLSI 0.43
+VSM+LDA
+
+0.41
+
+VSM+RLSI
+
+0.39
+
+0.37
+
+0.35
+
+MAP
+
+NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+Figure 8: Retrieval performance on OHSUMED.
+
+dataset. Table 9 lists the sizes of popular datasets used to evaluate existing distributed/parallel topic models, as well as the size of our Web dataset. We can see that the number of terms in Web dataset is much larger (about 35 times of the number of terms in Wiki200T), which hinders the scaling up of existing parallel/distributed topic models, as they need to keep the dense term-topic matrix in memory on each processor. Distributed RLSI, on the other hand, can distribute the terms and documents over processors and thus can handle the Web dataset effectively and efficiently. (Note that it is difficult for us to re-implement existing parallel topic modeling methods, because most of them require special computing infrastructures and the development costs of the methods are high.)
+In our experiments, the number of topics K was set to 500, 1 and 2 were again set to 0.5 and 1.0 respectively. It took about 1.5 hours for Distributed RLSI to complete an iteration on the MapReduce system with 16 processors. Table 10 shows 10 randomly sampled topics and the overall topic compactness on the Web dataset. We can see that the topics obtained by RLSI are compact and readable.
+Next, we tested retrieval performance of Distributed RLSI. We randomly split the queries into training/validation/test sets, with 6000/2000/2680 queries, respectively. We took LambdaRank [5] as the baseline. There are 16 features used in the LambdaRank model, including BM25, PageRank, and Query-Exact-Match. In our methods, the topic matching scores by RLSI were used as a new feature in LambdaRank, denoted as "LambdaRank+RLSI". Figure 9 shows the results on the test set, indicating that topics discovered by RLSI allowed "LambdaRank+RLSI" to significantly (t-test, pvalue < 0.01) outperform the baseline method of LambdaRank.
+Finally, since other papers reduced input vocabulary size, we tested the effect of reducing the vocabulary size in RLSI. Specifically, we removed the terms whose total term frequency is less than 100 from the Web dataset obtaining a new dataset with 222,904 terms. We applied RLSI on the new dataset with parameters K = 500, 1 = 0.5 and 2 = 1.0. We then created a LambdaRank
+
+Table 9: Size of datasets. Dataset # docs # terms Applied algorithms
+
+NIPS
+
+1,500 12,419 Async-CVB, Async-CGS, PLDA
+
+Wiki-200T 2,122,618 200,000 PLDA+
+
+PubMed 8,200,000 141,043 AD-LDA, Async-CVB, Async-CGS
+
+Web dataset 1,562,807 7,014,881 Distributed RLSI
+
+0.55
+
+0.45 LambdaRank+RLSI
+LambdaRank+RLSI (Reduced Vocabulary) 0.35 LambdaRank
+0.25 MAP NDCG@1 NDCG@3 NDCG@5 NDCG@10
+
+Figure 9: Retrieval performance on Web dataset.
+model with topic matching scores as a feature, denoted as "LambdaRank+RLSI (Reduced Vocabulary)". Figure 9 shows the retrieval performance of "LambdaRank+RLSI (Reduced Vocabulary)" on the test set. The result indicates that reducing the vocabulary size will sacrifice learning accuracy of RLSI and consequently hurt the retrieval performance. We conducted t-tests on the differences between "LambdaRank+RLSI (Reduced Vocabulary)" and "LambdaRank+RLSI" and found that the difference is statistically significant (p-value < 0.01). We observed the same trends on the TREC datasets for RLSI and LDA, but we do not report the details due to space limitation.
+7. CONCLUSIONS
+In this paper, we have studied topic modeling from the viewpoint of enhancing scalability and retrieval performance. We have proposed a new method for topic modeling, called Regularized Latent Semantic Indexing (RLSI). RLSI formalizes topic modeling as minimization of a quadratic loss function with a regularization (either 1 or 2 norm). Although similar techniques have been used in other fields, such as sparse coding in computer vision, this is the first comprehensive study of regularization for topic modeling, as far as we know. It is exactly the formulation of RLSI that makes its optimization process decomposable, and thus scalable. Specifically, RLSI replaces the orthogonality constraint or probability distribution constraints with regularization. Therefore, RLSI can be more easily implemented in a parallel and/or distributed computing environment, such as MapReduce. We presented a specific algorithm for running RLSI on MapReduce.
+In our experiments we tested different variants of RLSI and confirmed that the sparse topic regularization and smooth document regularization is the best choice from the viewpoint of overall performance. Specifically the 1 norm on topics (making topics sparse) and 2 norm on document representations gave the best readability and retrieval performance.
+Experimental results on TREC data and large scale web data show that RLSI is better than or comparable with existing methods such as LSI, PLSI, and LDA in terms of readability of topics and accuracy in relevance ranking. We have also demonstrated that RLSI can scale up to large document collection with 1.6 million documents and 7 million terms, which is very difficult for exiting methods. Most previous papers reduced the input vocabulary size to tens of thousands of terms. As far as we know, this is the largest
+
+693
+
+Topic 1
+casino poker slot game vegas
+
+Table 10: Topics discovered by RLSI from Web dataset (AvgComp = 0.0035).
+
+Topic 2 Topic 3 Topic 4 Topic 5
+
+Topic 6 Topic 7 Topic 8 Topic 9 Topic 10
+
+mortgage loan credit estate bank
+
+wheel rim tire truck car
+
+cheap flight hotel student travel
+
+login password username registration email
+
+christian bible church god jesus
+
+google web yahoo host domain
+
+obj pdf endobj stream xref
+
+spywar anti sun virus adwar
+
+friend myspace music comment photo
+
+size which the topic modeling methods can handle so far. We have also verified that RLSI can help improve web search relevance.
+As future work, we plan to further enhance the scale of experiments to process even larger datasets. We also want to further study the theoretical properties of RLSI and new applications of RLSI.
+8. REFERENCES
+[1] L. AlSumait, D. Barbara, and C. Domeniconi. On-line lda: Adaptive topic models for mining text streams with applications to topic detection and tracking. In ICDM, 2008.
+[2] A. Asuncion, P. Smyth, and M. Welling. Asynchronous distributed estimation of topic models for document analysis. Statistical Methodology, 2011.
+[3] D. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation. JMLR, 3:993­1022, 2003.
+[4] A. Buluc and J. R. Gilbert. Challenges and advances in parallel sparse matrix-matrix multiplication. In ICPP, pages 503­510, 2008.
+[5] C. J. Burges, R. Ragno, and Q. V. Le. Learning to rank with nonsmooth cost functions. In NIPS 19, 2007.
+[6] R. Chaiken, B. Jenkins, P.-A. Larson, B. Ramsey, D. Shakib, S. Weaver, and J. Zhou. Scope: Easy and efficient parallel processing of massive data sets. VLDB Endow., 1:1265­1276, 2008.
+[7] S. S. Chen, D. L. Donoho, and M. A. Saunders. Atomic decomposition by basis pursuit. SISC, 20:33­61, 1998.
+[8] X. Chen, B. Bai, Y. Qi, Q. Lin, and J. Carbonell. Sparse latent semantic analysis. In NIPS Workshop, 2010.
+[9] J. Dean, S. Ghemawat, and G. Inc. Mapreduce: simplified data processing on large clusters. In OSDI, 2004.
+[10] S. Deerwester, S. T. Dumais, G. W. Furnas, T. K. Landauer, and R. Harshman. Indexing by latent semantic analysis. J AM SOC INFORM SCI, 41:391­407, 1990.
+[11] C. Ding, T. Li, and W. Peng. On the equivalence between non-negative matrix factorization and probabilistic latent semantic indexing semantic indexing. COMPUT STAT DATA AN, 52:3913­3927, 2008.
+[12] B. Efron, T. Hastie, I. Johnstone, and R. Tibshirani. Least angle regression. ANN STAT, 32:407­499, 2004.
+[13] J. Friedman, T. Hastie, H. Hofling, and R. Tibshirani. Pathwise coordinate optimization. ANN APPL STAT, 1:302­332, 2007.
+[14] W. J. Fu. Penalized regressions: The bridge versus the lasso. J COMPUT GRAPH STAT, 7:397­416, 1998.
+[15] M. D. Hoffman, D. M. Blei, and F. Bach. Online learning for latent dirichlet allocation. In NIPS, 2010.
+[16] T. Hofmann. Probabilistic latent semantic indexing. In SIGIR, pages 50­57, 1999.
+[17] D. D. Lee and H. S. Seung. Learning the parts of objects with nonnegative matrix factorization. Nature, 401:391­407, 1999.
+[18] D. D. Lee and H. S. Seung. Algorithms for non-negative matrix factorization. In NIPS 13, pages 556­562. 2001.
+
+[19] H. Lee, A. Battle, R. Raina, and A. Y. Ng. Efficient sparse coding algorithms. In NIPS, pages 801­808. 2007.
+[20] C. Liu, H. chih Yang, J. Fan, L.-W. He, and Y.-M. Wang. Distributed nonnegative matrix factorization for web-scale dyadic data analysis on mapreduce. In WWW, pages 681­690, 2010.
+[21] Z. Liu, Y. Zhang, and E. Y. Chang. Plda+: Parallel latent dirichlet allocation with data placement and pipeline processing. In TIST, 2010.
+[22] J. Mairal, F. Bach, J. Ponce, G. Sapiro, and A. Zisserman. Supervised dictionary learning. In NIPS 21, pages 1033­1040. 2009.
+[23] D. M. Mimno and McCallum. Organizing the oca: Learning faceted subjects from a library of digital books. In JCDL, pages 376­385, 2007.
+[24] D. Newman, A. Asuncion, P. Smyth, and M. Welling. Distributed inference for latent dirichlet allocation. In NIPS, 2008.
+[25] B. A. Olshausen and D. J. Fieldt. Sparse coding with an overcomplete basis set: a strategy employed by v1. VISION RES, 37:3311­3325, 1997.
+[26] M. Osborne, B. Presnell, and B. Turlach. A new approach to variable selection in least squares problems. IMA J NUMER ANAL, 2000.
+[27] S. E. Robertson, S. Walker, S. Jones, M. Hancock-Beaulieu, and M. Gatford. Okapi at trec-3. In TREC'3, 1994.
+[28] R. Rubinstein, M. Zibulevsky, and M. Elad. Double sparsity: Learning sparse dictionaries for sparse signal approximation. IEEE T SIGNAL PROCES, pages 1553­1564, 2008.
+[29] G. Salton, A. Wong, and C. S. Yang. A vector space model for automatic indexing. Commun. ACM, 18:613­620, 1975.
+[30] A. P. Singh and G. J. Gordon. A unified view of matrix factorization models. In ECMLPKDD, pages 358­373, 2008.
+[31] A. Smola and S. Narayanamurthy. An architecture for parallel topic models. Proc. VLDB Endow., 3:703­710, 2010.
+[32] R. Thakur and R. Rabenseifner. Optimization of collective communication operations in mpich. INT J HIGH PERFORM C, 19:49­66, 2005.
+[33] C. Wang and D. M. Blei. Decoupling sparsity and smoothness in the discrete hierachical dirichlet process. In NIPS, 2009.
+[34] Y. Wang, H. Bai, M. Stanton, W. yen Chen, and E. Y. Chang. Plda: Parallel latent dirichlet allocation for large-scale applications. In AAIM, pages 301­314, 2009.
+[35] X. Wei and B. W. Croft. Lda-based document models for ad-hoc retrieval. In SIGIR, pages 178­185, 2006.
+[36] F. Yan, N. Xu, and Y. A. Qi. Parallel inference for latent dirichlet allocation on graphics processing units. In NIPS, pages 2134­2142, 2009.
+
+694
+
+

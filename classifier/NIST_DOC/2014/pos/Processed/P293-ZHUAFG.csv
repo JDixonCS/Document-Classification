@@ -1,0 +1,541 @@
+,sentence,label,data
+0,Learning for Search Result Diversification,null,null
+1,Yadong Zhu Yanyan Lan Jiafeng Guo Xueqi Cheng Shuzi Niu,null,null
+2,"Institute of Computing Technology, Chinese Academy of Sciences, Beijing 100190, China",null,null
+3,"{zhuyadong, niushuzi}@software.ict.ac.cn {lanyanyan, guojiafeng, cxq}@ict.ac.cn",null,null
+4,ABSTRACT,null,null
+5,"Search result diversification has gained attention as a way to tackle the ambiguous or multi-faceted information needs of users. Most existing methods on this problem utilize a heuristic predefined ranking function, where limited features can be incorporated and extensive tuning is required for different settings. In this paper, we address search result diversification as a learning problem, and introduce a novel relational learning-to-rank approach to formulate the task. However, the definitions of ranking function and loss function for the diversification problem are challenging. In our work, we firstly show that diverse ranking is in general a sequential selection process from both empirical and theoretical aspects. On this basis, we define ranking function as the combination of relevance score and diversity score between the current document and those previously selected, and loss function as the likelihood loss of ground truth based on Plackett-Luce model, which can naturally model the sequential generation of a diverse ranking list. Stochastic gradient descent is then employed to conduct the unconstrained optimization, and the prediction of a diverse ranking list is provided by a sequential selection process based on the learned ranking function. The experimental results on the public TREC datasets demonstrate the effectiveness and robustness of our approach.",null,null
+6,Categories and Subject Descriptors,null,null
+7,H.3.3 [Information Search and Retrieval]: Information Search and Retrieval ­ Retrieval Models,null,null
+8,General Terms,null,null
+9,"Algorithms, Experimentation, Performance, Theory",null,null
+10,Keywords,null,null
+11,"Diversity, Relational Learning-to-Rank, Sequential Selection, Plackett-Luce Model",null,null
+12,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'14, July 6­11, 2014, Gold Coast, Queensland, Australia. Copyright 2014 ACM 978-1-4503-2257-7/14/07 ...$15.00. http://dx.doi.org/10.1145/2600428.2609634 .",null,null
+13,1. INTRODUCTION,null,null
+14,"Most users leverage Web search engine as a predominant tool to fulfill their information needs. Users' information needs, typically described by keyword based queries, are often ambiguous or multi-faceted. On the one hand, for some ambiguous queries, there are multiple interpretations of the underlying needs (e.g., query ""band"" may refer to the rock band, frequency band or rubber band). On the other hand, queries even with clear definition might still be multi-faceted (e.g., ""britney spears""), in the sense that there are many aspects of the information needs (e.g., news, videos, photos of britney spears). Therefore, search result diversification has attracted considerable attention as a means to tackle the above problem [1]. The key idea is to provide a diversified result list, in the hope that different users will find some results that can cover their information needs.",null,null
+15,"Different methods on search result diversification have been proposed in literature, which are mainly non-learning methods, and can be divided into two categories: implicit methods and explicit methods. Implicit methods [3] assume that similar documents cover similar aspects, and rely on inter-document similarity for selecting diverse documents. While explicit methods [29] directly model the aspects of user queries and select documents that cover different aspects for diversification. However, most existing methods utilize a heuristic predefined utility function, and thus limited features can be incorporated and extensive tuning is required for different retrieval settings.",null,null
+16,"In this paper, we address search result diversification as a learning problem where a ranking function is learned for diverse ranking. Different from traditional relevance ranking based on the assumption of independent document relevance [17], diverse ranking typically considers the relevance of a document in light of the other retrieved documents [29]. Therefore, we introduce a novel Relational Learningto-Rank framework (R-LTR for short) to formulate the task of search result diversification. R-LTR considers the interrelationships between documents in the ranking process, besides the content information of individual documents used in traditional learning-to-rank framework. However, the definitions of ranking function and loss function for the diversification problem are challenging.",null,null
+17,"From the top-down user browsing behavior and the ubiquitous greedy approximation for diverse ranking, we find that search result diversification is in general a sequential ranking process. Therefore, we propose to define the ranking function and loss function in a sequential way: (1) The ranking function is defined as the combination of relevance",null,null
+18,293,null,null
+19,"score and diversity score, where the relevance score only depends on the content of the document, and the diversity score depends on the relationship between the current document and those previously selected. We describe different ways to represent the diversity score. (2) The loss function is defined as the likelihood loss of ground truth based on Plackett-Luce model [18], which can naturally model the sequential generation of a diverse ranking list. On this basis, stochastic gradient descent is employed to conduct the unconstrained optimization, and the prediction of diverse ranking list is provided by a sequential selection process based on the learned ranking function.",null,null
+20,"To evaluate the effectiveness of the proposed approach, we conduct extensive experiments on the public TREC datasets. The experimental results show that our methods can significantly outperform the state-of-the-art diversification approaches, with Official Diversity Metrics (ODM for short) of TREC diversity task including ERR-IA[1, 6], -N DCG[11] and N RBP [12]. Furthermore, our methods also achieve best in the evaluations of traditional intent-aware measures such as Precision-IA [1] and Subtopic Recall [37]. In addition, we give some discussions on the robustness of our methods and the importance of the proposed diversity features. Finally, we also study the efficiency of our approach based on the analysis of running time.",null,null
+21,The main contributions of this paper lie in:,null,null
+22,"1. the proposal of a novel R-LTR framework to formulate search result diversification as a learning problem, where both content information and relationship among documents are considered;",null,null
+23,2. the new definitions of ranking function and loss function based on the foundation of sequential selection process for diverse ranking;,null,null
+24,3. an empirical verification of the effectiveness of the proposed approach based on public datasets.,null,null
+25,"The rest of the paper is organized as follows. We first review some related work in Section 2. We then introduce the R-LTR framework in Section 3, and describe the specific definitions of ranking function and loss function, learning and prediction procedures in Section 4. Section 5 presents the experimental results. Section 6 concludes the paper.",null,null
+26,2. RELATED WORK,null,null
+27,"Most existing diversification methods are non-learning methods, which can be mainly divided into two categories: implicit approaches and explicit approaches.",null,null
+28,"The implicit methods assume that similar documents cover similar aspects and model inter-document dependencies. For example, Maximal Marginal Relevance (MMR) method [3] proposes to iteratively select a candidate document with the highest similarity to the user query and the lowest similarity to the already selected documents, in order to promote novelty. In fact, most of the existing approaches are somehow inspired by the MMR method. Zhai et al. [37] select documents with high divergence from one language model to another based on the risk minimization consideration.",null,null
+29,"The explicit methods explicitly model aspects of a query and then select documents that cover different aspects. The aspects of a user query can be achieved with a taxonomy [1, 32], top retrieved documents [5], query reformulations [24,",null,null
+30,"29], or multiple external resources [15]. Overall, the explicit methods have shown better experimental performances comparing with implicit methods.",null,null
+31,"There are also some other methods which attempt to borrow theories from economical or political domains. The work in [26, 33] applies economical portfolio theory for search result ranking, which views search diversification as a means of risk minimization. The approach in [13] treats the problem of finding a diverse search result as finding a proportional representation for the document ranking, which is like a critical part of most electoral processes.",null,null
+32,"The authors of [2, 27] try to construct a dynamic rankedretrieval model, while our paper focuses on the common static ranking scenario. There are also some on-line learning methods that try to learn retrieval models by exploiting users' online feedback [25, 31, 35, 30, 28]. These research work can tackle diversity problem to some extent, but they focus on an `on-line' or `coactive' scenario, which is different from our work (i.e. offline supervised learning scenario).",null,null
+33,"Recently, some researchers have proposed to utilize machine learning techniques to solve the diversification problem. Yue et al. [36] propose to optimize subtopic coverage as the loss function, and formulate a discriminant function based on maximizing word coverage. However, their work only focuses on diversity, and discards the requirements of relevance. They claim that modeling both relevance and diversity simultaneously is a more challenging problem, which is exactly what we try to tackle in this paper. In this paper, we propose a novel R-LTR approach to conduct search result diversification, which is different from traditional approaches and shows promising experimental performance.",null,null
+34,3. RELATIONAL LEARNING-TO-RANK,null,null
+35,"Traditional relevance ranking has been well formulated as a learning-to-rank (LTR for short) problem [17], where a ranking function is defined on the content of each individual document and learned toward some loss functions. However, in diverse ranking scenario, the overall relevance of a document ranking for a given query, should depend not only on the individual ranked documents, but also on how they related to each other [29]. Therefore, in this paper, we introduce a novel R-LTR framework to formulate the diverse ranking problem. The difference between LTR and R-LTR is that the latter considers both contents of individual document and relations between documents. In the following paper, we use superscript to denote the id of a query and subscript to denote the id of a document.",null,null
+36,"Formally, let X ,"" {x1, · · · , xn}, where xi denotes the d dimensional feature vector of a candidate document xi for query q; Let R  Rn×n×l denote a 3-way tensor representing relationships between the n documents, where Rijk stands for the k-th feature of relation between documents xi and xj. Let y be a ground-truth of the query q, in the form of a vector of ranking scores or a ranking list. Supposing that f(X, R) is a ranking function, and the goal of R-LTR is to output the best ranking function from a function space F .""",null,null
+37,"In training procedure, given the labeled data with N queries as: (X(1), R(1), y(1)), (X(2), R(2), y(2)), · · · , (X(N), R(N), y(N)). A loss function L is defined, and the learning process is conducted by minimizing the total loss with respect to the given",null,null
+38,294,null,null
+39,training data.,null,null
+40, N,null,null
+41,"^f ,"" arg min L(f(X(i), R(i)), y(i)).""",null,null
+42,(1),null,null
+43,fF,null,null
+44,"i,1",null,null
+45,"In prediction, given X(t) and R(t) of nt documents for query qt, we output y^(t) based on the learned ranking function ^f(X(t), R(t)).",null,null
+46,"In fact, the proposed R-LTR framework is very general, in the sense that many traditional ranking problems are its special cases.",null,null
+47,"(1) It is obvious to see that the conventional LTR framework is a special case of R-LTR. Specifically, if we ignore the relation tensor R, then we get the same function as that in traditional LTR, i.e. f(X, R) , f(X).",null,null
+48,"(2) The `learning to rank relational objects' framework [22, 23] is also a special case of R-LTR. Specifically, if we restrict the relation tensor R to be a matrix, with Rij representing the relation between document xi and xj, then we get the same function as that in the problem of learning to rank relational objects.",null,null
+49,"The above framework gives a formulation of ranking problems involving relationship. When solving the specific problem, one needs to define the corresponding ranking function and loss function according to the task.",null,null
+50,4. SEARCH RESULT DIVERSIFICATION VIA R-LTR FRAMEWORK,null,null
+51,"As mentioned in the previous section, it is natural to formulate search result diversification under R-LTR framework. In this paper, we mainly focus on the diverse ranking scenario. To apply the above framework to this specific task, the most challenging problem is the definition of ranking function and loss function.",null,null
+52,4.1 Motivation,null,null
+53,"In order to properly define the ranking function and loss function, we first look into the diverse ranking problem.",null,null
+54,"(1) Empirically, users usually browse the Web search results in a top-down manner, and perceive diverse information from each individual document based on what he/she have obtained in the preceding results [8].",null,null
+55,"(2) Theoretically, diverse ranking can be naturally stated as a bi-criterion optimization problem, and it is NP-hard [1, 4]. Therefore, in practice, most previous approaches on search result diversification are based on greedy approximation, which sequentially select a `local-best' document from the remanent candidate set [29].",null,null
+56,"From both empirical and theoretical analysis above, we can see that it is better to view diverse ranking as a sequential selection process, in the sense that the ranking list is generated in a sequential order, with each individual document ranked according to its relevance to the query and the relation between all the documents ranked before it.",null,null
+57,4.2 Definition of Ranking Function,null,null
+58,"As discussed above, diverse ranking is in general a sequential selection process, where each individual document is ranked according to its relevance to the query and the relation between all the documents ranked before it. The intuitive idea is illustrated in Figure 1, when ranking documents in X\S given the already ranked results S, both content-based relevance and diversity relation between this",null,null
+59,X,null,null
+60,d1,null,null
+61,S,null,null
+62,d2,null,null
+63,d3,null,null
+64,Diversity,null,null
+65,Diversity,null,null
+66,d7 d6 d5 X\S,null,null
+67,d8,null,null
+68,Relevance d4,null,null
+69,Relevance,null,null
+70,"Figure 1: An illustration of the sequential way to define ranking function. All the rectangles represent candidate documents of a user query, and different colors represent different subtopics. The solid rectangle is relevant to the query, and the hollow rectangle is irrelevant to the query, and larger size means more relevance. X denotes all the candidate document collection. S denotes previously selected documents, and X\S denotes the remanent documents.",null,null
+71,"document and the previously selected documents in S should be considered. Noting that larger size of the rectangle means the document is more relevant to the query, and different colors represent different subtopics. Therefore, the document 8 may be more preferred than document 4 given S, since it is relevant to the query, and also provides different aspects additionally comparing with the selected set S.",null,null
+72,"Based on this ranking process, here we give the precise definition of ranking function. Given a query q, we assume that a set of documents have been selected, denoted as S, the scoring function on the candidate document in X\S, is then defined as the combination of the relevance score and the diversity score between the current document and those previously selected, shown as follows.",null,null
+73,"fS (xi, Ri) ,"" rT xi + dT hS (Ri), xi  X\S,""",null,null
+74,(2),null,null
+75,"where xi denotes the relevance feature vector of the candidate document xi, Ri stands for the matrix of relationships between document xi and other selected documents, with each Rij stands for the relationship vector between document xi and xj, represented by the feature vector of (Rij1, · · · , Rijl), xj  S, and Rijk stands for the k-th relation feature between documents xi and xj. hS(Ri) stands for the relational function on Ri, rT and dT stands for the corresponding relevance and diversity weight vector. When S ,"" , fS(xi, Ri) is directly represented as rT xi. Then the ranking function can be represented as the set of scoring function:""",null,null
+76,"f(X, R) ,"" (fS , fS1 , · · · , fSn-1 )""",null,null
+77,"where Si, denotes the previously selected document collection with i documents. From the above definition, we can see that if we do not consider diversity relation, our ranking",null,null
+78,295,null,null
+79,"function reduce to f(X) ,"" (f (x1), · · · , f (xn)), which is the traditional ranking function in learning-to-rank.""",null,null
+80,4.2.1 Relational function hS(Ri),null,null
+81,"Please note that the relational function hS(Ri) denotes the way of representing the diversity relationship between the current document xi and the previously selected documents in S. If we treat diversity relation as distance, hS(Ri) can be viewed as the distance of xi to the set S. According to different definitions of the distance between an item and a set of items, hS(Ri) can be defined as the following three ways.",null,null
+82,"Minimal Distance. The distance between a document xi and a set S is defined as the minimal distance of all the document pairs (xi, xj), xj  S.",null,null
+83,"hS (Ri) ,"" ( min Rij1, · · · , min Rijl).""",null,null
+84,xj S,null,null
+85,xj S,null,null
+86,Average Distance. The distance between a document,null,null
+87,xi and a set S is defined as the average distance of all the,null,null
+88,"document pairs (xi, xj), xj  S.",null,null
+89,1,null,null
+90,1,null,null
+91,"hS(Ri) , ( |S|",null,null
+92,"Rij1, · · · , |S|",null,null
+93,Rijl).,null,null
+94,xj S,null,null
+95,xj S,null,null
+96,"Maximal Distance. The distance between a document xi and a set S is defined as the maximal distance of all the document pairs (xi, xj), xj  S.",null,null
+97,"hS (Ri) ,"" (max Rij1, · · · , max Rijl).""",null,null
+98,xj S,null,null
+99,xj S,null,null
+100,4.2.2 Diversity Feature Vector Rij,null,null
+101,"How to define discriminative features that can well capture diversity relation is critical for the success of R-LTR. In this work, we provides several representative features for the learning process, including semantic diversity features (i.e. subtopic diversity, text diversity, title diversity, anchor text diversity and ODP-based diversity) and structural diversity features (i.e. link-based diversity and url-based diversity).",null,null
+102,"Subtopic Diversity. Different documents may associate with different aspects of the given topic. We use Probabilistic Latent Semantic Analysis (PLSA) [16] to model implicit subtopics distribution of candidate objects, which is important for the diversification task as mentioned before. Therefore, we define the diversity feature based on implicit subtopics as follows.",null,null
+103,"Rij1 ,",null,null
+104, m (p(zk|xi) - p(zk|xj ))2,null,null
+105,"k,1",null,null
+106,"Text Diversity. Text dissimilarity is also meaningful for diversity. We propose to represent it as the cosine dissimilarity based on weighted term vector representations, and define the feature as follows.",null,null
+107,Rij2,null,null
+108,",",null,null
+109,1,null,null
+110,-,null,null
+111,"di · dj , didj ",null,null
+112,"where di, dj are the weighted document vectors based on tf  idf , and tf denotes the term frequencies, idf denotes inverse document frequencies. There also exists other computing ways such as the work in [14], which is based on sketching algorithm and Jaccard similarity.",null,null
+113,"Title Diversity. The way of computing title diversity feature is similar as that for text diversity feature, which is denoted as Rij3.",null,null
+114,"Anchor Text Diversity. The anchor text can accurately describe the content of corresponding page and is important. This type of feature is computed similarly as text and title diversity features, denoted as Rij4.",null,null
+115,"ODP-Based Diversity. The existing ODP taxonomy1 offers a succinct encoding of distances between documents. Usually, the distance between documents on similar topics in the taxonomy is likely to be small. For two categories u and v, we define the categorical distance between them as following:",null,null
+116,c,null,null
+117,"dis(u, v)",null,null
+118,",",null,null
+119,1,null,null
+120,-,null,null
+121,"|l(u, v)| max{|u|, |v|}",null,null
+122,"where l(u, v) is the length of their longest common prefix.",null,null
+123,|u| and |v| is the length of category u and v. Then given two,null,null
+124,documents xi and xj and their category information sets,null,null
+125,"Ci and Cj respectively, we define the ODP-based diversity",null,null
+126,feature as:,null,null
+127,"Rij5 ,",null,null
+128,"uCi vCj c dis(u, v) |Ci| · |Cj |",null,null
+129,where |Ci| and |Cj| are the number of categories in corre-,null,null
+130,sponding category sets.,null,null
+131,"Link-Based Diversity. By constructing a web link graph,",null,null
+132,we can calculate the link similarity of any document pair,null,null
+133,based on direct inlink or outlink information. The link-based,null,null
+134,diversity feature is then defined as follows.,null,null
+135,{,null,null
+136,"Rij6 ,",null,null
+137,0 1,null,null
+138,"if xi  inlink(xj)  outlink(xj), otherwise",null,null
+139,URL-Based Diversity. Given the url information of,null,null
+140,"two documents, we can judge whether they belong to the",null,null
+141,same domain or the same site. The url-based diversity fea-,null,null
+142,ture is then defined as follows.  0 if one url is another's prefix,null,null
+143,"Rij7 , 01.5",null,null
+144,if they belong to the same site or domain otherwise,null,null
+145,"Based on these diversity features, we can obtain the diversity feature vector Rij ,"" (Rij1, Rij2, · · · , Rij7). All the feature values are normalized to the range of [0,1]. Please note that there might be some other useful resources for the definition of diversity features, e.g., clickthrough logs, which will be further considered in our future work.""",null,null
+146,4.3 Definition of Loss Function,null,null
+147,"Motivated by the analysis that the process for diverse ranking is in general a sequential selection process, we propose to model the generation of a diverse ranking list in a sequential way, and define the loss function as the likelihood loss of the generation probability.",null,null
+148,"L(f(X, R), y) , - log P (y|X).",null,null
+149,(3),null,null
+150,"Intuitively, the generation probability of a ranking list can be viewed as a process to iteratively select the top ranked",null,null
+151,1http://www.dmoz.org/,null,null
+152,296,null,null
+153,documents from the remaining documents. The precise definition is given as follows.,null,null
+154,"P (y|X) ,"" P (xy(1), xy(2), · · · , xy(n)|X)""",null,null
+155,(4),null,null
+156,","" P (xy(1)|X)P (xy(2)|X\S1) · · · P (xy(n-1)|X\Sn-2),""",null,null
+157,where y(i) stands for the index of document which is ranked,null,null
+158,"in position i in the ranking list y, X denotes all the candidate",null,null
+159,"documents, Si ,"" {xy(1), · · · , xy(i)}, denotes the previously selected document collection with i documents, P (xy(1)|X) stands for the probability that xy(1) is ranked first among the documents in X, and P (xy(j)|X\Sj-1) stands for the probability that document xy(j) is ranked first among the documents in X\Sj-1.""",null,null
+160,4.3.1 Plackett-Luce based Probability P (y|X),null,null
+161,"The above sequential definition approach can be well captured by the Plackett-Luce Model [18]. Therefore, we propose to define P (xy(1)|X) and P (xy(j)|X\Sj-1) in a similar way, shown as follows, j  2.",null,null
+162,"P (xy(1)|X) , nke,""x1pe{xfp{(fxy((1x)y)(}k))} ,""",null,null
+163,(5),null,null
+164,"P (xy(j)|X\Sj-1) , nke,""xjpe{xfpS{jf-S1k(-x1y((xj)y,(Rk)y,(Rj)y)(}k))} . (6)""",null,null
+165,"Incorporating Eq.(5) and Eq.(6) into Eq.(4), the generation probability of a diverse ranking list is formulated as follows.",null,null
+166,P (y|X),null,null
+167,",",null,null
+168,n,null,null
+169,"j,1",null,null
+170,"nke,""xjpe{xfpS{jf-S1k(-x1y((xj)y,(Rk)y,(Rj)y)(}k))} ,""",null,null
+171,(7),null,null
+172,"where S0 ,"" , f(x, R) "", rT x.",null,null
+173,4.3.2 Relation to ListMLE in Learning-to-Rank,null,null
+174,Incorporating Eq.(7) into the definition of the loss func-,null,null
+175,"tion Eq.(3), we can obtain the precise definition of the loss",null,null
+176,function as follows.,null,null
+177,{,null,null
+178,},null,null
+179,"n L(f(X,R), y) , - log",null,null
+180,"j,1",null,null
+181,"nke,""xpj e{xfpS{j-fS1 k(x-y1((xj)y,(Rk)y,(Rj)y)(}k))}""",null,null
+182,(8),null,null
+183,We can see that our loss function is similar to that in,null,null
+184,"ListMLE [34], which is formulated as follows.",null,null
+185,{,null,null
+186,},null,null
+187,"n L(f(X), y) , - log",null,null
+188,"j,1",null,null
+189,"nke,xjpe{xfp({xfy((xj)y)(}k))}",null,null
+190,",",null,null
+191,"where f (x) is the score function in traditional learning-torank, i.e. f (x) , T x.",null,null
+192,"Therefore, if we do not consider diversity relation in our framework, our loss function will reduce to the same form of that in ListMLE. That is to say, ListMLE is a special case of our loss function.",null,null
+193,4.4 Learning and Prediction,null,null
+194,"Based on the definitions of ranking function and loss function, we present the learning and prediction process in this section. Specifically, we first describe how to construct the training data, and then introduce the optimization procedure. Finally, we show how to make predictions based on the learned ranking function.",null,null
+195,Algorithm 1 Construction of Approximate Ideal,null,null
+196,Ranking List,null,null
+197,"Input: (qi, X(i), Ti, P (x(ji)|t)), t  Ti, x(ji)  X(i)",null,null
+198,"Output: y(i) 1: Initialize S0  , y(i) ,"" (1, · · · , ni) 2: for k "","" 1, ..., ni do""",null,null
+199,"3: bestDoc  argmaxxX(i)\Sk-1 ODM (Sk-1  x) 4: Sk  Sk-1  bestDoc 5: y(i)(k) , the index of bestDoc",null,null
+200,"6: end for 7: return y(i) ,"" (y(i)(1), · · · , y(i)(ni)).""",null,null
+201,Algorithm 2 Optimization Algorithm,null,null
+202,"Input: training data {(X(i), R(i), y(i))}Ni,""1, parameter: learning rate , tolerance rate """,null,null
+203,"Output: model vector: r, d",null,null
+204,"1: Initialize parameter value r, d",null,null
+205,2: repeat,null,null
+206,3: Shuffle the training data,null,null
+207,"4: for i ,"" 1, ..., N do""",null,null
+208,5:,null,null
+209,Compute gradient r(i) and d(i),null,null
+210,6:,null,null
+211,"Update model: r ,"" r -  × r(i),""",null,null
+212,"d , d -  × d(i)",null,null
+213,7: end for,null,null
+214,8: Calculate likelihood loss on the training set,null,null
+215,9: until the change of likelihood loss is below ,null,null
+216,4.4.1 Training Data,null,null
+217,The labeled data in search result diversification such as,null,null
+218,"TREC diversity task are usually provided in the form of (qi, X(i), Ti, P (x(ji)|t)), t  Ti, x(ji)  X(i), where X(i) is a candidate document set of query qi, Ti is the subtopics of query qi, t is a specific subtopic in Ti, and P (x(ji)|t) describes the relevance of document x(ji) to subtopic t. We can see that the above form of labeled data deviates the formulation of y(i) in our R-LTR framework, which requires a ranking list",null,null
+219,"of candidate documents. In order to apply R-LTR, we need to construct y(i) from the provided form of labeled data.",null,null
+220,We propose to construct an approximate ideal ranking list,null,null
+221,"by maximizing the ODM measures (e.g., ERR-IA), and use",null,null
+222,"the approximate ideal ranking list as the training groundtruth y(i) for query qi, as described in Algorithm 1.",null,null
+223,"According to the results in [20], if a submodular func-",null,null
+224,"tion is monotonic (i.e., f (S)  f (T ), whenever S  T ) and normalized (i.e., f () ,"" 0), greedily constructing gives an (1 - 1/e)-approximation to the optimal. Since any member of ODM is a submodular function, we can easily prove that""",null,null
+225,Algorithm 1 is (1 - 1/e)-approximation to the optimal (We omit the proof here). And the quality of training ground-,null,null
+226,truth can be guaranteed.,null,null
+227,4.4.2 Learning,null,null
+228,"Given the training data {(X(i), R(i), y(i))}Ni,""1, the total loss is represented as follows.""",null,null
+229, N  ni -,null,null
+230,"i,1 j,1",null,null
+231,exp{rT x(yi()j) + dT,null,null
+232,logni,null,null
+233,"k,j",null,null
+234,exp{rT,null,null
+235,x(yi()k),null,null
+236,+,null,null
+237,hSj(i-)1 (Ry(i()j))} dT hSk(i-) 1 (Ry(i()k),null,null
+238,  )},null,null
+239,(9),null,null
+240,297,null,null
+241,Algorithm 3 Ranking Prediction via Sequential Se-,null,null
+242,lection,null,null
+243,"Input: X(t), R(t), r, d Output: y(t) 1: Initialize S0  , y(t) ,"" (1, · · · , nt)""",null,null
+244,"2: for k ,"" 1, ..., nt do""",null,null
+245,"3: bestDoc  argmaxxXt fSk-1 (x, R) 4: Sk  Sk-1  bestDoc 5: y(t)(k)  the index of bestDoc",null,null
+246,"6: end for 7: return y(t) ,"" (y(t)(1), · · · , y(t)(nt))""",null,null
+247,"For such a unconstrained optimization problem, we employ Stochastic Gradient Descent (SGD) to conduct optimization as shown in Algorithm 2. According to Eq.(9), the",null,null
+248,gradient at training sample X(i) is computed as follows.,null,null
+249,r(i),null,null
+250,",",null,null
+251, ni,null,null
+252,"j,1",null,null
+253,ni,null,null
+254,"k,j",null,null
+255,x(yi()k),null,null
+256,exp{rT,null,null
+257,x(yi()k),null,null
+258,+,null,null
+259,dT,null,null
+260,hSk(i-) 1,null,null
+261,(Ry(i()k) )},null,null
+262,ni,null,null
+263,"k,j",null,null
+264,exp{rT,null,null
+265,x(yi()k),null,null
+266,+,null,null
+267,dT,null,null
+268,hSk(i-) 1,null,null
+269,(Ry(i()k) )},null,null
+270,-,null,null
+271,x(yi()j) exp{rT x(yi()j) exp{rT x(yi()j) +,null,null
+272,+ dT hSj(i-)1 (Ry(i()j) dT hSj(i-)1 (Ry(i()j))},null,null
+273,)},null,null
+274,",",null,null
+275,"d(i),j n,i1nk,i j",null,null
+276,hSk(i-) 1 (Ry(i()k)) exp{rT x(yi()k) + dT hSk(i-) 1 (Ry(i()k),null,null
+277,ni,null,null
+278,"k,j",null,null
+279,exp{rT,null,null
+280,x(yi()k),null,null
+281,+,null,null
+282,dT,null,null
+283,hSk(i-) 1 (Ry(i()k))},null,null
+284,- hSj(i-)1 (Ry(i()j)) exp{rT x(yi()j) + dT hSj(i-)1 (Ry(i()j))} exp{rT x(yi()j) + dT hSj(i-)1 (Ry(i()j))},null,null
+285,)},null,null
+286,.,null,null
+287,"diversity methods and the importance of our proposed diversity features. Finally, we study the efficiency of our approach based on the analysis of running time.",null,null
+288,5.1 Experimental Setup,null,null
+289,"Here we give some introductions on the experimental setup, including data collections, evaluation metrics, baseline models and detailed implementation.",null,null
+290,5.1.1 Data Collections,null,null
+291,"Our evaluation was conducted in the context of the diversity tasks of the TREC2009 Web Track (WT2009), TREC2010 Web Track (WT2010), and TREC2011 Web Track (WT2011), which contain 50, 48 and 50 test queries (or topics), respectively. Each topic includes several subtopics identified by TREC assessors, with binary relevance judgements provided at the subtopic level2. All the experiments were carried out on the ClueWeb09 Category B data collection3, which comprises a total of 50 million English Web documents.",null,null
+292,5.1.2 Evaluation Metrics,null,null
+293,"The current official evaluation metrics of the diversity task include ERR-IA [6], -N DCG [11] and N RBP [12]. They measure the diversity of a result list by explicitly rewarding novelty and penalizing redundancy observed at every rank. We also use traditional diversity measures for evaluation: Precision-IA [1] and Subtopic Recall [37].They measure the precision across all subtopics of the query and the ratio of the subtopics covered in the results, respectively. All the measures are computed over the top-k search results (k ,"" 20). Moreover, the associated parameters  and  are all set to be 0.5, which is consistent with the default settings in official TREC evaluation program.""",null,null
+294,4.4.3 Prediction,null,null
+295,"As the ranking function is defined sequentially, traditional prediction approach (i.e., calculating the ranking score of each independent document simultaneously and sorting them in descending order to obtain a ranking list) fails in our framework. According to the sequential selection essence of diverse ranking, we propose a sequential prediction process, as described in Algorithm 3. Specifically, in the first step, the most relevant document with maximal relevance score will be selected and ranked first. If the top k items have been selected, then the document in position k + 1 should be with maximum fSk . At last, all the documents are ranked accordingly, and we obtain the final ranking list.",null,null
+296,"Assuming that the size of output ranking is K, the size of candidate set is n, then this type of sequential selection algorithm 3 will have time complexity of O(n  K). Usually, the original value of n is large, therefore, an initial retrieval can be applied to provide a filtered candidate set with relatively small size (e.g., top 1000 or 3000 retrieved documents). With a small K, the prediction time is linear.",null,null
+297,5. EXPERIMENTS,null,null
+298,"In this section, we evaluate the effectiveness of our approach empirically. We first introduce the experimental setup. We then compare our approach with baseline methods under different diversity evaluation measures. Furthermore, we analyze the performance robustness of different",null,null
+299,5.1.3 Baseline Models,null,null
+300,"To evaluate the performance of our approach, we compare our approach with the state-of-the-art approaches, which are introduced as follows.",null,null
+301,"QL. The standard Query-likelihood language model is used for the initial retrieval, which provides the top 1000 retrieved documents as a candidate set for all the diversification approaches. It is also used as a basic baseline method in our experiment.",null,null
+302,"MMR. MMR is a classical implicit diversity method in the diversity research. It employs a linear combination of relevance and diversity as the metric called ""marginal relevance"" [3]. MMR will iteratively select document with the largest ""marginal relevance"".",null,null
+303,"xQuAD. The explicit diversification approaches are popular in current research field, in which xQuAD is the most representative and used as a baseline model in our experiments [29].",null,null
+304,"PM-2. PM-2 is also a explicit method that proposes to optimize proportionality for search result diversification [13]. It has been proved to achieve promising performance in their work, and is also chosen as baseline in our experiment.",null,null
+305,"2For WT2011 task, assessors made graded judgements. While in the official TREC evaluation program, it mapped these graded judgements to binary judgements by treating values > 0 as relevant and values  0 as not relevant. 3http://boston.lti.cs.cmu.edu/Data/clueweb09/",null,null
+306,298,null,null
+307,Table 1: Relevance Features for learning on,null,null
+308,"ClueWeb09-B collection [21, 19].",null,null
+309,Category Feature Description Total,null,null
+310,Q-D,null,null
+311,TF-IDF,null,null
+312,5,null,null
+313,Q-D,null,null
+314,BM25,null,null
+315,5,null,null
+316,Q-D,null,null
+317,QL.DIR,null,null
+318,5,null,null
+319,Q-D,null,null
+320,MRF,null,null
+321,10,null,null
+322,D,null,null
+323,PageRank,null,null
+324,1,null,null
+325,D,null,null
+326,#Inlinks,null,null
+327,1,null,null
+328,D,null,null
+329,#Outlinks,null,null
+330,1,null,null
+331,"ListMLE. ListMLE is a plain learning-to-rank approach without diversification considerations, and is a representative listwise relevance approach in LTR field [17].",null,null
+332,"SVMDIV. SVMDIV is a representative supervised approach for search result diversification [36]. It proposes to optimize subtopic coverage by maximizing word coverage. It formulates the learning problem and derives a training method based on structural SVMs. However, SVMDIV only models diversity and discards the requirement of relevance. For fair performance comparison, we will firstly apply ListMLE to do the initial ranking to capture relevance, and then use SVMDIV to re-rank top-K retrieved documents to capture diversity.",null,null
+333,"The above three diversity baselines: MMR, xQuAD and PM-2, all require a prior relevance function to implement their diversification steps. In our experiment, we choose ListMLE as the relevance function to implement them, and denote them as: MMRlist, xQuADlist and PM-2list, respectively.",null,null
+334,"According to the different ways in defining the relational function hS(Ri) in section 4.2.1, our R-LTR diversification approach has three variants, denoted as R-LTRmin, R-LTRavg and R-LTRmax, respectively.",null,null
+335,5.1.4 Implementation,null,null
+336,"In our experiments, we use Indri toolkit (version 5.2)4 as the retrieval platform. For the test query set on each dataset, we use a 5-fold cross validation with a ratio of 3:1:1, for training, validation and testing. The final test performance is reported as the average over all the folds.",null,null
+337,"For data preprocessing, we apply porter stemmer and stopwords removing for both indexing and query processing. We then extract features for each dataset as follows. For relevance, we use several standard features in LTR research [21], such as typical weighting models (e.g., TF-IDF, BM25, LM), and term dependency model [19, 38], as summarized in Table 1, where Q-D means that the feature is dependent on both query and document, and D means that the feature only depends on the document. For all the Q-D features, they are applied in five fields: body, anchor, title, URL and the whole document, resulting in 5 features in total, respectively. Additionally, the MRF feature has two types of values: ordered phrase and unordered phrase [19], so the total feature number is 10.",null,null
+338,"For three baseline models: MMR, xQuAD and PM-2, they all have a single parameter  to tune. We perform a 5fold cross validation to train  through optimizing ERR-IA. Additionally, for xQuAD and PM-2, the official subtopics are used as a representation of taxonomy classes to simu-",null,null
+339,4http://lemurproject.org/indri,null,null
+340,"late their best-case scenarios, and uniform probability for all subtopics is assumed as [29, 13].",null,null
+341,"For ListMLE and SVMDIV, we utilize the same training data generated by Algorithm 1 to train their model, and also conduct 5-fold cross validation. ListMLE adopts the relevance features summarized in Table 1. SVMDIV adopts the representative word level features with different importance criterion, as listed in their paper and released code [36]. As described in above subsection, SVMDIV will rerank top-K retrieved documents returned by ListMLE. We test K  {30, 50, 100}, and find it performs best at K ,"" 30. Therefore, the following results of SVMDIV are achieved with K "", 30.",null,null
+342,"For our approach, the learning rate  parameter in Algorithm 2 is chosen from 10-7 to 10-1, and the best learning rate is obtained based on the performance of validation set.",null,null
+343,5.2 Performance Comparison,null,null
+344,5.2.1 Evaluation on Official Diversity Metrics,null,null
+345,"We now compare our approaches to the baseline methods on search result diversification. The results of performance comparison are shown in Table 2, 3, and 4. We also present the performance of top performing systems on CategoryB reported by TREC [7, 10, 9], which are just taken as indicative references. The number in the parentheses are the relative improvements compared with the baseline method QL. Boldface indicates the highest scores among all runs.",null,null
+346,"From the results we an see that, our R-LTR outperform the plain LTR approach without diversification consideration, i.e. ListMLE, which can be viewed as a special case of our approach. Specifically, the relative improvement of R-LTRmin over ListMLE is up to 41.87%, 49.71%, 29.17%, in terms of ERR-IA on WT2009, WT2010, and WT2011, respectively. It indicates that our approach can tackle multicriteria ranking problem effectively, with the consideration of both content-based information and diversity relationship among candidate objects.",null,null
+347,"Regarding the comparison among representative implicit and explicit diversification approaches, explicit methods (i.e. xQuAD and PM-2) show better performance than the implicit method (i.e. MMR) in terms of all the evaluation measures. MMR is the least effective due to its simple predefined ""marginal relevance"". The two explicit methods achieve comparable performance: PM-2list wins on WT2010 and WT2011, while xQuADlist wins on WT2009, but their overall performance differences are small.",null,null
+348,"Furthermore, our approach outperforms the state-of-theart explicit methods in terms of all the evaluation measures. For example, with the evaluation of ERR-IA, the relative improvement of R-LTRmin over the xQuADlist is up to 17.18%, 11.26%, 13.38%, on WT2009, WT2010, WT2011, respectively, and the relative improvement of R-LTRmin over the PM-2list is up to 18.31%, 10.65%, 10.59% on WT2009, WT2010, WT2011, respectively. Although xQuADlist and PM-2list all utilize the official subtopics as explicit query aspects to simulate their best-case scenarios, their performances are still much lower than our learning-based approaches, which indicates that there might be certain gap between their heuristic predefined utility functions and the final evaluation measures.",null,null
+349,"Comparing with the learning-based diversification baseline method, our R-LTR approach also show better per-",null,null
+350,299,null,null
+351,Table 2: Performance comparison of all methods in official TREC diversity measures for WT2009.,null,null
+352,Method,null,null
+353,ERR-IA,null,null
+354,-NDCG,null,null
+355,NRBP,null,null
+356,QL,null,null
+357,0.1637,null,null
+358,0.2691,null,null
+359,0.1382,null,null
+360,ListMLE,null,null
+361,0.1913 (+16.86%),null,null
+362,0.3074 (+14.23%),null,null
+363,0.1681 (+21.64%),null,null
+364,MMRlist xQuADlist,null,null
+365,PM-2list SVMDIV,null,null
+366,0.2022 (+23.52%) 0.2316 (+41.48%) 0.2294 (+40.13%) 0.2408 (+47.10%),null,null
+367,0.3083 (+14.57%) 0.3437 (+27.72%) 0.3369 (+25.20%) 0.3526 (+31.03%),null,null
+368,0.1715 (+24.09%) 0.1956 (+41.53%) 0.1788 (+29.38%) 0.2073 (+50.00%),null,null
+369,R-LTRmin R-LTRavg R-LTRmax,null,null
+370,0.2714 (+65.79%) 0.2671 (+63.16%) 0.2683 (+63.90%),null,null
+371,0.3915 (+45.48%) 0.3964 (+47.31%) 0.3933 (+46.15%),null,null
+372,0.2339 (+69.25%) 0.2268 (+64.11%) 0.2281 (+65.05%),null,null
+373,TREC-Best,null,null
+374,0.1922,null,null
+375,0.3081,null,null
+376,0.1617,null,null
+377,Table 3: Performance comparison of all methods in official TREC diversity measures for WT2010.,null,null
+378,Method,null,null
+379,ERR-IA,null,null
+380,-NDCG,null,null
+381,NRBP,null,null
+382,QL,null,null
+383,0.1980,null,null
+384,0.3024,null,null
+385,0.1549,null,null
+386,ListMLE,null,null
+387,0.2436 (+23.03%),null,null
+388,0.3755 (+24.17%),null,null
+389,0.1949 (+25.82%),null,null
+390,MMRlist xQuADlist,null,null
+391,PM-2list SVMDIV,null,null
+392,0.2735 (+38.13%) 0.3278 (+65.56%) 0.3296 (+66.46%) 0.3331 (+68.23%),null,null
+393,0.4036 (+33.47%) 0.4445 (+46.99%) 0.4478 (+48.08%) 0.4593 (+51.88%),null,null
+394,0.2252 (+45.38%) 0.2872 (+85.41%) 0.2901 (+87.28%) 0.2934 (+89.41%),null,null
+395,R-LTRmin R-LTRavg R-LTRmax,null,null
+396,0.3647 (+84.19%) 0.3587 (+81.16%) 0.3639 (+83.79%),null,null
+397,0.4924 (+62.83%) 0.4781 (+58.10%) 0.4836 (+59.92%),null,null
+398,0.3293 (+112.59%) 0.3125 (+101.74%) 0.3218 (+107.74%),null,null
+399,TREC-Best,null,null
+400,0.2981,null,null
+401,0.4178,null,null
+402,0.2616,null,null
+403,"formance than the SVMDIV approach. The relative improvement of R-LTRmin over the SVMDIV is up to 12.71%, 9.49%, 10.02%, in terms of ERR-IA on WT2009, WT2010, WT2011, respectively. SVMDIV simply uses weighted word coverage as a proxy for explicitly covering subtopics, while our R-LTR approach directly models the generation probability of the diverse ranking based on the sequential ranking formulation. Therefore, our R-LTR approach shows deeper understanding and better formulation of diverse ranking, and leads to better performance. We further conduct statistical tests on the results, which indicates that all these improvements are statistically significant (p-value < 0.01).",null,null
+404,"Among the R-LTR approaches, R-LTRmin obtains better performance than the other two variants especially on WT2010 and WT2011 data collection, although their performance difference is small. It indicates that when defining the diversity relation between a document and a set of documents, the minimal distance would be a better choice.",null,null
+405,5.2.2 Evaluation on Traditional Diversity Metrics.,null,null
+406,"Additionally, we also evaluate all the methods under traditional diversity measures, i.e. Precision-IA and Subtopics Recall. The experimental results are shown in Figure 2 and 3. We can see that our approaches outperform all the baseline models on all the data collections in terms of both metrics, which is consistent with the evaluation results in Table 2, 3, and 4. It can further demonstrate the effectiveness of our approach on search result diversification from different aspects. When comparing the three variants of our R-LTR approaches, they all show similar performance and none obtains consistent better performance than the others under these two measures.",null,null
+407,5.3 Robustness Analysis,null,null
+408,"In this section we analyze the robustness of these diversification methods, i.e., whether the performance improvement is consistent as compared with the basic relevance baseline",null,null
+409,Table 5: The robustness of the performance of all,null,null
+410,diversity methods in Win/Loss ratio,null,null
+411,WT2009 WT2010 WT2011 Total,null,null
+412,ListMLE 20/18 27/16 26/11 73/45,null,null
+413,MMRlist xQuADlist PM-2list SVMDIV,null,null
+414,22/15 28/11 26/15 30/12,null,null
+415,29/13 31/12 32/12 32/11,null,null
+416,29/10 31/12 32/11 32/11,null,null
+417,80/38 90/35 90/38 94/34,null,null
+418,R-LTRmin R-LTRavg R-LTRmax,null,null
+419,34/9 33/9 33/10,null,null
+420,35/10 34/11 35/10,null,null
+421,35/9 34/10 34/10,null,null
+422,104/28 101/30 102/30,null,null
+423,"QL. Specifically, we define the robustness as the Win/Loss ratio [36, 13] - the ratio of queries whose performance improves or hurts as compared with the original results from QL in terms of of ERR-IA.",null,null
+424,"From results in Table 5, we find that our R-LTR methods achieve best as compared with all the baseline methods, with the total Win/Loss ratio around 3.49. Among the three variants of R-LTR methods, R-LTRmin performs better than the others, with the Win/Loss ratio as 3.71.",null,null
+425,"Based on the robustness results, we can see that the performance of our R-LTR approach is more stable than all the baseline methods. It demonstrates that the overall performance gains of our approach not only come from some small subset of queries. In other words, the result diversification for different queries could be well addressed under our approach.",null,null
+426,5.4 Feature Importance Analysis,null,null
+427,"In this subsection, we analyze the relative importance of the proposed diversity features. Table 6 shows an ordered list of diversity features used in our R-LTRmin model according to the learned weights (average on three datasets). From the results, we can see that the subtopic diversity Rij1(topic) is with the maximal weight, which is in accordance with",null,null
+428,300,null,null
+429,Table 4: Performance comparison of all methods in official TREC diversity measures for WT2011.,null,null
+430,Method,null,null
+431,ERR-IA,null,null
+432,-NDCG,null,null
+433,NRBP,null,null
+434,QL,null,null
+435,0.3520,null,null
+436,0.4531,null,null
+437,0.3123,null,null
+438,ListMLE,null,null
+439,0.4172 (+18.52%),null,null
+440,0.5169 (+14.08%),null,null
+441,0.3887 (+24.46%),null,null
+442,MMRlist xQuADlist,null,null
+443,PM-2list SVMDIV,null,null
+444,0.4284 (+21.70%) 0.4753 (+35.03%) 0.4873 (+38.44%) 0.4898 (+39.15%),null,null
+445,0.5302 (+17.02%) 0.5645 (+24.59%) 0.5786 (+27.70%) 0.5910 (+30.43%),null,null
+446,0.3913 (+25.30%) 0.4274 (+36.86%) 0.4318 (+38.26%) 0.4475 (+43.29%),null,null
+447,R-LTRmin R-LTRavg R-LTRmax,null,null
+448,0.5389 (+53.10%) 0.5276 (+49.89%) 0.5285 (+50.14%),null,null
+449,0.6297 (+38.98%) 0.6219 (+37.25%) 0.6223 (+37.34%),null,null
+450,0.4982 (+59.53%) 0.4724 (+51.26%) 0.4741 (+51.81%),null,null
+451,TREC-Best,null,null
+452,0.4380,null,null
+453,0.5220,null,null
+454,0.4070,null,null
+455,0.06,null,null
+456,WT2009,null,null
+457,SVMDIV PM-2_list,null,null
+458,xQuAD_list MMR_list ListMLE QL,null,null
+459,R-LTR_max R-LTR_avg R-LTR_min,null,null
+460,WT2010,null,null
+461,R-LTR_max R-LTR_avg R-LTR_min SVMDIV PM-2_list xQuAD_list MMR_list ListMLE QL,null,null
+462,WT2011,null,null
+463,R-LTR_max R-LTR_avg,null,null
+464,R-LTR_min SVMDIV PM-2_list xQuAD_list MMR_list ListMLE QL,null,null
+465,0.08 0.1 0.12 0.14 0.16 0.12 0.14 0.16 0.18 0.2 0.22 0.24 0.24 0.26 0.28 0.3 0.32 0.34 0.36 0.38 0.4 0.42,null,null
+466,"Figure 2: Performance comparison of all methods in Precision-IA for WT2009, WT2010, WT2011.",null,null
+467,WT2009,null,null
+468,R-LTR_max R-LTR_avg R-LTR_min,null,null
+469,SVMDIV PM-2_list,null,null
+470,xQuAD_list MMR_list ListMLE QL,null,null
+471,WT2010,null,null
+472,R-LTR_max R-LTR_avg R-LTR_min,null,null
+473,SVMDIV PM-2_list xQuAD_list MMR_list ListMLE QL,null,null
+474,WT2011,null,null
+475,R-LTR_max R-LTR_avg R-LTR_min SVMDIV PM-2_list xQuAD_list MMR_list ListMLE QL,null,null
+476,0.39 0.43 0.47 0.51 0.55 0.59 0.63 0.52 0.56 0.6 0.64 0.68 0.72 0.76 0.64 0.68 0.72 0.76 0.8 0.84 0.88,null,null
+477,"Figure 3: Performance comparison of all methods in Subtopic Recall for WT2009, WT2010, WT2011.",null,null
+478,Table 6: Order list of diversity features with corre-,null,null
+479,sponding weight value.,null,null
+480,feature,null,null
+481,weight,null,null
+482,Rij1(topic) Rij3(title) Rij4(anchor) Rij2(text) Rij5(ODP) Rij6(Link) Rij7(URL),null,null
+483,3.71635 1.53026 1.34293 0.98912 0.52627 0.04683 0.01514,null,null
+484,"our intuition that diversity mainly lies in the rich semantic information. Meanwhile, the title and anchor text diversity Rij3(title) and Rij4(anchor) also work well, since these fields typically provide a precise summary of the content of the document. Finally, The Link and URL based diversity Rij6(Link) and Rij7(URL) seem to be the least important features, which may be due to the sparsity of such types of features in the data.",null,null
+485,"As a learning-based method, our model is flexible to incorporate different types of features for capturing both the relevance and diversity. Therefore, it would be interesting",null,null
+486,to explore other useful features under our R-LTR framework to further improve the performance of diverse ranking. We will investigate this issue in future.,null,null
+487,5.5 Running Time Analysis,null,null
+488,"We further study the efficiency of our approach and the baseline models. All of the diversity methods associate with a sequential selection process, which is time-consuming due to the consideration of the dependency relations of document pairs. While as discussed before, this type of algorithms all have time complexity of O(n  K), With a small K, the prediction time is linear.",null,null
+489,"All the learning-based methods (i.e. ListMLE, SVMDIV and R-LTR) need additional offline training time due to the supervised learning process. We compare the average training time of different learning-based methods, and the result is shown as following (unit: hour):",null,null
+490,ListMLE ( 1.5h)  SVMDIV ( 2h)  R-LTR ( 3h),null,null
+491,"We can observe that our approach takes longer but comparable offline training time among different learning-based methods. Besides, in our experiments, we also found that the three variants of our R-LTR approach are with nearly the same training time. We will attempt to optimize our",null,null
+492,301,null,null
+493,code to provide much faster training speed via parallelization technique in the following work.,null,null
+494,6. CONCLUSIONS,null,null
+495,"In this paper, we propose to solve the search result diversification problem within a novel R-LTR framework. However, the specific definitions of ranking function and loss function are challenging. Motivated by the top-down user browsing behavior and the ubiquitous greedy approximation for diverse ranking, we firstly define the ranking function as the combination of relevance score and diversity score between the current item and those previously selected. Then the loss function is defined as the likelihood loss of ground truth based on Plackett-Luce model, which can naturally model the sequential generation of a diverse ranking list. On this basis, we utilize stochastic gradient descent to conduct the unconstrained optimization. The prediction of a diverse ranking list is then provided by iteratively maximizing the learned ranking function. Finally the experimental results on public TREC data collections demonstrate the effectiveness and robustness of our approach.",null,null
+496,"The proposed R-LTR framework is quite general that can be used in other applications, such as pseudo relevance feedback and topic distillation. Therefore, it would be interesting to apply our R-LTR framework in different applications in our future work.",null,null
+497,7. ACKNOWLEDGEMENTS,null,null
+498,"This research work was funded by the 973 Program of China under Grants No.2012CB316303 and No.2013CB329602, 863 program of China under Grants No.2012AA011003, National Natural Science Foundation of China under Grant No.61232010 and No.61203298, and National Key Technology R&D Program under Grants No.2012BAH39B02 and No.2012BAH46B04.",null,null
+499,8. REFERENCES,null,null
+500,"[1] R. Agrawal, S. Gollapudi, A. Halverson, and S. Ieong. Diversifying search results. In Proceedings of the 2th ACM WSDM, pages 5­14, 2009.",null,null
+501,"[2] C. Brandt, T. Joachims, Y. Yue, and J. Bank. Dynamic ranked retrieval. In Proceedings of the 4th ACM WSDM, pages 247­256, 2011.",null,null
+502,"[3] J. Carbonell and J. Goldstein. The use of mmr, diversity-based reranking for reordering documents and producing summaries. In Proceedings of the 21st ACM SIGIR, pages 335­336, 1998.",null,null
+503,"[4] B. Carterette. An analysis of np-completeness in novelty and diversity ranking. In Proceedings of the 2nd ICTIR, 2009.",null,null
+504,"[5] B. Carterette and P. Chandar. Probabilistic models of ranking novel documents for faceted topic retrieval. In Proceedings of the 18th ACM CIKM, pages 1287­1296, 2009.",null,null
+505,"[6] O. Chapelle, D. Metlzer, Y. Zhang, and P. Grinspan. Expected reciprocal rank for graded relevance. In Proceedings of the 18th ACM CIKM, pages 621­630, 2009.",null,null
+506,"[7] C. L. Clarke, N. Craswell, and I. Soboroff. Overview of the trec 2009 web track. In TREC, 2009.",null,null
+507,"[8] C. L. Clarke, N. Craswell, I. Soboroff, and A. Ashkan. A comparative analysis of cascade measures for novelty and diversity. In Proceedings of the 4th ACM WSDM, pages 75­84, 2011.",null,null
+508,"[9] C. L. Clarke, N. Craswell, I. Soboroff, and E. M.Voorhees. Overview of the trec 2011 web track. In TREC, 2011.",null,null
+509,"[10] C. L. Clarke, N. Craswell, I. Soboroff, and G. V.Cormack. Overview of the trec 2010 web track. In TREC, 2010.",null,null
+510,"[11] C. L. Clarke, M. Kolla, G. V. Cormack, O. Vechtomova, A. Ashkan, S. Bu¨ttcher, and I. MacKinnon. Novelty and diversity in information retrieval evaluation. In Proceedings of the 31st ACM SIGIR, pages 659­666, 2008.",null,null
+511,"[12] C. L. Clarke, M. Kolla, and O. Vechtomova. An effectiveness measure for ambiguous and underspecified queries. In Proceedings of the 2nd ICTIR, pages 188­199, 2009.",null,null
+512,"[13] V. Dang and W. B. Croft. Diversity by proportionality: an election-based approach to search result diversification. In Proceedings of the 35th ACM SIGIR, pages 65­74, 2012.",null,null
+513,"[14] S. Gollapudi and A. Sharma. An axiomatic approach for result diversification. In Proceedings of the 18th WWW, pages 381­390, 2009.",null,null
+514,"[15] J. He, V. Hollink, and A. de Vries. Combining implicit and explicit topic representations for result diversification. In Proceedings of the 35th ACM SIGIR, pages 851­860, 2012.",null,null
+515,"[16] T. Hofmann. Probabilistic latent semantic indexing. In Proceedings of the 22nd ACM SIGIR, pages 50­57, 1999.",null,null
+516,"[17] T.-Y. Liu. Learning to Rank for Information Retrieval. Springer, 2011.",null,null
+517,"[18] J. I. Marden. Analyzing and Modeling Rank Data. Chapman and Hall, 1995.",null,null
+518,"[19] D. Metzler and W. B. Croft. A markov random field model for term dependencies. In Proceedings of the 28th ACM SIGIR, pages 472­479, 2005.",null,null
+519,"[20] G. Nemhauser, L. Wolsey, and M. Fisher. An analysis of approximations for maximizing submodular set functions­i. Mathematical Programming, 14(1):265­294, 1978.",null,null
+520,"[21] T. Qin, T.-Y. Liu, J. Xu, and H. Li. Letor: A benchmark collection for research on learning to rank for information retrieval. Inf. Retr., pages 346­374, 2010.",null,null
+521,"[22] T. Qin, T.-Y. Liu, X.-D. Zhang, D.-S. Wang, and H. Li. Global ranking using continuous conditional random fields. In Proceedings of the 22th NIPS, Vancouver, British Columbia, Canada, December 8-11, 2008, pages 1281­1288, 2008.",null,null
+522,"[23] T. Qin, T.-Y. Liu, X.-D. Zhang, D.-S. Wang, W.-Y. Xiong, and H. Li. Learning to rank relational objects and its application to web search. In Proceedings of the 17th WWW, pages 407­416, 2008.",null,null
+523,"[24] F. Radlinski and S. Dumais. Improving personalized web search using result diversification. In Proceedings of the 29th ACM SIGIR, 2006.",null,null
+524,"[25] F. Radlinski, R. Kleinberg, and T. Joachims. Learning diverse rankings with multi-armed bandits. In Proceedings of the 25th ICML, pages 784­791, 2008.",null,null
+525,"[26] D. Rafiei, K. Bharat, and A. Shukla. Diversifying web search results. In Proceedings of the 19th WWW, pages 781­790, 2010.",null,null
+526,"[27] K. Raman, T. Joachims, and P. Shivaswamy. Structured learning of two-level dynamic rankings. In Proceedings of the 20th ACM CIKM, pages 291­296, 2011.",null,null
+527,"[28] K. Raman, P. Shivaswamy, and T. Joachims. Online learning to diversify from implicit feedback. In Proceedings of the 18th ACM SIGKDD, pages 705­713, 2012.",null,null
+528,"[29] R. L. Santos, C. Macdonald, and I. Ounis. Exploiting query reformulations for web search result diversification. In Proceedings of the 19th WWW, pages 881­890, 2010.",null,null
+529,"[30] P. Shivaswamy and T. Joachims. Online structured prediction via coactive learning. In ICML'12, 2012.",null,null
+530,"[31] A. Slivkins, F. Radlinski, and S. Gollapudi. Learning optimally diverse rankings over large document collections. In Proceedings of the 27th ICML, pages 983­990, 2010.",null,null
+531,"[32] S. Vargas, P. Castells, and D. Vallet. Explicit relevance models in intent-oriented information retrieval diversification. In Proceedings of the 35th ACM SIGIR, pages 75­84, 2012.",null,null
+532,"[33] J. Wang and J. Zhu. Portfolio theory of information retrieval. In Proceedings of the 32nd ACM SIGIR, pages 115­122, 2009.",null,null
+533,"[34] F. Xia, T.-Y. Liu, J. Wang, W. Zhang, and H. Li. Listwise approach to learning to rank: theory and algorithm. In Proceedings of the 25th ICML, pages 1192­1199, 2008.",null,null
+534,"[35] Y. Yue and C. Guestrin. Linear submodular bandits and their application to diversified retrieval. In NIPS, pages 2483­2491, 2011.",null,null
+535,"[36] Y. Yue and T. Joachims. Predicting diverse subsets using structural svms. In Proceedings of the 25th ICML, pages 1224­1231, 2008.",null,null
+536,"[37] C. X. Zhai, W. W. Cohen, and J. Lafferty. Beyond independent relevance: methods and evaluation metrics for subtopic retrieval. In Proc. of the 26th ACM SIGIR, pages 10­17, 2003.",null,null
+537,"[38] Y. Zhu, Y. Xue, J. Guo, Y. Lan, X. Cheng, and X. Yu. Exploring and exploiting proximity statistic for information retrieval model. In Proceedings of the 8th Asia Information Retrieval Societies Conference, volume 7675 of Lecture Notes in Computer Science, pages 1­13, 2012.",null,null
+538,302,null,null
+539,,null,null

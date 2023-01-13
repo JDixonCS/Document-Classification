@@ -1,0 +1,365 @@
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Target Type Identification for Entity-Bearing eries
+
+Dar´io Gariglio i
+University of Stavanger dario.gariglio i@uis.no
+
+Faegheh Hasibi
+Norwegian University of Science and Technology faegheh.hasibi@ntnu.no
+
+Krisztian Balog
+University of Stavanger krisztian.balog@uis.no
+
+ABSTRACT
+Identifying the target types of entity-bearing queries can help improve retrieval performance as well as the overall search experience. In this work, we address the problem of automatically detecting the target types of a query with respect to a type taxonomy. We propose a supervised learning approach with a rich variety of features. Using a purpose-built test collection, we show that our approach outperforms existing methods by a remarkable margin.
+KEYWORDS
+ery understanding; query types; entity search; semantic search
+ACM Reference format: Dar´io Gariglio i, Faegheh Hasibi, and Krisztian Balog. 2017. Target Type Identi cation for Entity-Bearing eries. In Proceedings of SIGIR'17, August 7­11, 2017, Shinjuku, Tokyo, Japan, 4 pages. DOI: h p://dx.doi.org/10.1145/3077136.3080659
+1 INTRODUCTION
+A signi cant portion of information needs in web search target entities [18]. Entities, such as people, organizations, or locations are natural units for organizing information and for providing direct answers. A characteristic property of entities is that they are typed, where types are typically organized in a hierarchical structure, i.e., a type taxonomy. Previous work has shown that entity retrieval performance can be signi cantly improved when a query is complemented with explicit target type information, see, e.g., [1, 14, 17]. Most of this work has been conducted in the context of TREC and INEX benchmarking campaigns, where target types are readily provided (by topic creators). Arguably, this is an idealized and unrealistic scenario. Users are accustomed to the "single search box" paradigm, and asking them to annotate queries with types might lead to a cognitive overload in many situations. A more realistic scenario is that the user rst issues a keyword query, and then (optionally) uses a small set of (automatically) recommended types as facets, for ltering the results. Target types may also be used, among others, for direct result displays, as it is seen increasingly o en in modern web search engines.
+Motivated by the above reasons, our main objective is to generate target type annotations of queries automatically. Following the hierarchical target type identi cation task proposed in [2], we wish
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'17, August 7­11, 2017, Shinjuku, Tokyo, Japan © 2017 ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3080659
+
+to identify the most speci c target types for a query, from a given type taxonomy, such that they are su cient to cover all relevant results. One important assumption made in [2] is that each query must have a single target type; queries without a clearly identi able type were discarded. is limits the potential for usefulness in practice. erefore, we introduce a relaxation to the task de nition, by allowing for a query to have multiple target types (or none).
+One main contribution of this work is a test collection we build for the revised hierarchical target type identi cation task. We use the DBpedia ontology as our type taxonomy and collect relevance labels via crowdsourcing for close to 500 queries. As our second main contribution, we develop a supervised learning approach with a rich set of features, including term-based, linguistic, and distributional similarity, as well as taxonomic features. Out of these, we nd the distributional similarity features to be the most e ective. Our supervised learning approach outperforms existing baselines by a large margin, and does consistently so across all query categories. All resources developed within this study (i.e., the test collection, pre-computed features, and nal rankings) are made publicly available at h p://bit.ly/sigir2017-querytypes. An extended version of this paper is available at h ps://arxiv.org/abs/ 1705.06056.
+2 RELATED WORK
+Most of the research related to the usage of type information in ad hoc entity ranking has been conducted in the context of the INEX Entity Ranking [9] and TREC Entity [4] tracks. ere, it is assumed that the user complements the keyword query with one or more target types. Several works have reported consistent and signi cant performance improvements when a type-based component is incorporated into the (term-based) retrieval model, see, e.g., [1, 8, 14, 17, 19]. In the lack of explicit target type information, one might a empt to infer types from the keyword query. Vallet and Zaragoza [20] introduce the entity type ranking problem, where they consider the types associated with the top-ranked entities using various weighting functions. Balog and Neumayer [2] address a hierarchical version of the target type identi cation task using the DBpedia ontology and language modeling techniques. Sawant and Chakrabarti [19] focus on telegraphic queries and assume that each query term is either a type hint or a "word matcher," i.e., strongly assuming that every query contains a type hint. ey consider multiple interpretations of the query and tightly integrate type detection within the ranking of entities. eir approach further relies on the presence of a large-scale web corpus. Our work also falls within the broad area of query understanding, which, according to [7], refers to process of "identifying the underlying intent of the queries, based on a particular representation." is includes, among many others, recognizing entity mentions in queries [10] and linking them to knowledge base entries [11, 13].
+
+845
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+3 TARGET TYPE DETECTION
+We begin by providing a detailed explanation of the task we are addressing, and then present various approaches for solving it.
+
+3.1 Problem De nition
+Our objective is to assign target types to queries from a type taxonomy.
+As our starting point, we take the de nition of the hierarchical target type identi cation (HTTI) task, as introduced in [2]: " nd the single most speci c type within the ontology that is general enough to cover all relevant entities." We point out two major limitations with this de nition and suggest ways to overcome them.
+First, it is implicitly assumed that every query must have a single target type, which is not particularly useful in practice. Take, for example, the query " nland car industry manufacturer saab sisu," where both Company and Automobile are valid types. We shall allow for possibly multiple main types, if they are su ciently di erent, i.e., lie on di erent paths in the taxonomy. Second, it can happen--and in fact it does happen for 33% of the queries considered in [2]--that a query cannot be mapped to any type in the given taxonomy (e.g., "Vietnam war facts"). However, those queries were simply ignored in [2]. Instead, we shall allow a query not to have any type (or, equivalently, to be tagged with a special NIL-type). is relaxation means that we can now take any query as input.
+
+De nition 3.1 (HTTIv2). Find the main target types of a query, from a type taxonomy, such that (i) these correspond to the most speci c category of entities that are relevant to the query, and (ii) main types cannot be on the same path in the taxonomy. If no matching type can be found in the taxonomy then the query is assigned a special NIL-type.
+
+Let us note that detecting NIL-types is a separate task on its own account, which we are not addressing in this paper. For now, the importance of the NIL-type distinction is restricted to how the query annotations are performed.
+
+3.2 Entity-Centric Model
+e entity-centric model can be regarded as the most common approach for determining the target types for a query, see, e.g., [2, 15, 20]. is model also ts the late fusion design pa ern for object retrieval [21]. e idea is simple: rst, rank entities based on their relevance to the query, then look at what types the top-K ranked entities have. e nal score for a given type t is the aggregation of the relevance scores of entities with that type. Formally:
+
+scoreEC (t, q) =
+
+score (q, e) × w (e, t ),
+
+e RK (q)
+
+where RK (q) is the set of top-K ranked entities for query q. e retrieval score of entity e is denoted by score (q, e). We consider both Language Modeling (LM) and BM25 as the underlying entity retrieval model. For LM, we use Dirichlet prior smoothing with the smoothing parameter set to 2000. For BM25, we use k1 = 1.2 and b = 0.75. e rank-cuto threshold K is set empirically. e entitytype association weight, w (e, t ), is set uniformly across entities that are typed with t, i.e., w (e, t ) = 1/ e 1(e , t ), and is 0 otherwise. 1(e, t ) is an indicator function that returns 1 if e is typed with t, otherwise returns 0.
+
+3.3 Type-Centric Model
+Alternatively, one can also build for each type a direct term-based representation (pseudo type description document), by aggregating descriptions of entities of that type. en, those type representations can be ranked much like documents. is model has been presented in [2] using Language Models, and has been generalized to arbitrary retrieval models (and referred to as the early fusion design pa ern for object retrieval) in [21]. e (pseudo) frequency of a word for a type is de ned as: f~(w, t ) = e f (w, e) × w (e, t ), where f (w, e) is the frequency of the term w in (the description of) entity e and w (e, t ), as before, denotes the entity-type association weight. e relevance score of a type for a given query q is then calculated as the sum of the individual query term scores:
+|q |
+scoreT C (t, q) = score (qi , f~, )
+i =1
+where score (qi , f~, ) is the underlying term-based retrieval model (e.g., LM or BM25), parameterized by . We use the same parameter se ings as in §3.2. is model assigns a score to each query term qi , based on the pseudo word frequencies f~.
+3.4 Our Approach
+To the best of our knowledge, we are the rst ones to address the target type detection task using a learning-to-rank (LTR) approach.
+e entity-centric and type-centric models capture di erent aspects of the task, and it is therefore sensible to combine the two (as already suggested in [2]). In addition, there are other signals that one could leverage, including taxonomy-driven features and type label similarities. Table 1 summarizes our features. Due to space limitations, we only highlight our distributional similarity features, which were found to perform best (cf. Fig. 2); a detailed description of all features may be found in the extended version of the paper.
+We use pre-trained word embeddings provided by the word2vec toolkit [16]. However, we only consider content words (linguistically speaking, i.e., nouns, adjectives, verbs, or adverbs). Feature #23 captures the compositional nature of words in type labels:
+
+SI MAGGR(t ) = cos (qwco2ntent , twco2ntent ) ,
+where the query and type vectors are taken to be the w2 centroids of their content words. Feature #24 measures the pairwise similarity between content words in the query and the type label:
+
+SIMMAX (t ) = max cos (w2
+wq q,wt t
+
+(wq ), w2
+
+(wt )) ,
+
+where w2 (w ) denotes the word2vec vector of term w. Feature #25 SIMAV G (t ) is de ned analogously, but using a instead of max.
+We employ the Random Forest algorithm for regression as our supervised ranking method. We set number of trees (iterations) to 1000, and the maximum number of features in each tree, m, to (the ceil of the) 10% of the size of the feature set.
+
+4 BUILDING A TEST COLLECTION
+We base our test collection on the DBpedia-Entity collection [3]. is dataset contains 485 queries, synthesized from various entity-
+related benchmarking evaluation campaigns, ranging from short keyword queries to natural language questions. e DBpedia-Entity
+
+846
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+#
+
+Feature
+
+Baseline features
+
+1-5
+
+ECBM25, K (t, q )
+
+6-10 ECLM,K (t, q)
+
+11
+
+T CBM25 (t, q)
+
+12
+
+T CLM (t, q)
+
+Knowledge base features
+
+13
+
+DEPT H (t )
+
+14
+
+CH I LDREN (t )
+
+15
+
+SI BLI N GS (t )
+
+16
+
+ENT IT I ES (t )
+
+Type label features
+
+17
+
+LEN GT H (t )
+
+18
+
+I DF SU M (t )
+
+19
+
+I D F AV G (t )
+
+20-21 T ERM Sn (t, q)
+
+22
+
+N OU N S (t, q)
+
+23
+
+S I MAGGR (t, q)
+
+24
+
+S I M MAX (t, q)
+
+25
+
+S I MAV G (t, q)
+
+Table 1: Features for learning to rank target types.
+Description
+
+Kind
+
+Value
+
+Entity-centric type score (cf. §3.2) with K  {5, 10, 20, 50, 100} using BM25 Entity-centric type score (cf. §3.2) with K  {5, 10, 20, 50, 100} using LM Type-centric score (cf. §3.3) using BM25 Type-centric score (cf. §3.3) using LM
+
+entity-centric entity-centric type-centric type-centric
+
+[0. . ) [0. . 1] [0. . ) [0. . 1]
+
+e hierarchical level of type t , normalized by the taxonomy depth Number of children of type t in the taxonomy Number of siblings of type t in the taxonomy Number of entities mapped to type t
+
+taxonomy taxonomy taxonomy coverage
+
+[0. . 1] {0, . . . , } {0, . . . , } {0, . . . , }
+
+Length of (the label of) type t in words Sum of IDF for terms in (the label of) type t Avg of IDF for terms in (the label of) type t
+ery-type Jaccard similarity for sets of n-grams, for n  {1, 2} ery-type Jaccard similarity using only nouns Cosine sim. between the q and t word2vec vectors aggregated over all terms of their resp. labels Max. cosine similarity of word2vec vectors between each pair of query (q) and type (t ) terms Avg. of cosine similarity of word2vec vectors between each pair of query (q) and type (t ) terms
+
+statistical statistical statistical linguistic linguistic distributional distributional distributional
+
+{1, . . . , } [0. . ) [0. . ) [0. . 1] [0. . 1] [0. . 1] [0. . 1] [0. . 1]
+
+collection has been used in several recent works, among others, in [6, 12, 22]. We use the DBpedia Ontology (version 2015-10) as our type taxonomy, which is a manually curated and proper "is-a" hierarchy (unlike, e.g., Wikipedia categories). We note that none of the elements of our approach are speci c to this taxonomy, and our methods can be applied on top of any type taxonomy.
+Generating the pool. A pool of target entity types is constructed from four baseline methods, taking the top 10 types from each: entity-centric (cf. §3.2) and type-centric (cf. §3.3), using K=100, and both BM25 and LM as retrieval methods. Additionally, we included all types returned by an oracle method, which has knowledge of the set of relevant entities for each query (from the ground truth). Speci cally, the oracle score is computed as: scoreO (t, q) =
+e Rel (q) 1(e, t ), where Rel (q) indicates the set of relevant entities for the query. We employ this oracle to ensure that all reasonable types are considered when collecting human annotations.
+Collecting judgments. We obtained target type annotations via the CrowdFlower crowdsourcing platform. Speci cally, crowd workers were presented with a search query (along with the narrative from the original topic de nition, where available), and a list of candidate types, organized hierarchically according to the taxonomy. We asked them to "select the single most speci c type, that can cover all results the query asks for" (in line with [2]). If none of the presented types are correct, they were instructed to select the "None of these types" (i.e., NIL-type) option.
+e annotation exercise was carried out in two phases. In the rst phase, we sought to narrow down our pool to the most promising types for each query. Since the number of candidate types for certain queries was fairly large, they were broken down to multiple micro-tasks, such that for every top-level type, all its descendants were put in the same micro-task. Each query-type batch was annotated by 6 workers. In the second phase, all candidate types for a query were presented in a single micro-task; candidates include all types that were selected by at least one assessor in phase one, along with their ancestors up to the top level of the hierarchy. Each query was annotated by 7 workers. e Fleiss' Kappa inter-annotator agreement for this phase was 0.71, which is considered substantial.
+
+300
+
+No NIL type
+
+250
+
+Has NIL type
+
+Number of queries
+
+200
+
+150
+
+100
+
+50
+
+0 1
+
+2
+
+3
+
+4
+
+Number of main types
+
+Figure 1: Distribution of the number of main target types.
+
+Results. Note that according to our HTTIv2 task de nition, main target types of a query cannot lie on the same path in the taxonomy. To satisfy this condition, if two types were on the same path, we merged the more speci c type into the more generic one (i.e., the more generic type received all the "votes" of the more speci c one).
+is a ected 120 queries. Figure 1 shows the distribution of queries according to the number of main types. 280 of all queries (57.73%) have a single target type, while the remainder of them have multiple target types. Notice that as the number of main types increases, so does the proportion of NIL-type annotations.
+5 EVALUATING TARGET TYPE DETECTION
+Next, we present our evaluation results and analysis.
+5.1 Evaluation Methodology
+Following [2], we approach the task as a ranking problem and report on NDCG at rank positions 1 and 5. e relevance level ("gain") of a type is set to the number of assessors that selected that type. Detecting NIL-type queries is a separate problem on its own, which we are not addressing in this paper. erefore, the NIL-type labels are ignored in our experimental evaluation (a ecting 104 queries). eries that got only the NIL-type assigned to them are removed (6 queries in total). No re-normalization of the relevance
+
+847
+
+Short Research Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 2: Target type detection performance.
+
+Method
+
+NDCG@1 NDCG@5
+
+EC, BM25 (K = 20) EC, LM (K = 20)
+
+0.1490 0.1417
+
+0.3223 0.3161
+
+TC, BM25 TC, LM
+
+0.2015 0.2341
+
+0.3109 0.3780
+
+LTR
+
+0.4842 0.6355
+
+0.16
+
+0.70
+
+NDCG@5
+
+Gini score
+
+0.14 0.12
+0.1 0.08 0.06 0.04 0.02
+
+0.65
+
+0.60
+
+0.55
+
+0.50
+Gini score
+
+NDCG@5
+
+0.45
+
+0.40
+
+0.0 SIMSMIMAAXG(StG;IqMR)(At;VqTG)C(tBE;MqN)2E5T(CIt;TqBI)MEE2S5C;(1t0B)0M(St2;I5q;B)50L(EtI;CNq)BGCMSH2(5It;2L)0(Dt;RqI)EDNFS(tIU)DMJFN(AtO)VEUGCN(tSB)JM(tT2;5Eq;1)R0(EMt;CqS)B1(Mt;25q;)D5(tEE; qPC)TLHM(;L1t0)E0(Nt;EGqC)THLM(;t5)0T(Ct;EqLC)M(LtME; q;C2)0(LtM; Eq;1)C0J(tTL;MEq);R5(Mt; qS)2(t; q)
+Features
+
+0.35
+
+Figure 2: Performance of our LTR approach when incrementally adding features according to their information gain.
+
+levels for NIL-typed queries is performed (similar to the se ing in [5]). For the LTR results, we used 5-fold cross-validation.
+
+5.2 Results and Analysis
+Table 2 presents the evaluation results. We nd that our supervised learning approach signi cantly and substantially outperforms all baseline methods (relative improvement over 43% according to any metric, with p < 0.001 using a two-tailed paired T-test).
+Feature analysis. We analyze the discriminative power of our features, by sorting them according to their information gain, measured in terms of Gini importance (shown as the vertical bars in Fig. 2). e top 3 features are: SI MMAX (t, q), SI MAGGR(t, q), and SIMAV G (t, q). is underlines the e ectiveness of textual similarity, enriched with distributional semantic representations, measured between the query and the type label. en, we incrementally add features, one by one, according to their importance and report on performance (shown as the line plot in Fig. 2). In each iteration, we set the m parameter of the Random Forests algorithm to 10% of the size of the feature set.
+ery category analysis. In Figure 3, we break performance down into di erent query categories, following the grouping scheme of Zhiltsov et al. [22]. A rst observation is about robustness: our proposed method clearly outperforms the baselines in every query category, i.e., it succeeds in automatically detecting target types for a wide variety of queries. We nd the biggest improvements for QALD-2; these queries are mostly well-formed natural language questions. On the other hand, SemSearch ES, which contains short (and ambiguous) keyword queries, has the lowest performance.
+
+NDCG@5
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0.0
+
+INEX_LD
+
+ListSearch
+
+EC, LM TC, LM LTR
+
+QALD2
+
+SemSearch_ES
+
+Figure 3: Performance across di erent query categories.
+
+6 CONCLUSIONS
+In this paper, we have addressed the problem of automatically
+detecting target types of a query with respect to a type taxonomy.
+We have proposed a supervised learning approach with a rich set
+of features. We have developed test collection and showed that our
+approach outperforms previous methods by a remarkable margin.
+REFERENCES
+[1] Krisztian Balog, Marc Bron, and Maarten De Rijke. 2011. ery Modeling for Entity Search Based on Terms, Categories, and Examples. ACM Trans. Inf. Syst. 29, 4 (2011), 22:1­22:31.
+[2] Krisztian Balog and Robert Neumayer. 2012. Hierarchical Target Type Identi cation for Entity-oriented eries. In Proc. of CIKM. 2391­2394.
+[3] Krisztian Balog and Robert Neumayer. 2013. A Test Collection for Entity Search in DBpedia. In Proc. of SIGIR. 737­740.
+[4] Krisztian Balog, Pavel Serdyukov, and Arjen P. De Vries. 2012. Overview of the TREC 2011 Entity Track. In Proc. of TREC.
+[5] Hannah Bast, Bjo¨rn Buchhold, and Elmar Haussmann. 2015. Relevance Scores for Triples from Type-Like Relations. In Proc. of SIGIR. 243­252.
+[6] Jing Chen, Chenyan Xiong, and Jamie Callan. 2016. An Empirical Study of Learning to Rank for Entity Search. In Proc. of SIGIR. 737­740.
+[7] W Bruce Cro , Michael Bendersky, Hang Li, and Gu Xu. 2010. ery Representation and Understanding Workshop. In SIGIR Forum. 48­53.
+[8] Gianluca Demartini, Claudiu S. Firan, Tereza Iofciu, Ralf Krestel, and Wolfgang Nejdl. 2010. Why Finding Entities in Wikipedia is Di cult, Sometimes. Information Retrieval 13, 5 (2010), 534­567.
+[9] Gianluca Demartini, Tereza Iofciu, and Arjen P. De Vries. 2010. Overview of the INEX 2009 Entity Ranking Track. In Proc. of INEX. 254­264.
+[10] Jiafeng Guo, Gu Xu, Xueqi Cheng, and Hang Li. 2009. Named Entity Recognition in ery. In Proc. of SIGIR. 267­274.
+[11] Faegheh Hasibi, Krisztian Balog, and Svein Erik Bratsberg. 2015. Entity Linking in eries: Tasks and Evaluation. In Proc. of ICTIR. 171­180.
+[12] Faegheh Hasibi, Krisztian Balog, and Svein Erik Bratsberg. 2016. Exploiting Entity Linking in eries for Entity Retrieval. In Proc. of ICTIR. 209­218.
+[13] Faegheh Hasibi, Krisztian Balog, and Svein Erik Bratsberg. 2017. Entity Linking in eries: E ciency vs. E ectiveness. In Proc. of ECIR. 40­53.
+[14] Rianne Kaptein and Jaap Kamps. 2013. Exploiting the Category Structure of Wikipedia for Entity Ranking. Arti cial Intelligence 194 (2013), 111­129.
+[15] Rianne Kaptein, Pavel Serdyukov, Arjen P. De Vries, and Jaap Kamps. 2010. Entity Ranking Using Wikipedia as a Pivot. In Proc. of CIKM. 69­78.
+[16] Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Corrado, and Je Dean. 2013. Distributed Representations of Words and Phrases and eir Compositionality. In Proc. of NIPS. 3111­3119.
+[17] Jovan Pehcevski, James A om, Anne-Marie Vercoustre, and Vladimir Naumovski. 2010. Entity Ranking in Wikipedia: Utilising Categories, Links and Topic Di culty Prediction. Information Retrieval 13, 5 (2010), 568­600.
+[18] Je rey Pound, Peter Mika, and Hugo Zaragoza. 2010. Ad-hoc Object Retrieval in the Web of Data. In Proc. of WWW. 771­780.
+[19] Uma Sawant and S Chakrabarti. 2013. Learning Joint ery Interpretation and Response Ranking. In Proc. of WWW. 1099­1109.
+[20] David Vallet and Hugo Zaragoza. 2008. Inferring the Most Important Types of a ery: a Semantic Approach. In Proc. of SIGIR. 857­858.
+[21] Shuo Zhang and Krisztian Balog. Design Pa erns for Fusion-Based Object Retrieval. In Proc. of ECIR. 684­690.
+[22] Nikita Zhiltsov, Alexander Kotov, and Fedor Nikolaev. 2015. Fielded Sequential Dependence Model for Ad-Hoc Entity Retrieval in the Web of Data. In Proc. of SIGIR. 253­262.
+
+848
+
+

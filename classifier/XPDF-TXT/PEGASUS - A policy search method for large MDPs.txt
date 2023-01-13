@@ -1,0 +1,2692 @@
+PEGASUS: A policy search method for large MDPs and POMDPs
+
+Andrew Y. Ng Computer Science Division
+UC Berkeley Berkeley, CA 94720
+
+Michael Jordan Computer Science Division & Department of Statistics
+UC Berkeley Berkeley, CA 94720
+
+Abstract
+We propose a new approach to the problem of searching a space of policies for a Markov decision process (MDP) or a partially observable Markov decision process (POMDP), given a model. Our approach is based on the following observation: Any (PO)MDP can be transformed into an "equivalent" POMDP in which all state transitions (given the current state and action) are deterministic. This reduces the general problem of policy search to one in which we need only consider POMDPs with deterministic transitions. We give a natural way of estimating the value of all policies in these transformed POMDPs. Policy search is then simply performed by searching for a policy with high estimated value. We also establish conditions under which our value estimates will be good, recovering theoretical results similar to those of Kearns, Mansour and Ng [7], but with "sample complexity" bounds that have only a polynomial rather than exponential dependence on the horizon time. Our method applies to arbitrary POMDPs, including ones with infinite state and action spaces. We also present empirical results for our approach on a small discrete problem, and on a complex continuous state/continuous action problem involving learning to ride a bicycle.
+1 Introduction
+In recent years, there has been growing interest in algorithms for approximate planning in (exponentially or even infinitely) large Markov decision processes (MDPs) and partially observable MDPs (POMDPs). For such large domains, the value and -functions are sometimes complicated and difficult to approximate, even though there may be simple, compactly representable policies that perform very well. This observation has led to particular interest in direct policy search methods (e.g., [16, 8, 15, 1, 7]), which
+
+attempt to choose a good policy from some restricted class of policies.
+Most approaches to policy search assume access to the POMDP either in the form of the ability to execute trajectories in the POMDP, or in the form of a black-box "generative model" that enables the learner to try actions from arbitrary states. In this paper, we will assume a stronger model than these: roughly, we assume we have an implementation of a generative model, with the difference that it has no internal random number generator, so that it has to ask us to provide it with random numbers whenever it needs them (such as if it needs a source of randomness to draw samples from the POMDP's transition distributions). This small change to a generative model results in what we will call a deterministic simulative model, and makes it surprisingly powerful.
+We show how, given a deterministic simulative model, we can reduce the problem of policy search in an arbitrary POMDP to one in which all the transitions are deterministic--that is, a POMDP in which taking an action ¡ in a state ¢ will always deterministically result in transitioning to some fixed state ¢¤£ . (The initial state in this POMDP may still be random.) This reduction is achieved by transforming the original POMDP into an "equivalent" one that has only deterministic transitions.
+Our policy search algorithm then operates on these "simplified" transformed POMDPs. We call our method PEGASUS (for Policy Evaluation-of-Goodness And Search Using Scenarios, for reasons that will become clear). Our algorithm also bears some similarity to one used in Van Roy [12] for value determination in the setting of fully observable MDPs.
+The remainder of this paper is structured as follows: Section 2 defines the notation that will be used in this paper, and formalizes the concepts of deterministic simulative models and of families of realizable dynamics. Section 3 then describes how we transform POMDPs into ones with only deterministic transitions, and gives our policy search algorithm. Section 4 goes on to establish conditions under which we may give guarantees on the performance of
+
+the algorithm, Section 5 describes our experimental results, and Section 6 closes with conclusions.
+
+2 Preliminaries
+
+This section gives our notation, and introduces the concept of the set of realizable dynamics of a POMDP under a policy class.
+
+A¥§¦©¨M¨ark¨ov!#"$d¥&%(e'0c)1i¨&s23io¨n45' process ¦ (MDP) is a tup le where: is a set of states;
+
+is the initial-s tate distribution, from¤ w&" h¥&i%(c'0h) the start-state
+
+¢76 is drawn; is a set of !ac&t" ions;
+
+are the tran-
+
+sition probabilities, with giving the29ne8A xt-@ sBCt¨EaDte' distri-
+
+bution upon taking ac4 tion ¡ in state ¢ ;
+
+is the
+
+disc4GoF©uH#nI t factor; and is the reward function, bounded
+
+by
+
+. For the sake of c¦QonPR cre@ BSte¨EnDEeTVsUsW , we will assume, un-
+
+less otherwise stated, that
+
+is a X`Y -dimensional
+
+hypercube. For simplicity4a, ¥we' also assume4are¥ w¨ard' s are deterministic, and written ¢ rather than ¢ ¡ , the ex-
+
+tensions being trivial. Lastly, everything that needs to be
+
+measurable is assumed to be measurable.
+
+¦fegh
+
+A policy is any mapping bdc ¦segut . The value f¥ u'nction
+
+of a policy b is a map iqprc
+
+, so that iqp ¢ gives
+
+the expected discounted sum of rewards for executing b
+
+starting from state ¢ . With some abuse of notation, we also
+
+define the va lue of a policy, with respect to the initial-state distribution , according to
+
+¥ 'vPxwyQ@ ¥ 'T
+
+ib
+
+i p ¢6
+
+(1)
+
+ (where the subscript ¢ 6 indicates that the expectation is with respect to ¢ 6 drawn according to ). When we are
+
+considering multiple MDPs and wish to make explicit that
+
+a value write iq p
+
+fu¥ n¢ c' ,tiion
+
+i¥ s b
+
+f' or a particular , etc.
+
+MDP
+
+
+
+, we will also
+
+In the policy search setting, we have some fix8 ed class  of policies, and desire to find a good policy b  . More
+
+precisely, for a given MDP  and policy class  , define
+
+0 ¥ 
+
+¨ 
+
+'vPC
+
+i
+
+¥ 'ed b
+
+(2)
+
+p`
+
+8
+
+¥'
+
+Ogu r¥
+
+goa¨ l 
+
+i's .
+
+to
+
+find
+
+a
+
+policy
+
+b
+
+f
+
+ so that i b f is close to
+
+Note that this framework also encompasses cases where our family  consists of policies that depend only on certain aspects of the state. In particular, in POMDPs, we can restrict attention to policies that depend only on the observables. This restriction results in a subclass of stochastic memoryfree policies.h By introducing artificial "memory variables" into the process state, we can also define stochastic limited-memory policies [9] (which certainly permits some belief state tracking).
+i Although we have not explicitly addressed stochastic policies so far, they are a straightforward generalization (e.g. using the transformation to deterministic policies given in [7]).
+
+Since we are interested in the "planning" problem, we as-
+
+sume that we are given a model of the (PO)MDP. Much pre-
+
+vious work has studied the case of (PO)MDPs specified via
+
+a generative model [7, ¥13¨ ], ' which is a stochastic function
+
+that takes as inp u&t" a¥#n% y' ¢ ¡ state-action pair, and outputs
+
+¢¤£ according to
+
+(and the associated reward). In this
+
+paper, we assume a stronge¦mr mlnoo dellp. W@ BCe¨EDEaTVsUesqdumegue w¦ e have a
+
+ftdhoeertnearnjmy¥ i¢ fin¨ ix¡3set¨&idsc"$r '¥¥&f¢%(ui' s¨ n¡ dc' it-sipotraniibrjku, itfec ds r
+
+,@ BSs¨EoDETVthU qat
+
+is distributed Uniform
+
+,
+
+according to the transition dis-
+
+t3ri&b"$u¥&t%(i' on for@
+formly in
+
+. BCs¨EoDEmT U eq
+
+In other words, to draw a sample from
+
+fixed , and
+
+¢ and ¡ , then take
+
+w¥ e j¢
+
+¨n¡ e¨es dr '
+
+only draw s r unito be our sample.
+
+We will call such a model a deterministic simulative model
+
+for a (PO)MDP.
+
+Since a deterministic simulative model allows us to simu-
+
+late a generative model, it is clearly a stronger model. How-
+
+ever, most computer implementations of generative models
+
+also provide deterministic simulative models. Consider a
+
+generative model that is implemented via a procedure that
+
+takes ¢ and ¡ , makes at most X1t calls to a random n u&m" b¥#%e' r
+
+generator, and then outputs ¢ £ drawn according to
+
+.
+
+Then this procedure is already providing a deterministic
+
+simulative model. The only difference is that the determin-
+
+istic simulative model has to make explicit (or "expose") its interface to the random number generator, via s r . (A gen-
+
+erative model implemented via a physical simulation of an
+
+MDP with "resets" to arbitrary states does not, however,
+
+readily lead to a deterministic simulative model.)
+
+Let us examine some simple examples of determinis¥tic s¨ im'-
+
+ulative models. Suppose tha3t #fu#o"7ruva¥ sta'GteP9-aDctwixon3p#au#i"7ruv¥ ¢ h 'y¡ hP
+
+az nwdx some states ¢¤£ and ¢7£ £ ,
+
+. Then we may choo¥ se ¨X{t ¨
+
+a ¥ rea¨ l j¦r¢Psh t ¡
+
+nh u¨ ms 'beP 3r,&¢¤"$a£ ¥#£n% d'othleetrwj is¢ eh .
+
+¡h As
+
+P|¢¤£ D
+
+s
+
+'}P
+
+so ¢
+
+another
+
+, that s r
+
+P
+
+£ if s~
+
+¢¤£ £ Ds wxis just
+, and
+
+example, suppose
+
+, and
+
+is a nor&m"$a¥#l% ' distribution with a cPRumD ula-
+
+tive distribution funct¥ion¨ may choose j to be j ¢ ¡
+
+
+
+¨
+
+s
+
+'©P
+
+.
+
+A#g" hai¥ sn'
+
+letting .
+
+X{t
+
+, we
+
+It is a fact of probability  an&"d¥&%(m' easure theory that, given
+
+any transition distribution
+
+, such a deterministic sim-
+
+ulative model j can always be constructed for it. (See,
+
+e.g. [4].) Indeed, some texts (e.g. [2]) routinely define
+
+POMDPs using essentially deterministic simulative mod-
+
+els. However, there will often be many different choices of
+
+j for representing a (PO)MDP, and it will be up to the user
+
+to decide which one is most "natural" to implement. As we
+
+will see later, the particular choice of j that the user makes
+
+can indeed impact the performance of our algorithm, and
+
+"simpler" (in a sense to be formalized) implementations are
+
+generally preferred.
+
+To close this section, we introduce a concept that will be useful later, that captures the family of dynamics that a (PO)MDP and policy class can exhibit. Assume a deterministic simulative model j , and fix a policy b . If we are
+
+meat¦mixnoiednnlpcess urd@ .BSt ib¨EnVyDgaP T Urb yqp if¥nr¢ og¨pms rb 'vsp ooP ¥vm¢ ej ¨ers ¥ r
+
+st¨ ate¥ ¢b ¢
+
+¢
+
+',¨
+
+ts rh' e,
+
+successor-state is deterwhich is a function of ¢
+
+
+
+', P
+
+we j
+
+g¥ et¨ ¢
+
+b
+
+a¥ ¦
+
+w¢ 'eh¨ os r l'ee)
+
+family of mapping
+
+funcfrom
+
+into successor states . This set of functions
+
+ should be thought of as the family of dynamics realiz-
+
+able by the POMDP and  , though since its definition does
+
+depend on the particular deterministic simulative model j
+
+that we have chosen, this is "as expressed with respect to
+
+j ." (so
+
+For that
+
+
+
+ea¥ ch¨ ¢
+
+s
+
+ r
+
+'
+
+,
+
+also let v is the  -th
+
+coboertdhiena t-ethofco o¥ r¢ d¨ is nr ' a)teanfdunlecttion
+
+be the corre¦Qsplon@ BCd¨7inDTgU qfamilie@ sBC¨7oDfT coordinate functions map-
+
+ping from
+
+into . Thus,  captures all the
+
+ways that coordinate  of the state can evolve.
+
+We are now ready to describe our policy search method.
+
+3 Policy search method
+
+In this section, we show how we transform a (PO)MDP into
+
+an "equivalent" This then¥ le' ads
+
+otonenathtuartahlaessotinmlyatdeestei f rm¥ b in' iostficthterapnosiltiicoienss'.
+
+values mize i f
+
+i
+
+¥
+
+b
+
+b' . Finally, we may search over policies to opti, to find a (hopefully) good policy.
+
+3.1 Transformation of (PO)MDPs
+
+P¥¦3¨¨¨E¤ &" ¥#% 'e){¨&23¨45'
+
+Given a (PO)MDP 
+
+and
+
+a policy class  , we describe how, using a determinis-
+
+tic simulative model formed POMDP s£
+
+j Pfo¥§r¦
+
+ ¨ £
+
+, £
+
+¨we¨E¤con&£ s" t¥&r%(u'0c)1t¨&23o¨u4 r
+
+£
+
+t' ransand
+
+corresponding class of policies G£ , so that s£ has only de-
+
+terministic transitions (though its initial state may stiPA ll bD e
+
+random). To simplify the exposition, we assume X{t
+
+,
+
+so that the terms s r are just real numbers.
+
+s£ is constructed is as follows: The action space and dis-
+
+count fact¦Qorlfo@ rBSs ¨EDETV£  are the same as in  . The state space
+
+for s£ can be
+
+is written
+
+as
+
+a
+
+ve.ctIonro¥ t¢ h¨ es rh
+
+w¨ sord¨7sdE,d7ad '
+
+typical state in s£ ¦ -- this consists of
+
+a state ¢ from the original state spa@cBSe¨EDT , followed by an
+
+infinite sequence of real numbers in .
+
+mTt¢¤a£ hiknePiinsrgtjeics¥ata¢ cl¨ toli¡ yfo¨ nstthrh a¡e' n.stirniIatninosostnaftohttereomr¥ twa¢ ht¨ oeis orhnds¨tsas,its eth¨Esed7t¥ rdE¢¤a¢ d(£ 'i¨ gpsihontr¨ftsoisor nw¨7£ ,dEaod7rfwdd ' t.e,hewdUeshptteaeortrnee-
+
+(which should be thought of to ¢7£ , and one number in the
+
+ainsfitnhiete"ascetquuaeln"cseta¥ts e)h
+
+¨
+
+csh a¨End7gdEed(s'
+
+is used up to generate ¢ £ from the correct distribution. By
+
+the definition of the see that so long as state" distribution of
+
+s
+
+deterministic sim@ BSu¨ElDaT tive model
+
+¢¤h£
+
+C
+
+, then the
+
+is the same as if we had taken
+
+j , we "nextaction
+
+¡
+
+in state ¢
+
+(randomization over s 
+
+h ).
+
+F¦ inP all¦y, £
+£ will
+
+l¡w@ BSe ¨EcDhToose , so
+b@ eBS¨EsDoT that ¢
+
+£, tha t 
+
+¥t,h¢ ae¨ ns dih n¨tihstie a¨Esl8 -d7sdE'tsda' taedrreadwdisintsrtiarbicbucutoitoredndinio.giv.tedor.
+
+Uniform . For each policy b  , also let there be a
+
+8
+
+¥
+
+corresponding b¢£ and let the reward
+
+y£ , given be given by
+
+b4 y £
+
+¥b¢£ ¢
+
+¨
+
+s
+
+¢
+
+¨ h
+
+s ¨
+
+sh
+
+¨ 
+
+s ¨EdEd7d '£P ¨Ed7dEd('¤Pm4a¥
+
+b
+
+¢
+
+¥ '¢ .
+
+'
+
+,
+
+If one observes only the "¢ "-portion (but not the s  's) of a
+
+sequence of states generated in the POMDP s£ using pol-
+
+icy b¢£ , one obtains a sequence that is drawn from the same
+
+distribution as would have been generated from t8 he original
+
+(PO)MDP  under the corresponding po8 licy b  . I8 t fol-
+
+lows that, for we have that i
+
+c or¥ rb es'vpP oni ding¥ ¥
+
+po' licies b b¢£ . This
+
+ also
+
+and b¢£ implies that
+
+y£ , the
+
+bsaemstep: osgsib¥ le
+
+¨exp'¦ePctedgr e¥ tsurn£ ¨ sGi£n'
+
+both .
+
+(PO)MDPs
+
+are
+
+the
+
+To summarize, we have shown how, using a deterministic simulative model, we can transform any POMDP  and policy class  into an "equivalent" POMDP s£ and policy class  £ , so that th8§e¦ transitions in  £ 8§ar e deterministic; i.e., given a state ¢ £ and an action ¡ , the next-state in s£ is exactly determined. Since policies in  8 and y£ have the same values, if we can find a policy b¢£ G£ that does well 8 in s£ starting from £ , then the corresponding policy b  wi ll also do well for the original POMDP  starting from . Hence, the problem of policy search in general POMDPs is reduced to the problem of policy search in POMDPs with deterministic transition dynamics. In the next section, we show how we can exploit this fact to derive a simple and natural policy search method.
+
+3.2 PEGASUS: A method for policy search
+
+As discuss8 ed, it suffices for policy search to find a good
+
+policy b¢£ y£ for the8 transformed POMDP, since the cor-
+
+responding policy we first construct
+
+b an
+
+ will be just approxi8mation i f
+
+as ¥
+
+g¥&%(o' od. to
+
+then search over policies b¢£ G£ to optimize i
+
+a proxy for optimizing the hard-to-compute i
+
+f 
+
+i
+
+To  ¥ ¥
+b
+
+¥&d%(o' ¥ ,' 'b¢£
+),
+
+this, and (as and
+
+thus find a (hopefully) good policy.
+
+Recall that i ¥ is given by
+
+i  ¥ ¥ b '¦Pxw
+
+ ¢
+
+¥
+
+@ i
+
+p
+
+¥ ¥ ¢E6 '¨T`¨
+
+(3)
+
+8¦
+
+where the exp ectation is over the initial state ¢ 6
+
+£ drawn
+
+according to £ . The first step in the approximation is to
+
+replace the expectation over the distribution with a finite
+
+samp le p le ¢6©
+
+h#oª ¨f¢s6© t aª t¨EedEsd7.d¨
+
+M¢6©«orª e)
+
+precisely, we first of ¬ initial states
+
+draw a samaccording to
+
+£ . These states, also called "scenarios" (a term from the
+
+satpopcrhoaxsitmicatoipotnimtoizi a¡tio¥ n¥ b
+
+l' iterature; :
+
+see,
+
+e.g.
+
+[3]),
+
+define
+
+an
+
+i ¥ ¥ b '¦
+
+D ¬
+
+® « i  p ¥ ¥ ¢ 6©  ª 'ed °¯ h
+
+(4)
+
+Since th8e t¦ ransitions in s£ a8re deterministic, for a given
+
+state ¢
+
+£ and a policy b y£ , the sequence of states
+
+that will be visited upon executing b from ¢ is exactly deter-
+
+mined; hence the sum of discounted rewards for executing
+
+ocb offrrtrhoeemsptoe¢ nrimdsisanlgsiotp oe¥ x¥sa¢cc6©etnªly'ardiinoette¢ hr6© em ª ,sinuwemdem.nTaetheiuodsno, ntionlycEauqlscueualtoaioutenr
+
+one (4) de-
+
+terministic visited by
+
+simulative executing b
+
+model from
+
+to ¢6©
+
+fiª n, danthdessuemquuepncteheofrestsautlets-
+
+ing discounted rewards. Naturally, this would be an infinite
+
+sum, so the second (and standard) part of the approxima-
+
+tion is to truncate this sum after some number ± of steps,
+
+where ± is called the horPx izo´ n tim¥ e¥#.D!H·¸e2re',w wz 4e cF©hHoI o' se ± to
+
+be the ² -horizon time ±a³ µ¶ ²
+
+, so that
+
+(² bw ez cearursoer
+
+of discounting) the truncation into the approximation.
+
+introduces
+
+at
+
+most
+
+To summarize, given ¬ scenarios ¢ 6© h&ª ¨EdEd7d¨ ¢ 6©« ª , our approximation to i ¥ is the deterministic function
+
+mnwi f a¡hirnei¥ oirs¥ esbt,i'v8c¥th¢aP 6li© ls yª d¬¨ D ev¢ fiih© ®s n¯ª«ite¨7hesdEd4dEad7nb£ ¨ ¥ya¢ ¢ pº©6©b  pª»ª rs'' ot¹aaixsri2tmti4hnaeg£ti¥ sof¢ ernh© oq ªtmuo'e¹in¢ c6© %Ee%7ª ¥ .%§o¥ ¹ab fG'2sivftº©aoet»#rne4 as¬ l£ ld¥ p¢esºo©tcelªe» ri'--cies b G£ .
+
+The ¢ 6©  ª
+
+fi8¼na¦½ l iml¾p@ lBCe¨7mDTe ntational detail is that, since the states are infinite-dimensional vectors, we
+
+have no way of representing them (and their successor
+
+stj± hutaes³ ttesssttth)aeatpeetsx.,p¢ l6w©Vi cª eiietwlP¿ nyee. edBd¥ ¢ iun© ot ªnbt¨ lhseyech© arªsue¨ppss aer©ce weªs¨7eeodEnd7ftwd 'sti,hlh©le aªbn¨oesdrsi© gisªmoi¨Enud7awdElla,det¨ ius nwnº©g© tiªrl» ola,nndolsyo-f
+
+formed POMDP, evaluating a policy this way is therefore
+
+also akin to generating ¬ Monte Carlo trajectories and tak-
+
+ing their empirical average return, but with the crucial dif-
+
+ference that all the randomization is "fixed" in advance and
+
+"reused" for evaluating different b .
+
+Having used ¬ scenarios to define i f ¥ ¥ b may search over policies to optimize i f 
+
+'
+
+¥
+
+¥
+
+fo' r b.
+
+all b , we We call
+
+tGhoisopdonleiscsyAsenadrcShemarecthhoUdsiPnEgGSAcSenUaSr:ioPso.liSciyncEevai f lua¥ t¥ ib on' -iosfa-
+
+deterministic function, the search procedure only needs to
+
+optimize a deterministic function, and any number of stan-
+
+dard optimization methods may be usePÀ d.  In the 8s castÄeÃ1t) hat
+
+the action space is continuous and 
+
+bÁ  Â
+
+¥ ' is
+
+a smoothly parameterized family of policies (so bgÁ ¢ is
+
+differentiable in Â for all ¢ ) then if all the relevant quanti-
+
+ties ar¥ e tives X used to
+
+wdoXipfÂ tfie'4 mirf einzet¥ i¥aibfbÁ le' ¥,,
+
+¥
+
+it is also possible to find the derivaand' gradient ascent methods can be b Á . One common barrier to doing
+
+this is that is often discontinuous, being (say) 1 within
+
+a goal region and 0 elsewhere. O4 ne approach to dealing with this problem is to smooth out, possibly in com-
+
+bination with "continuation" methods that gradually un-
+
+smooth it again. An alternative approach that may be use-
+
+ful in the setting of continuous dynamical systems is to al-
+
+ter the reward function to use a continuous-time model of
+
+discounting. ters the goal
+
+Assuming that the time re gion is differentiable,
+
+at which then i f ¥
+
+t¥ he bgÁ
+
+a' gent enis again
+
+differentiable.
+
+4 Main theoretical results
+
+
+
+PEGASUS uses them
+
+samples a to form an
+
+anpupmrobxeimr oatfiosncei fna¥ bri'ostofirom¥ b
+
+'
+
+.
+
+£, If
+
+i
+
+and f is
+
+a uniformly good approximation to i , then we can guaran-
+
+tee to
+
+0tha t¥
+
+opt¨ im' izing i f   . This
+
+will result in a policy with value close section establishes conditions under
+
+which this occurs.
+
+4.1 The case of finite action spaces
+
+ÅP
+
+W e ¡h
+
+¨ b¡ e g) i.n
+
+by considering the case of two actions, Studying policy search in a similar setting,
+
+Kearns, Mansour and Ng [7] established conditions under
+
+which their algorithm gives uniformly good estimates of
+
+the values of policies. A key to that result was that uniform
+
+convergence can be established so long as the policy class
+
+ has low "complexity." This is analogous to the setting of
+
+supervised learning, where a learning algorithm that uses
+
+a hypothesis class Æ that has low complexity (such as in
+
+the sense of low VC-dimension) will also enjoy uniform
+
+convergence of its error estimates to their means.
+
+In our¦ setting , from into¥ ¡ Hence, ÇGÈ 
+
+'
+
+sh in¨ ¡ce , its
+
+)  is just a class of functions mapping , it is just a set of boolean functions. Vapnik-Chervonenkis dimension [14],
+
+is well defined. That is, we saz y  shatters a set of ¬ states if it can realize each o¥ f t'he « possible action combinations on them, and ÇGÈ  is just the size of the largest set
+
+shattered by  . The result o f Kearns et al. then suffices to give the following theorem.
+
+9PÉ
+
+Theorem 1 Let a POMDP with actions
+
+¡
+
+¨ h¡
+
+)
+
+be
+
+given, and let  be a class of strategies Pfor this¥ P'OMDP,
+
+with Vapn¨iÊÌk-ËÀ CheB rvonenkis
+
+let any ²
+
+be fixed,
+
+dimension and let i f
+
+X be
+
+ÇGÈ  . Also the policy-value
+
+estimates determined by PEGASUS using ¬ scenarios and
+
+Í More precisely, if the agent enters the goal region on some
+
+time step, then rather than giving it a reward of 1, we figure out
+
+what fraction ÎqÏ§Ð ÑÒeÓÔ of that time step (measured in continuous
+
+time) the agent had taken to enter the goal region, and then give
+
+idtyrneawmaricdsÕ$, tÖ heinnsÕCteÖ ada.ndAhsseunmceinØ$×gÙ
+
+Î
+
+is differentiable in the system's ¥&ÚVÛ`ÜEÝ are now also differentiable
+
+(other than on a usually-measure 0 set, for example from trunca-
+
+tioná at Þàß steps).
+
+tirseoef"Tsmhizeeetahâlogãdoä rtÚoiåythfimÚ nÞydoß tfhÝÝKe, eetashtreinmys,awMteesraenØ × svoÚVeÛuryrÝ ;aesnxidnpceNengseiavuceshetstoraabj"uetcirltadoj.reycEttaorcerhye
+
+scenario in PEGASUS can be viewed as a compact representation
+
+of a trajectory tree (with a technical difference that different sub-
+
+trees are not constructed independently), and the proof given in
+
+Kearns et al. then applies without modification to give Theorem 1.
+
+a horizon time of ± ³ . If
+
+PxæèçC ´éç ¨ 4 F©H#I ¨#´ D ¨ D
+
+¨
+
+¬
+
+X
+
+µ Ê Dê·ë2vìyì
+
+(5)
+
+²
+
+then with probability at least Dq·mÊ , i f will be uniformly
+
+close to i
+
+: ííí if
+
+¥ b
+
+'3·
+
+i
+
+¥ b
+
+'
+
+ííí
+
+~
+
+²
+
+´´ 8 ¤î b 
+
+(6)
+
+Using the transformation a finite action space with
+
+g ivenË 
+
+inz
+
+Kearns et al., the case of also gives rise to essen-
+
+tially the same uniform-convergence result, so long as 
+
+has low "complexity."
+
+The bound given in the theorem has no dependence on the size of the state space or on the "complexity" of the POMDP's transitions and rewards. Thus, so long as  has low VC-dimension, uniform convergence will occur, independently of how complicated the POMDP is. As in Kearns et al., this theorem therefore recovers the best analogous results in supervised learning, in which uniform convergence occurs so long as the hypothesis class has low VCdimension, regardless of the size or "complexity" of the underlying space and target function.
+
+4.2 The case of infinite action spaces: "Simple"  is insufficient for uniform convergence
+
+We now consider the case of infinite action spaces.
+
+Whereas, in the 2-action case,  being "simple" was suffi-
+
+cient to ensure uniform convergence, this is not the case in
+
+POMDPs with infinite action spaces.
+
+
+
+Suppose is a (countably or uncountably) infinite sPet
+
+o f " acti"$o¥ ns'. ï A "¨ sim8xpl5e") class of policies would be 
+
+b b ¢
+
+¡¡
+
+-- the set of all policies that al-
+
+ways choose the same action, regardless of the state. Intu-
+
+itively, this is the simplest policy that actually uses an infi-
+
+nite action space; also, any reasonable notion of complexity
+
+of policy classes should assign  a low "dimension." If it
+
+were true that simple policy classes imply uniform conver-
+
+gence, then it is certainly true that this  should always
+
+enjoy uniform convergence. Unfortunately, this is not the
+
+case, as we now show.
+
+
+
+ThePð ore m" 2 "$L¥ et'ï be ¨ an 8oinfi5n) ite set of actions, and let
+
+
+
+b b ¢
+
+¡¡
+
+be the corresponding set
+
+of all "constant valued" polici es. Then there exists a finite-
+
+state MDP with action space , and a deterministic simu-
+
+lative model for it, so that PEGASUS' estimates using the
+
+deterministic simulative model doËmnB ot uniformly converge to their means. i.e. There is an ² , so that for estimates i f derived using any finite number ¬ o8 f scenarios and any finite horizon time, there is a policy b  so that
+
+if
+
+¥ b
+
+'3·
+
+i
+
+¥'Ë b
+
+d ²
+
+(7)
+
+The proof of this Theorem, which is not difficult, is in Appendix A. This result shows that simplicity of  is not sufficient for uniform convergence in the case of infinite action spaces. However, the counterexample used in the proof of Theorem 2 has a very complex j despite the MDP being quite simple. Indeed, a different choice for j would have made uniform convergence occur.ñ Thus, it is natural to hypothesize that assumptions on the "complexity" of j are also needed to ensure uniform convergence. As we will shortly see, this intuition is roughly correct. Since actions affect transitions only through j , the crucial quantity is actually the composition of policies and the deterministic simulative model -- in other words, the class  of the dynamics realizable in the POMDP and policy class, using a particular deterministic simulative model. In the next section, we show how assumptions on the complexity of  leads to uniform convergence bounds of the type we desire.
+
+4.3 Uniform convergence in the case of infinite action
+
+spaces
+
+¦¼Pu@ BS¨EDTU W
+
+For the remainder of this section, assume @ BC¨7DTUWnl .
+
+T@ BCh¨EeDEnTVU q is a @cBCl¨7aDssTU Wof functions mapping from
+
+into
+
+, and so a simple way to capture its
+
+"complexity" is to capture thePòcoD{m¨Epd7ldEedx¨ ity of its families
+
+of coordinate functions,   , 
+
+@ BS¨EDTUX1WY .ldE@ BCac¨7hDTUe q  is a
+
+f@ BCam¨EDEiTly of functions mapping from
+
+into
+
+, the  -th coordinate of the state vector. Thus,  is
+
+just a family of real-valued functions -- the family of  -th
+
+coordinate dynamics that  can realize, with respect to j .
+
+The complexity of a class of boolean functions is measured by its VC dimension, defined to be the size of the largest set shattered by the class. To capture the "complexity" of realvalued families of functions such as  , we need a generalization of the VC dimension. The pseudo-dimension, due to Pollard [10] is defined as follows:
+
+Definition (Pollard, 1990). Ltet Æ be a family of functions
+
+maitiôõ fhfU h aaf'ft¨Euptho öf d7npertdEhcPò riadne8eti¨ngoôesyD{ÆnufxU¨Ersbid7o)söR es8dEmtqesidnut8¨ óaateoensfsrÆ pcbset©eeaqeccUsuogteuesfgicnóvihaXcveleenlitbnnh.zoitatUofbsWtyro÷öÄeerh .`a¥ts¨Eôhl¥§Lad7öÄa nyedE'n¥ utd7ôtÆ m¨asø h ÷ s'¦obU sefeõ&·hq¡r8st©ausõteùú U thõ¤neh¨7BS(rc¨7dEes¨Ee÷edEdEqD ôd7od7u) d¨fhi,P öÄ¨v¨EX tõ a¥d7hU pôldEDeeodEUs,rniue¨'¦tfnôclo·tiyhUssr,
+
+aû ll  ¥ '
+
+X ). The pseudo-dimension of Æ , denoted
+
+° t Æ , is the size of the largest set that Æ shatters, or
+
+infinite if Æ can shatter arbitrarily large sets.
+
+The pseudo-dimension generalizes the VC dimenBCs¨EiDo)n, and
+
+coincides with it in the case that Æ maps into
+
+. We
+
+will use it to capture the "complexity" of the classes of the
+
+POMDP's realizable dynamics  . We also remind readers
+
+of the definition of Lipschitz continuity.
+
+ü For example, ý
+
+Úÿþ¡
+
+Ò£¢CÒ¥¤
+
+Ý§¦rþ©¨i
+
+if ¤nÑ 
+
+, þi
+
+otherwise; see
+
+Appendix A.
+
+t eg t
+
+Definition. A function  c
+
+is Lipschitz con- Using tools from [5], it is also possible to show similar
+
+tinuous (with respect to the Euclidean norm on its range uniform convergence results without Lipschitz continuity
+
+aô n¨dd8 omû ain)¥
+
+if' 
+
+there¥ , ° 
+
+ô
+
+ex'i·sts 
+
+a¥
+
+Cc'onrsta~ nt °
+
+
+
+
+
+°
+
+ôsuc·!h 
+
+that
+
+ °
+
+.
+
+for all Here,
+
+ is called a Ltip schitzt bound. A family of functions Æ
+
+mapping from into is uniformly Lipschitöxz c8 ontin-
+
+uous with Lipschitz bound  if every function Æ is
+
+assumptions, by assuming that the family b is parameterize8 d by a small n4 umber of real numbers, and that b (for all b  ), j , and are each implemented by a function that calculates their results using only a bounded number of the usual arithmetic operations on real numbers.
+
+Lipschitz continuous with Lipschitz bound  .
+
+The proof of Theorem 3, which uses techniques first intro-
+
+We now state our main theorem, with a corollary regarding duced by Haussler [6] and Pollard [10], is quite lengthy,
+
+when optimizing i f will result in a provably good policy.
+
+and is deferred to Appendix B.
+
+¦ÌP @ BS¨EDTU W
+
+Theorem 3 Let a POMDP with state space
+
+,
+
+and a possibly infinite action space be given. Also let
+
+5 Experiments
+
+a p¦olil¸cycllas@ BSs ¨EDETV,U q anegÀd ¦a deterministic simulative model
+
+j¸c
+
+for the POMDP be given. Let 
+
+be the corresponding family of realizable dynamics in the
+
+POMDP, and  tions. Suppose
+
+ theû that
+
+resul¥ ting' ° t 
+
+families ~ X for
+
+of coorPdinD{a¨Etd7edEdfu¨ nc-
+
+each 
+
+XY,
+
+and that each family  is uniformly Lipschitz continuous
+
+In this section, we report the results from two experiments. The first, run to examine the behavior of PEGASUS parametrically, involved a simple gridworld POMDP. The second studied a complex continuous state/continuous action problem involving riding a bicycle.
+
+with 4 Lips¦rcheg itz @b·o4unF©dH#Iat¨4 mF©osHtI T , and that the reward func-
+
+tion c
+
+is also Lipschitz c¨oÊntË inuB ous
+
+with Lipschitz bound at most #" . Finally, let ²
+
+be
+
+given, and let i f be the policy-value estimates determined
+
+Figure 1a shows the finite state and action POMDP used in our first experiment. In this problem·5, D the agent starts in the lower-left corner, and receives a reinforcement per step until it reaches the absorbing state in the upper-
+
+by PEP GASUS using ¬ scenarios and a horizon time of ±a³ . right corner. The eight possible observations, also shown
+
+If ¬
+
+in the figure, indicate whether each of the eight squares
+
+æoçC ´°é 
+
+4yF©HI
+
+ç¨
+
+¨#´
+
+X
+
+µ
+
+DD ¨
+Ê D£·2
+
+¨#´ µ 
+
+¨#´ µ
+
+4 #F©" HI
+
+¨ X
+
+Y
+
+¨ X
+
+t
+
+ìGì
+
+adjoining the current position conP@ tai98ns&A&axBw9 all. The policy
+
+class is small, consisting of all 687
+
+functions map-
+
+²
+
+ping from the eight possible observations to the four ac-
+
+then with probability at least Dq·mÊ , i f will be uniformly tions corresponding to trying to move in each of the com-
+
+close to i
+
+: ííí if
+
+¥ b
+
+'3·
+
+i
+
+¥ b
+
+'
+
+ííí
+
+~
+
+²
+
+´´ 8 ¤î b 
+
+pass directions. Actions are noisy, and result in moving
+in a random direction 20% of the time. Since the policy (8) class is small enough to exhaustively enumerate, our opti-
+
+Corollary 4 Under the conditions of Theorem 1 or 3, let
+
+¬ be Dqch·ÌosÊen as in the Theorem. Then with probability at
+
+least estimates,
+
+, the given
+
+policyP by b f
+
+bf
+
+chosen by îµ© î%$ p`
+
+oipf t¥imb 'i,ziwngillthbee
+
+value near-
+
+optimal in  :
+
+¥ '£ø i bf
+
+ ¥ 
+
+¨ '3· 
+
+z ²
+
+(9)
+
+Remark. The (Lipschitz) continuity assumptions give a sufficient but not necessary set of conditions for the theorem, and other sets of sufficient conditions can be envisaged. For example, if we assume that the distribution
+
+mization algorithm for searching over policies was simply
+
+exhaustive search, trying all 687 policies on the ¬ scenarios,
+
+a2§nPx d pBCicd CAkC ing the best one. Our expePRrimD7BeB nts were done with
+
+and a horizon time of ±
+
+, and all results re-
+
+ported on this problem are averages over 10000 trials. The
+
+deterministic simulative model was
+
+DEEEE
+
+Ê$¥ ¨#C' Ê$¥ ¢ ¨#´IH '
+
+j
+
+¥ ¢
+
+¨ ¡
+
+¨s
+
+'¤P
+
+F EEEEG
+
+Ê$¥ ¢ ¨ û QP ' Ê$¥ ¢ ¨ %Tê ' Ê$¥ ¢ ¨ ' µBV8P
+
+¢¡
+
+if if if if
+
+s~ BSd BCd BB&SR BCd°D7BUR BCd°D©&SR
+
+B8&
+s~ s~ s~
+
+BCd°D7B BCd°D©& BCd z B
+
+otherwise
+
+on states induced by any policy at each time step has a
+
+bounded density, then we can show uniform convergence
+
+for a large class o4f ¥("'ëreaPÅ sonD able") dËÀiscBCod'n&$t¨CinB uous reward
+
+functions such as ¢
+)
+
+if ¢ h
+
+otherwise.(
+
+Space constraints preclude a detailed discussion, but briefly,
+
+this is done by constructing two Lipschitz continuous reward
+
+functions 021 and 043 that are "close to" and which upper- and
+
+Ê$¥ ¨ ' where ¢ ¡ denotes the result of moving one step from ¢ in the direction indicated by ¡ , and is ¢ if this move would result in running into a wall.
+Figure 1b shows the result of running this experiment, for different numbers of scenarios. The value of the best policy within  is indicated by the topmost horizontal line, and the
+
+lower-bound 0 (and which hence give value estimates that also upper- and lower-bound our value estimates under 0 ); using the assumption of bounded densities to show our values under 0 1 and 043 are 5 -close to that of 0 ; applying Theorem 3 to show uniform convergence occurs with 0 1 and 0 3 ; and lastly deducing from this that uniform convergence occurs with 0 as well.
+
+solid curve below that is the mean policy value when using our algorithm. As we see, even using surprisingly small numbers of scenarios, the algorithm manages to find good policies, and as ¬ becomes large, the value also approaches the optimal value.
+
+Results on 5x5 gridworld -9
+
+-10
+G -11
+
+mean policy value
+
+-12
+W
+-13
+
+-14
+
+S
+
+-15
+
+-16 0
+
+5
+
+10
+
+15
+
+20
+
+25
+
+30
+
+m
+
+(a)
+
+(b)
+
+Figure 1: (a) 5x5 gridworld, with the 8 observations. (b) PEGASUS results using the normal and complex deterministic simulative models. The topmost horizontal line shows the value of the best policy in X ; the solid curve is the mean policy value using the normal model; the lower curve is the mean policy value using the complex model. The (almost negligible) 1 s.e. bars are also plotted.
+
+We had previously predicted that a "complicated" deter-
+
+minis¥tic¨ si' mulative öm`oY " del@ BSj ¨EcDTaneghle@ aBSd¨EDtTo poor results. For
+
+each ¢ ¡ -pair, let @ BCc ¨EDET
+
+be a hash function
+
+that maps@ BSa¨EnDyT Uniform random variable into another
+
+Uistniicfosrimmulativeramndoodmel,vj$a£ r¥ i¢a¨b¡ le¨ .s a
+
+'yTP hen¥ j¢
+
+i¨f ¡
+
+j
+
+¨0öisbY a"{¥
+
+ds e't' eirsmainn--
+
+other one that, because of the presence of the hash function,
+
+is a much more "complex" model than j . (Here, we appeal
+
+to the reader's intuition about complex functions, rather
+
+than formal measures of complexity.) We would therefore
+
+predict that using PEGASUS with j$£ would give worse re-
+
+sults than j , and indeed this prediction is borne out by the
+
+results as shown in Figure 1b (dashed curve). The differ-
+
+ence between the curves is not large, and this is also not
+
+unexpected given the small size of the problem.c
+
+Our second experiment used Randløv and Alstrøm's [11] bicycle simulator, where the objective is to ride to a goal one kilometer away. The actions are the torque d applied to the handlebars and the displacement e of the rider's centerof-gravity from the center. The six-dimensional state used in [11] includes variables for the bicycle's tilt angle and orientationw`,Dfa& nd the handlebar's angle. If the bicycle tilt exceeds b , it falls over and enters an absorbing state, receiving a large negative reward. The randomness in the simulator is from a uniformly distributed term added to the intended displacement of the center-of-gravity. Rescaled appropriately, this became the s term of our deterministic simulative model.
+
+We performed policy search over the following space: We
+
+g eachInÚÿþ oÒhu¢ rÝ epxapier,riamreanntsd,otmhisinwteagserimi pÚÿlþ eÒhm¢ eÝ nftreodmbypvÓ¤cÒ¡h`obo0sÒ0inÓ0Ñ¤g,Ñ¤Ñffoq r, and then letting rtsu v Ú ¤ Ýw¦yx`EÚ i Úÿþ Ò£¢ Ý ¤ Ý , where xI`EÚQCÝ denotes the fractional part of  .
+Theory predicts that the difference between ý and ý 's performance should be at most åyÚ ©d X  ef Ý ; see [7].
+
+selected a vector ô r of fifteen (simple, manually-chosen but
+
+not fine-tuned) features ceDhwCo¥&Pm sD¡en¹qg©w¥p iith 's%igô r m'E¥oe idF©sH:Id ·
+
+Ph of g©ea¥ i ch % Fkj l{'yh ¹
+
+sô tr a't¥ eFkd ;F©j l aH#cI t·iond sFkj
+
+wl '$e¹re tFkhej l n g©¥on1d 'sP ,
+
+e
+
+e , where
+
+sr . Note that since our approach can handle
+
+continuous actions directly, we did not, unlike [11], have
+
+to discretize the actions. The initial-state distribution was
+
+manually chosen to be representative of a "typical" state
+
+distribution when riding a bicycle, and PÌ waxsB also not fine-
+
+t2punPoedBC. d WCACBet usedPu on&lyBBa small number ¬
+
+of scenarios,
+
+,±
+
+, with the continuous-time model of
+
+discounting discussed earlier, and (essentially) gradient as-
+
+cent to optimize over the weights.7 Shaping rewards, to
+
+reward progress towards the goal, were also used.v
+
+We ran 10 trials using our policy search algorithm, testing each of the resulting solutions on 50 rides. Doing so, the median riding distances to the goal of the 10 different policies ranged from about 0.995kmh 6 to 1.07km. In all 500 evaluation runs for the 10 policies, the worst distance we observed was also about 1.07km. These results are significantly better than those of [11], which reported riding distances of about 7km (since their policies often took very "non-linear" paths to the goal), and a single "best-ever" trial of about 1.7km.
+
+w Running experiments without the continuous-time model of
+
+discounting, we also obtained, using a non-gradient based hill-
+
+climbing algorithm, equally good results as those reported here.
+
+Our implementation of gradient ascent, using numerically evalu-
+
+ated derivates, was on ax ny iteration, to
+
+run with a bound on avoid problems near
+
+tØ h× eÚVÛ`leÜEnÝ g'sthdiosfcoansttienpuittaikeesn.
+
+Other experimental details: The shaping reward was propor-
+
+tional to and signed the same as the amount of progress towards
+
+the goal. As in [11], we did not include the distance-from-goal as
+
+one of the state variables during training; training therefore pro-
+
+ceeiyding "infinitely distant" from the goal. Distances under 1km are possible since, as in [11], the goal
+
+has a 10m radius.
+
+6 Conclusions
+We have shown how any POMDP can be transformed into an "equivalent" one in which all transitions are deterministic. By approximating the transformed POMDP's initial state distribution with a sample of scenarios, we defined an estimate for the value of every policy, and finally performed policy search by optimizing these estimates. Conditions were established under which these estimates will be uniformly good, and experimental results showed our method working well. It is also straightforward to extend these methods and results to the cases of finite-horizon undiscounted reward, and infinite-horizon average reward with ² -mixing time ± ³ .
+Acknowledgements
+We thank Jette Randløv and Preben Alstrøm for the use of their bicycle simulator, and Ben Van Roy for helpful comments. A. Ng is supported by a Berkeley Fellowship. This work was also supported by ARO MURI DAAH0496-0341, ONR MURI N00014-00-1-0637, and NSF grant IIS-9988642.
+References
+[1] L. Baird and A.W. Moore. Gradient descent for general Reinforcement Learning. In NIPS 11, 1999.
+[2] Dimitri Bertsekas. Dynamic Programming and Optimal Control, Vol. 1. Athena Scientific, 1995.
+[3] John R. Birge and Francois Louveaux. Introduction to Stochastic Programming. Springer, 1997.
+[4] R. Durrett. Probability : Theory and Examples, 2nd edition. Duxbury, 1996.
+[5] P. W. Goldberg and M. R. Jerrum. Bounding the Vapnik-Chervonenkis dimension of concept classes parameterized by real numbers. Machine Learning, 18:131­148, 1995.
+[6] D. Haussler. Decision-theoretic generalizations of the PAC model for neural networks and other applications. Information and Computation, 100:78­150, 1992.
+[7] M. Kearns, Y. Mansour, and A. Y. Ng. Approximate planning in large POMDPs via reusable trajectories. (extended version of paper in NIPS 12), 1999.
+[8] H. Kimura, M. Yamamura, and S. Kobayashi. Reinforcement learning by stochastic hill climbing on discounted reward. In Proceedings of the Twelfth International Conference on Machine Learning, 1995.
+[9] N. Meuleau, L. Peshkin, K-E. Kim, and L.P. Kaelbling. Learning finite-state controllers for partially
+
+observable environments. In Uncertainty in Artificial Intelligence, Proceedings of the Fifteenth conference, 1999.
+[10] D. Pollard. Empirical Processes: Theory and Applications. NSF-CBMS Regional Conference Series in Probability and Statistics, Vol. 2. Inst. of Mathematical Statistics and American Statistical Assoc., 1990.
+[11] J. Randløv and P. Alstrøm. Learning to drive a bicycle using reinforcement learning and shaping. In Proceedings of the Fifteenth International Conference on Machine Learning, 1998.
+[12] Benjamin Van Roy. Learning and Value Function Approximation in Complex Decision Processes. PhD thesis, Massachusetts Institute of Technology, 1998.
+[13] R. S. Sutton and A. G. Barto. Reinforcement Learning. MIT Press, 1998.
+[14] V.N. Vapnik. Estimation of Dependences Based on Empirical Data. Springer-Verlag, 1982.
+[15] J.K. Williams and S. Singh. Experiments with an algorithm which learns stochastic memoryless policies for POMDPs. In NIPS 11, 1999.
+[16] R.J. Williams. Simple statistical gradient-following algorithms for connectionist reinforcement learning. Machine Learning, 8:229­256, 1992.
+
+Appendix A: Proof of Theorem 2
+
+Proo¨ f (¨of Theorem 2). We construct an MDP with states
+
+¢ h ¢ 6 4aa¥ nd'y¢ P h plus anP ab·5soDrb¨BCin¨7gD state. The reward func-
+
+tion is ¢   for 
+
+. Discounting is ignored
+
+in this construction. Both ¢ ¢h and ¢ h transition with probability 1 to the absorbing state regardless of the action taken.
+
+The initial-state ¢ 6 has a .5 chance of transitioning to each
+
+of ¢ h and ¢ h .
+
+We now construct
+
+w~ a¨ y onR the¨Es Dr ¡` ÷
+
+term. ~h
+
+j
+
+, whicP h wf{il|l
+
+LRetmz )
+
+°¯
+
+be the
+
+de@ pen¨ d T in ch ou¡ n ta÷ b le ¡
+
+a¨ com8rp@ lBSic¨EaDEtTte} d  ÷ set of all finite
+
+unions of intervals with rational endpoints in [0,1]. Let zy£
+
+be the countable subset of z that contains all elements of z
+
+that have t@oDtwaxCl ¨`le&1nw%g9tT h (Leb@ BSesd BSg¨uBCed zm&veTa{Ìsur@ BSe)d &Ce¨xBSad'cAt&lTy 0.5. For
+
+example, in z5£ . Let z of z5£ . Also
+
+¨ hz let
+
+
+
+
+
+¡
+
+¨7dEd7ad nd
+
+h
+
+¨
+
+¡
+
+ b¨7edEdEadn) 
+
+enumeration of the be an enumeration
+
+are both elements of (some
+
+countably infinite subset of) . The deterministic simula-
+
+tive model on these actions is given by:
+
+j
+
+¥ ¢
+
+6
+
+¨ ¡
+
+¨s
+
+'¤P
+
+¢ h ¢h
+
+if s 8 z  otherwise
+
+!0"¡e¥ 'P !0"¡e¥ 'P BCd'&
+
+So,
+
+¢h
+
+¢ ¢h
+
+for all ¡ ¥ , a'vnPxd tB his is a
+
+cor8 rect model for the MDP. Note also that i b
+
+for all
+
+b .
+
+F¥ or¨ ¢76
+
+s
+
+sucïh b
+
+r
+
+t©¡1hh&aª at'un¨7s sy¥ ih ©'¢7n 6ªg¨ 8strhfi© iz©nsª i'tse¨Eefod7t dErodEaf¨¤lssl¥ ac¢7 me6 n¨Po psar lr©eiD{« o¨Eªsd7',dE,adEolt¨lfh¬ e¬ r.esTi¬emhxuiussl,tasetesvscdaoelmtunraaaetrjieinz¤ocgs-
+
+tories will transø itioD n from ¢ (assuming ± ³ ) for b 
+
+6isfri f om¥ b
+
+
+
+¢
+
+'àh ,P
+
+soD
+
+the value estimate . Since this argu-
+
+ment holds shown th8 at
+
+for any finite number ¬ i f does not uniformly
+
+of scenarios, ¥ converge to i
+
+we'¸hP avBe b
+
+(over b  ).
+
+
+
+Appendix B: Proof of Theorem 3
+
+Due to space constraints, this proof will be slightly dense. The proof techniques we use are due to Haussler [6] and Pollard [10]. Haussler [6], to which we will be repeatedly referring, provides a readable introduction to most of the methods used here.
+
+We begin with some standard definitions from [6]. For a
+
+subset  of a space ó endowed with (pseudo-)m8etric  , we
+
+say  6 ó 8 is s¥ o¨me¨ õ £ '
+
+is an ² -cover f¥or¨  '  6 such that  õ õ £
+
+if, for every õ ~ ² . For each ²
+
+ Ë¾, Bthere , let
+
+²   denote the size of the smallest ² -cover for  .
+
+Let Æ be a family of functions m¥ÿa¨pp' ing from  a set ó into a bounded pseudo metric space  , and let be a prob-
+
+abiu lityY  X8 t ity o#© Sf  Æ the ¥
+
+mª¨ i¥ste ooa¨¨ vsjbuee'' rreP al¥ol² w#np¨ rÆóo b¨ t.a b@'DilP¥ ietfiy¥nô mCe'e e¨ aaj  s¥puô s¥r'#e²e'u¨sT Æd. oD¨ oXBmen fieunó t© ret i.cYtThª oeh' n,ecwaqÆ puhaaebncrye--
+
+tity  ² Æ  thus measures the "richness" of the class Æ .
+
+Note t¥ha¨ t  ¨ an'¤dP ¥oa re¨ bot¨`h d'ecreasing fuËdncB tions of ² , and
+
+that  ² Æ   ² Æ  for any
+
+.
+
+The main results obtained with pseudo-dimension are uni-
+
+form convergence of the empirical means of classes of
+
+random variables to their true means. ily of functions mapping from ó into
+
+L@ BCe¨ t 
+
+Æ
+
+T
+
+,
+
+be a and
+
+famlet ô r
+
+(the "training set") be ¬ i.i.d. draws from ö| som8 e prob-
+
+a©öÄf b ¥ iô¥ lô ir' t.'yAmP lseoa¥&lseDvutwre©¬ 
+
+'¥ÿ o'¦«°v¯Pxehrw#öÄó ¥ ô .  t '
+
+Then for each
+
+Æ,
+
+@ öbe¥ ô
+
+t'hT e empirical mean be the true mean.
+
+let of
+
+We now state a few results from [6]. In [6], these are The-
+
+orem 6 combined with Theorem 12; Lemma 7;¥ Lge¨ m'£mP a 8;
+
+a ndP
+
+Thw eorem 9 (witP h ² 61 , and e
+
+
+
+z
+
+being a singleton set,  ¡ ¡ ,  ). Below,  h and   respte ctively
+
+d hen¥ ô ro¨te`r 'vthP e M a¯nhh a tô ta n·a n d .hEh uclidean metrics on
+
+. e.g.
+
+Lemm@ BSa¨ 5 T Let Æ beP a fû amily¥ of f' unctions mapping from ó
+
+into  , ity¥ m¨ eas¨ ureu
+² Æ X8
+
+and X
+
+t ©
+
+Y Ãho n' ª
+
+°
+
+ó ~
+
+az n¥d¥ z
+
+¨Ed7dEd¨
+
+tÆ ap ny
+
+
+w
+
+B.R '`´ ²
+
+
+
+Then
+
+¥²
+
+z
+
+~ p
+
+
+
+for any  w ,'' wU e
+².
+
+probabilhave that
+
+Lemma 6 Let Æ h @ BCÆ¡¨EDET each be a family of functions
+
+mapping from ó into . The free product of the Æ¸ 's
+
+ii
+
+This is inconsistent with the definition used in [6], which has an additional Ú Ó e¢Ý factor.
+
+Pò`¥ ¨Ed7dEdE¨ '
+
+8
+
+)
+
+is the class of functions@ BCÆ ¨EDET
+
+m¥  ah p¥ pô i'en¨7gdEdEfd¤r¨oËf  m B¥
+
+ó ô
+
+'' into ). Then for
+
+h (where
+
+¥ 
+
+ h
+
+¨Ed7dEd7cv¨  
+
+'E¥ ô
+
+'s Æ  P 
+
+any probability measure
+
+on ó and ² ,
+
+
+
+¥¨ ²Æ
+
+¨ X8
+
+u
+
+©t
+
+YÃ u ' ª
+
+¥¨
+
+~ £
+
+ ¥ wAg¨ ²Æ
+
+'e¨7 ¯dEdEh dE¨7¥
+
+¨
+
+¨u  X8 © t
+'
+
+Y Ã£ ' ª
+
+(10)
+
+Lemma 7 Let ó h  h
+
+Pó D{¡¨E¤ d7hdEd¨b¡¤ h be bounded
+
+metric spaces, and for each 
+
+, let Æ be a class
+
+of functions mapping from ó each Æ is uniformly Lipschitz
+
+cionntotinó uo u¤ sh
+
+. Su ppose that (with respect to
+
+stÆ hoem¨EmeD eLt~ir pisc ch ~i tzobno) iutbsneddto÷ hmeaøcilnaD ,.sasLneodtf Æ fu n¤ Psch ti oonn§si¥ tms%7%Eara%p¥¢npg ineh g)c{, fwr oitm8h
+
+ó
+
+ h
+
+into ó
+
+¡¤ Ëf h gB iven by compositionP@oft¥£h¦ e functio' ns in the
+
+Æ 's. Let ² 6
+
+
+be given, and let ²
+
+¯ 
+
+h
+
+÷ 
+
+² 6 . Then
+
+¥¨  ²Æ
+
+¨ 
+
+¡¤
+
+' h
+
+~
+
+£ ¥¨  ²6 Æ
+
+¯ 
+
+h
+
+¨'
+
+
+
+
+
+¤ 
+
+h
+
+(11)
+
+Lem@mBC¨ a into 
+
+8T
+
+Let Æ , and
+
+be let
+
+a family of functions mapping be a probability measure on ó
+
+from ó . Let
+
+ô
+
+r
+
+beËdgeB nerated by ¬ independent draws from ó , and assume ² . Then
+
+§©¨ @ ªCö8
+
+Æ ~
+
+c
+
+ f 6A
+
+ ¥
+
+¥ ²
+
+ô r '3· w`D9S¨
+
+Æ
+
+
+
+
+
+¨
+
+¥ÿ'   'p
+
+
+
+
+
+Ë
+
+³
+
+
+
+T ² «¬«
+
+a
+
+ñ
+
+
+
+
+
+(12)
+
+We are now ready to prove Theorem 3. No serious attempt
+
+has been made to tighten polynomial factors in the bound.
+
+Proof (of Theorem 3). Our proof is in three parts. First, i f
+
+g¥ ives¹ëaD¤n' estimate of the discounted rewards summed over ± ³ -steps; we reduce the problem of showing uniform
+
+convergence of i f to one of proving that oPÌurBCe¨Esd7tdEidm¨ ates of
+
+the expected rewards on the ± -th step, ±
+
+± ³ , all
+
+converge uniformly. Second, we carefully define the mapping from the scenarios ¢ ©  ª to the ± -th step rewards, and use Lemmas 5, 6 and 7 to bound its capacity. Lastly, apply-
+
+ing Lemma 8 gives4 oF©uHrI rePRsuD lt. To sim¨ plifyøthD e notation in
+
+this proof, assume
+
+, and   "
+
+.
+
+Part I: Reduction to uniform convergence of ± -th step rewards. i f was defined by
+
+if
+
+¥ b
+
+'¦P
+
+D ¬
+
+®« °¯
+
+h
+
+4¥
+
+¢
+
+6©  ª
+
+'¢¹Q24a¥
+
+¢
+
+ h©
+
+ª
+
+'¹m%7%E%¤¹
+
+2 º »#4a¥ ¢ º©©  ª» 'ed
+
+For each mw ean@ 4ao¥f
+¢
+
+±
+
+, let i f º
+
+¥ b
+
+'¦P
+
+ºth'eT
+
+reward on be the tr ue
+
+
+
+h th« e ±
+
+-«¯thh
+
+expected
+
+4¥ ¢ º©  ª ' be the step, and let i reward on the
+
+±
+
+eºm¥pb ir'ëicPal -t¥ h s' teP p
+
+( sta rting2 º ¯6
+
+ºfroi mº ¥
+
+¢ b
+
+6'  .
+
+and executing b ). Thus, i b
+
+PoBC¨7dEd7d¨
+
+Suppose weDêc·QanÊsw$h¥ ow, ¹xforD¤' each ±
+
+± ³ , that with
+
+probability
+
+±³
+
+,
+
+if º
+
+¥ '¤· b
+
+iº
+
+¥ b
+
+'~ 
+
+wz ¥ ²±
+
+¹mD'¯®
+
+³
+
+b
+
+8
+
+
+
+(13)
+
+TDh·menÊ
+
+by , i
+
+f
+
+tº he¥ b
+
+u'ni· on i
+
+P
+
+bº o¥ uBCb n¨E' dd7 dE, d~ w¨ e²
+
+wkzn¥o± w³
+
+th¹ atDw' ith probability hold8 s simulta-
+
+neously for all ±
+
+8
+
+± ³ and for all b  . This
+
+implies that, for all b  ,
+
+if ~
+
+¥ '¤· b
+
+if
+
+¥ b
+
+¥'
+
+i '©·
+
+b ®º
+
+»
+
+º ¯6
+
+2
+
+º
+
+iº
+
+¥'¹ b
+
+®º » 2 º  º ¯6
+
+iº
+
+¥ '©· b
+
+¥' i b
+
+~ ~
+
+® º©» º d ¯6  i f º
+
+¥ '3· b
+
+²
+
+iº
+
+¥'¹ b
+
+wz ²
+
+
+ww hz ere we used the fact that 
+
+º©» º ¯6
+
+2
+
+º
+
+iº
+
+¥ '©· b
+
+i
+
+¥ b
+
+'~ 
+
+² , by construction of the ² -horizon time. But this is ex-
+
+actly the desired result. Thus, we need only prove thPat EBC¨7qdEud7adti¨ on (13) holds with high probability for each ±
+± ³.
+
+Part II: Bounding the capacity. Let ± ~ ± W¥#@ BCe¨7nDoTUewq¢'#w rite out the mapping from a scenario
+
+³ ¢
+
+©
+
+bª e8fix¦pedl .
+
+depends
+
+to the ± only on the
+
+-th ste%p first X1t ±
+
+reward. Since this mapping elements of the "s "s portion
+
+of the scenario, we the scenario as ¢ ©  ª c¥ ¢o¨os rdh i¨ ns a t¨EedEs.d7dET¨ s hUeuq s,º
+
+w8xill¦Ì , wlpith@ BCs¨7oDmTU eq a' scenario ¢ ©  ª
+.
+
+aº buse of notation, write , and ignore its other
+may now be written as
+¦}l
+
+G@ BCi¨EvDEeTVnU q a famil@ yBS¨EoDEfT functions (such as   ) map¦rpilkng@ BCfr¨7oDmTU q into ø, wBe extend its domain to
+
+¤
+
+
+
+for any finite °
+
+simply by having it ignore the ex-
+
+tra coordinates. Note this extension of the domain does
+
+not change the A¦Ìlslpo,@ BCf¨EoDErT¥keaceg h
+s  . For each °
+
+p,° @ sBClee¨7P utDdT ² oaD{ -c¨Edcd7PiomdErdde¨ ni°± ns ,gio) dtneobfioe± nfseai¥ n¢afga¨ lsmmehtaio¨lpysnp osi¨EnefdEgtfd7su.dE± n¨  Wsct fihor'oenrmPse.
+
+necessary, ±  's domain is also extended as we have just de-
+
+scribed.
+
+P D{¨EdEd7d¨ ¹D
+
+P ¦l
+
+²sfikFsÆ¥#ce@eon©BCetºpres¨7ntPD)aoae,TIrfUa¤iafoqcfh#anshu'ªhmdUeºn(q ilcw¤ ló tyihei( otºw hon ¤hfs.oehlfmirnseFl%7aP yoa%Eptrsh%¢stehl¦egfexird.v±oaefiemmfiUnFrWnspotiiólrntel iX1,o eLt¤²na,óie±Ucnmoqhhtdof¤emeifithsPólahneeljPme6u¤ ¥)sfe² h;rtóneDU tntaeq¨7shocdE¤¹ epctdEoe ordEfsor¨ sld pdd±tuahiucnc%Ee,cheg%7t' d%¢s aoote'l ons-ff
+
+lArÆ¸¦peetlw slnÆ oahr¥adl@P esBStf¨ELÆuDEÆ niTVpºU cº sq t¤ ci¤ 'ohh ºh ni¥t,zP Æ abnº odu4q¥@ ·ón%E) d4 º%7b% F©a¤ ¥¢etH# Æ aIm¨Ph so4 ibsnF©te@g·HltGehI 4 tTe6 oF©fnaH#mI se¨i4tlyX cF©Y ooHnfI tmT a.i±anpFiXnsintgfaroltlhmye.,
+
+into
+
+.
+
+Now, let if  p ¥ Y º
+
+¦ eg c£
+
+@·4 F©H#I ¨4 F©H#I T be the reward
+
+rec8è eiv¦ ed on the ± -th step when executing b from a scenario
+
+¢
+
+£ . As we let b vary o@ ·ve4Gr F© H#,I`¨th4GisF©HdI¤eT fines a family
+
+of maps from scenarios into
+
+. Clearly, this
+
+family of maps is a subset of Æ . Thus, if we can bound the
+
+capacity we ha8 ve
+
+of Æ also
+
+(and hence prove uniform converge proved uniform convergence for if  p ¥
+
+oY º ve(roÆ ve)r,
+
+all b  ).
+
+PòD¨7dEdEdE¨
+
+û
+
+For each   ¥ ¨ implies that ²  Moreover, clearly
+
+
+
+X¨ ¥
+
+Y, XB¨  ²²
+
+u s © i¨t nXBYcÃ£ e uª
+
+'
+
+t
+
+° ~ YÃ
+
+is a singleton that, for each
+
+
+
+sePt. D{C¨EdEod7md¨b± ineadndw©² ith~
+
+
+
+t
+
+¥' z !¥#¥ z
+
+~ pw
+
+'ëP D
+
+LªD emma ,
+
+²
+
+'`X ´, 
+
+L¥ zepmw m'a'#U 5 ².
+
+since each ² 
+
+6, this implies
+
+
+
+¥¨ ¨ ² Æ  X8
+UW ~£ 
+
+
+
+¯ UW
+
+h
+
+~£ 
+
+¯ 
+
+h
+
+~ zUW ç
+
+u
+
+©t
+
+YÃ u ' ª
+
+¥ w$¥ ¹Ì¥ ² X1Y ±
+
+·
+
+'  X1t
+
+'e¨ 
+
+¨ X8 
+
+u t ©
+
+YÃ  ' ª
+
+¥ w$¥ ² X`Y
+
+¹
+
+±
+
+³&X1t
+
+'e¨ 
+
+¨ X8 
+
+u t ©
+
+YÃ  ' ª
+
+z p1¥ X1Y
+
+¹
+
+±
+
+³&X1t
+
+'
+
+´ 
+
+z p`¥ X1Y ¹
+
+±
+
+' ³&X1t ì
+
+UeUW
+
+~
+
+z UW
+
+ç
+
+z p1¥ X1Y
+
+² ¹
+±
+
+³&X1t
+
+' ì
+
+ UeU W
+
+²
+
+²
+
+
+
+where we have used the#fSa ct that is decreasing in its ²
+
+parameter. By taking a ¥ ¨ ov¨er p' robability measures ,
+
+tt hiUsW ©
+
+is
+¤ 
+
+©aº ls o ¥¨ ²Æ
+
+ª
+
+aUeq ¨ 
+
+bound ª ,  y~ ' ~
+
+on
+
+z UW
+
+h
+
+
+
+. ç
+
+² Æ¸ Thus, z p`¥
+X`Y
+
+ h . Now, as metrics this also gives
+
+¹
+
+'  UeU W
+
+± ³#X{t ì
+
+over (14)
+
+²
+
+F¥  inna¹ÌollrymD¤,' aopnpº lythinegaLppermompraia7tewsiptahceea,cx h oP f
+
+the ±
+
+ ¹
+
+'D s being thP e , and ²
+
+±
+
+ 6 #"©²6 , we find
+
+¥¨  ²Æ
+
+¨  '
+
+~ ~
+
+º £ ¤ h ¥ wC¥#¥ ¹xD¤'
+
+² ±
+
+
+
+¯ º
+
+h
+
+£ zUW
+
+ç z p`¥ X`Y
+
+¹
+
+±
+
+º 'e¨ 6" Æ
+'E¥ ³#X{t ±
+
+¨  '  ¹xD¤'
+
+
+º 6
+
+
+
+"
+
+ì
+
+ UeU W
+
+~
+
+¯ 
+
+h
+
+z UW º
+
+»´³
+
+z p`¥ X
+
+Y
+
+¹
+
+±
+
+² 'E¥ ³X t ±
+
+¹xD¤' º »
+
+³
+
+ 6 #"
+
+ UeUW º »
+
+²
+
+µ
+
+Part III: Lemma 8
+
+Proving uniform converg¥ en¨ ce.¨ with the abD5ov·deÊ bound on  ² Æ 
+
+
+
+'
+
+Applying , we find
+
+that for there to be a
+
+probability of our estimate of
+
+the expected ± -th step reward to be ² -close to the mean, it
+
+suffices that
+
+¬
+
+P
+
+z &9 
+
+çC´ {µ
+
+D Ê
+
+¹k´ ¥ ¥ w$D9S¨
+
+µ 6 ²
+
+Æ
+
+¨   '' ì
+
+²
+
+D
+
+DD
+
+P·¶
+
+ç` ´°éç ¨ X
+
+¨´ ¨
+
+¨#´ ¨#´
+
+¨¨
+
+d
+
+{µ Ê Dê·2 µ  µ ´" X Y X t ìì
+
+²
+
+This completes the proof of the Theorem.
+
+
+
+

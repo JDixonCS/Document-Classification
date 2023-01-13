@@ -1,0 +1,884 @@
+,sentence,label,data,regex
+0,Learning for Efficient Supervised Query Expansion via Two-stage Feature Selection,1,Query,True
+1,"Zhiwei Zhang1, Qifan Wang2, Luo Si13, Jianfeng Gao4",0,,False
+2,"1Dept of CS, Purdue University, IN, USA 2Google Inc, Mountain View, USA 3Alibaba Group Inc, USA 4Microsoft Research, Redmond, WA, USA",0,,False
+3,"{zhan1187,lsi}@purdue.edu, wqfcr@google.com, jfgao@microsoft.com",0,,False
+4,ABSTRACT,0,,False
+5,"Query expansion (QE) is a well known technique to improve retrieval effectiveness, which expands original queries with extra terms that are predicted to be relevant. A recent trend in the literature is Supervised Query Expansion (SQE), where supervised learning is introduced to better select expansion terms. However, an important but neglected issue for SQE is its efficiency, as applying SQE in retrieval can be much more time-consuming than applying Unsupervised Query Expansion (UQE) algorithms. In this paper, we point out that the cost of SQE mainly comes from term feature extraction, and propose a Two-stage Feature Selection framework (TFS) to address this problem. The first stage is adaptive expansion decision, which determines if a query is suitable for SQE or not. For unsuitable queries, SQE is skipped and no term features are extracted at all, which reduces the most time cost. For those suitable queries, the second stage is cost constrained feature selection, which chooses a subset of effective yet inexpensive features for supervised learning. Extensive experiments on four corpora (including three academic and one industry corpus) show that our TFS framework can substantially reduce the time cost for SQE, while maintaining its effectiveness.",1,Query,True
+6,Categories and Subject Descriptors,0,,False
+7,H.3.3 [Information Search and Retrieval]: Information Search and Retrieval,0,,False
+8,Keywords,0,,False
+9,Query Expansion; Supervised Learning; Efficiency,1,Query,True
+10,1. INTRODUCTION,1,DUC,True
+11,"Queries provided by users can sometimes be ambiguous and inaccurate in an information retrieval system, which may generate unsatisfactory results. Query expansion (QE) is a well known technique to address this issue, which expands the original queries with some extra terms that are",1,Query,True
+12,Part of this work was done while the first author interned at Microsoft.,0,,False
+13,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org.",1,ad,True
+14,"SIGIR '16, July 17-21, 2016, Pisa, Italy",0,,False
+15,c 2016 ACM. ISBN 978-1-4503-4069-4/16/07. . . $15.00,0,,False
+16,DOI: http://dx.doi.org/10.1145/2911451.2911539,0,,False
+17,"predicted to be relevant [26]. It is hoped that these expanded terms can capture user's true intent that is missed in original query, thus improving the final retrieval effectiveness. In the past decades, various applications [26, 6] have proved its value.",1,ad,True
+18,"Unsupervised QE (UQE) algorithms used to be the mainstream in the QE literature. Many famous algorithms, such as relevance model (RM) [21] and thesaurus based methods [29], have been widely applied. However, recent studies [5, 22] showed that a large portion of expansion terms selected by UQE algorithms are noisy or even harmful, which limits their performance. Supervised Query Expansion (SQE) is proposed to overcome this disadvantage by leveraging the power of supervised learning. Most of existing SQE algorithms [5, 22, 13, 25, 2] follow a classical machine learning pipeline: (1) utilize UQE to select initial candidate terms; (2) features of candidate terms are extracted; (3) pre-trained classifiers or rankers are utilized to select the best terms for expansion. Significant effectiveness improvement has been reported over their unsupervised counterparts, and SQE has become the new state-of-the-art.",1,Query,True
+19,"Besides effectiveness, efficiency is another important issue in QE-involved retrieval [35]. As we will show later, UQE algorithms are usually very efficient to apply. Therefore, when UQE is adopted in retrieval, the major inefficiency comes from the second retrieval, which retrieves the entire corpus for the expanded queries. This issue is traditionally handled by indexing or documents optimization [35, 3, 30]. But recently Diaz [11] showed that simply reranking the retrieval results of original queries can already provide nearly identical performance with very low time costs, particularly for precision-oriented metrics.",1,ad,True
+20,"However, the efficiency issue of SQE algorithms imposes new challenge beyond the UQE case. Compared with UQE algorithms, SQE requires extra time to apply supervised learning, which can incur significant time cost. Moreover, this issue is unique to SQE, and cannot be addressed by previous QE efficiency methods such as indexing optimization or reranking. Unfortunately, although important, this issue has been largely neglected in the literature.",1,ad,True
+21,"The above observations motivate us to propose new research to address this SQE efficiency problem. In this paper, we point out that the major time cost of applying SQE algorithms comes from term feature extraction. Indeed leveraging extensive features can enhance the effectiveness of supervised learning, so that better expansion terms can be selected. However, it also inevitably decreases the efficiency. Aiming at this point, we propose a Two-stage Fea-",1,ad,True
+22,265,0,,False
+23,"ture Selection framework (TFS) to balance the two conflicting goals. The first stage is Adaptive Expansion Decision (AED), which predicts whether a query is suitable for SQE or not. For unsuitable queries, SQE is skipped with no features being extracted, so that the time cost is reduced most. For suitable queries, the second stage conducts Cost Constrained Feature Selection (CCFS), which chooses a subset of effective yet inexpensive features for supervised learning. We then instantiate TFS for a RankSVM based SQE algorithm. Extensive experiments on four corpora (including three academic and one industry corpus) show that our TFS framework can substantially reduce the time cost of SQE algorithm, meanwhile maintaining its effectiveness.",1,corpora,True
+24,"The rest of the paper is organized as follows: Sec. 2 introduces the preliminaries of our work, including problem analysis and literature review; Sec. 3 presents the Two-stage Feature Selection framework and its instantiation; Sec. 4 gives all experiments, and in Sec. 5 we conclude this paper.",0,,False
+25,2. PRELIMINARIES,0,,False
+26,"In this section, we will thoroughly analyze the SQE efficiency problem. Meanwhile we will review the literature, and point out the difference between our work and previous works. The discussions below are presented in three subsections, each covering one specific aspect.",0,,False
+27,2.1 QE Algorithm Analysis,0,,False
+28,First we will review some basics about query epansion.,0,,False
+29,"QE Formulation. Suppose we have a user query q with n terms q , {tqi |i ,"" 1 : n}. Suppose m expansion terms are selected by a QE algorithm, denoted as {tei |i "","" 1 : m}. Then the expanded query qe is their union, i.e. qe "", {tq}  {te}. Each term t  qe is weighted by the interpolated probability",0,,False
+30,"P (t|qe) , (1 - )P (t|q) + PQE(t)",0,,False
+31,(1),0,,False
+32,where P (t|q) is the probability of term t occurring in q (i.e.,0,,False
+33,P (t|q),0,,False
+34,",",0,,False
+35,frequency of term t in query length |q|,0,,False
+36,"q ),",0,,False
+37,PQE (t),0,,False
+38,is,0,,False
+39,the,0,,False
+40,term,0,,False
+41,probabil-,0,,False
+42,"ity given by QE algorithm, and  is the interpolation coeffi-",0,,False
+43,"cient to be tuned. As can be seen, the key question here is",0,,False
+44,how to select good expansion terms.,0,,False
+45,UQE versus SQE. Unsupervised QE (UQE) algorithms,0,,False
+46,used to be the mainstream in QE literature. For exam-,0,,False
+47,"ple, some well known UQE algorithms include relevance",0,,False
+48,"model (RM) [21], positional relevance model [24], and mix-",0,,False
+49,ture model [36]. UQE algorithms are very popular because,0,,False
+50,"on one hand their formulations are in general simple, and",0,,False
+51,on the other hand their empirical performance is quite rea-,0,,False
+52,"sonable. However, recent works [5, 22] observed that a large",0,,False
+53,portion of the expansion terms from UQE can be noisy or,0,,False
+54,"even harmful, which limits their performance.",0,,False
+55,SQE tackles this problem by introducing supervised learn-,0,,False
+56,ing to predict the quality of candidate expansion terms. Cao,0,,False
+57,"et al. [5] proposed perhaps the first SQE research, where",0,,False
+58,they designed a set of term features and applied SVM for,0,,False
+59,term classification (either good or bad). Later Lee et al.,1,ad,True
+60,[22] claimed that ranking oriented term selection outper-,0,,False
+61,"forms classification oriented methods. Gao et al. [13, 12]",0,,False
+62,"applied SQE to web search, where search log is utilized for",0,,False
+63,candidate term generation. Some other extensions include,0,,False
+64,"QE robustness [25], query reformulation [2], etc. A common",0,,False
+65,"pipeline of SQE training and testing [5, 13] is summarized",0,,False
+66,"in Alg. 1. Notice here we only concern test-time efficiency,",0,,False
+67,rather than the training-time efficiency.,0,,False
+68,Algorithm 1 SQE Training and Testing Pipeline,0,,False
+69, Training SQE model H,0,,False
+70,"1: For training query q, record its retrieval accuracy rq (e.g.",0,,False
+71,2:,0,,False
+72,"ERR@20). Each time,",0,,False
+73,SaelseicntglMe ccaannddididaatetetteerrmmstc{tisci,0,,False
+74,"|i,""1:M} via UQE. appended to q, i.e.""",0,,False
+75,"qc , qtc; record its retrieval accuracy rcq; then rcq , rcq -rq",0,,False
+76,is the label for tc.,0,,False
+77,"3: Extract term features Ft for all tc, and train a classifier (based",0,,False
+78,"orannikfingrocqrd>er0oof rrcqr)cq,",0,,False
+79, 0) or denoted,0,,False
+80,train a as H.,0,,False
+81,ranker,0,,False
+82,(based,0,,False
+83,on,0,,False
+84,the,0,,False
+85, Testing (i.e. applying H in QE retrieval),0,,False
+86,"1: For testing query q, use UQE to select M candidate terms. 2: Extract Ft for all candidate terms. 3: Apply H to get top m terms for expansion.",0,,False
+87,2.2 QE Efficiency Analysis,0,,False
+88,Now we will analyze the efficiency issue when QE is applied in retrieval.,0,,False
+89,"QE in Retrieval. The retrieval process with QE can be described as follows. Let C denote the target corpus upon which we will run and evaluate retrieval; denote S as the resource from which expansion terms are extracted. In traditional pseudo relevance feedback (PRF) scenario [6], S ,"" C. In more general scenario, S is not necessarily the same as C. For example, in web search, C (e.g. Clueweb09) might be too low-quality to be used for QE [1]; instead some other resources of higher quality can be used as S (e.g. search log [10] or Wikipedia [1]). Assuming a retrieval algorithm (e.g. BM25 or KL divergence) is utilized, then a typical process of QE in retrieval is summarized in Table 1:""",1,ad,True
+90,Table 1: QE in retrieval with and without reranking. (1) First Retrieval: search original query q on resource S; (2) Applying QE Model: select expansion terms {te} from S. (3) Second Retrieval:,0,,False
+91,(Full) retrieve corpus C for expanded query qe. ------------­OR------------­ (Reranking),0,,False
+92,"(A) If C ,"" S, retrieve C for q, denote the results as L; If C "","" S, then let the results of first retrieval as L;""",0,,False
+93,(B) Rerank L for expanded query qe.,0,,False
+94,"In the above table we list two possible implementations of second retrieval. The full second retrieval is more traditional, in which the entire target corpus C is retrieved for expanded query qe. This, however, is painfully timeconsuming, particularly on large scale corpus. Recently Diaz [11] suggested to rerank the retrieval results of original query q as the results for qe. Diaz pointed out that this reranking implementation can provide nearly identical performance as the full second retrieval, particularly for precision-oriented evaluation metrics. Our preliminary experiments also verified this statement. Therefore throughout this paper, we will utilize reranking as the default implementation for second retrieval. Notice in the (A) step, we present the different implementation details regarding both PRF scenario (C , S) and non-PRF scenario (C , S).",1,ad,True
+95,"Existing QE Efficiency Studies. Despite the usefulness of reranking, the majority of existing works on QE efficiency still focused on how to speed up the full second retrieval. As far as we know, all of these works addressed the problem by optimizing underlying data structures such as indexing or document representation. Billerbeck et al. [3] proposed to use compact document summaries to reduce retrieval time. Lavrenko et al. [20] pre-calculated pairwise document similarities to reduce the amount of calculation",1,ad,True
+96,266,0,,False
+97,Figure 1: Comparison of the time cost of each retrieval step.,0,,False
+98,"AED and CCFS are the two-stages in our TFS framework,",0,,False
+99,"the target corpus C is Cw09BNS, resource S is Wikipedia,",1,Wiki,True
+100,"the number of expansion terms is 20, and the averaged time",0,,False
+101,costs per query are reported by running experiments using,0,,False
+102,a single-thread program on a single PC. The blue line is the,1,ad,True
+103,averaged retrieval time cost for original query.,0,,False
+104,"when searching expanded queries. Wu et al. [35] utilized a special index structure named impact-sorted indexing that improves the scoring procedures in retrieval. Theobald et al. [30] proposed the idea of merging inverted list of different terms in an incremental on-demand manner so that document scan can be delayed as much as possible. Unfortunately, our goal now is not the second retrieval, which is handled by reranking as [11] does. Nor can the inefficiency challenge of SQE be handled by the above data-level approaches.",0,,False
+105,2.3 SQE Efficiency Analysis,0,,False
+106,Now we will show why the efficiency issue of SQE is a unique and challenging problem beyond the UQE case.,0,,False
+107,"Step-wise Time Cost Analysis. First let's see how UQE and SQE differs in the time cost spent on each retrieval step. On Clueweb09-B corpus, we conduct UQE (RM [21]) and SQE (applying RankSVM [19] based on Cao et al's work [5]) for QE with 20 expansion terms. As comparison, we apply our Two-stage Feature Selection framework (TFS) to SQE. Notice that although UQE does not involve term feature extraction, we can still apply adaptive expansion decision to UQE. In Figure 1, we show the time cost of each retrieval step with respect to Table 1. More experiment details can be found in Sec. 4. Here we mainly discuss the observations that motivate our research.",1,Clue,True
+108,"We can observe that, indeed applying SQE model can be much more time-consuming than applying UQE model, which supports our previous statement and validates our motivation. Notice here, step ""FirstRet"" and ""ApplyQE"" are involved in expansion term selection, while ""SecRet"" includes only retrieving C for original query q and reranking for expanded query qe. Also notice the reranking in second retrieval only incurs very low time cost.",0,,False
+109,"Feature Extraction in SQE. It is then natural to ask, which part of SQE incurs the major time cost, and why?",0,,False
+110,"We argue that term feature extraction is the major inefficient part in SQE models. Recall the testing phase in Alg. 1, there are three steps to apply SQE model. The first step is essentially UQE, which is in general very efficient. The third step, which applies learned SQE model H for term classification or ranking, is also efficient in practice. For example, many SQE works [5, 22, 13, 2] adopted linear model, which is extremely fast yet effective. Therefore, the second step of term feature extraction forms the majority of inefficiency.",1,ad,True
+111,"Figure 2: With more time spent, more term features are",0,,False
+112,"extracted, and higher retrieval accuracy is achieved.",0,,False
+113,"But why would we spend much time on term feature extraction? This is because predicting the quality of terms is very challenging, so we want plenty of powerful features to enhance the learning algorithm [5, 13, 22]. In Figure 2, we show the retrieval accuracy (ERR@20) when different time cost is spent on term feature extraction. The purple triangle is UQE which does not extract any term feature (i.e. time cost equals zero); the blue rectangle is the full SQE model with all available term features (defined later). In the middle is our proposed cost constrained feature selection method. Clearly, with more time spent, more term features will be obtained, and the retrieval accuracy is higher as well. However, this inevitably degrades the efficiency.",1,ad,True
+114,"We can further observe that, with more term features, although the retrieval accuracy of SQE is usually higher, the marginal gain becomes smaller. This motivates us to find a subset of features such that their total cost is low, meanwhile the effectiveness is reasonably maintained. This coincides with the idea of feature selection [15], although most of such methods only concern the number of selected features while ignoring their difference in time cost, which can be suboptimal.",0,,False
+115,3. TWO-STAGE FEATURE SELECTION FOR,0,,False
+116,EFFICIENT SQE RETRIEVAL,0,,False
+117,"Based on the above analysis, in this section we will present the proposed Two-stage Feature Selection (TFS) framework. Below we will first present TFS as a general framework, then instantiate it for an example SQE algorithm.",0,,False
+118,3.1 A General Framework,0,,False
+119,"Assume the initial full set of term features are Ft, where subscript t indicates the features are for terms. As analyzed earlier, when retrieval effectiveness is the only goal, Ft tends to become abundant and inefficient. Therefore, the goal of our TFS framework is to select a subset of term features Ft from Ft, so that the effectiveness and efficiency can be optimally balanced. As mentioned earlier, the TFS framework includes the following two stages:",0,,False
+120,"· Adaptive Expansion Decision (AED), which predicts whether a query is suitable for SQE or not. For unsuitable queries, SQE is skipped with no term features being extracted, which reduces the time cost most. To this end, AED builds a classifier VAED with pre-defined query feature Fq, so that VAED(Fq) < 0 for unsuitable queries and VAED(Fq) > 0 for suitable ones.",0,,False
+121,"· Cost Constrained Feature Selection (CCFS), which selects a subset of effective yet inexpensive term features for SQE to apply. For those SQE-suitable queries that pass the first stage, this second stage can further reduce the time cost",0,,False
+122,267,0,,False
+123,Table 2: SQE in Retrieval with TFS.,0,,False
+124,(1) First retrieval:,0,,False
+125,(1.1) Search original query q on resource S.,0,,False
+126,"(1.2) AED: Extract query feature Fq. If VAED(Fq )  0, directly go to step (3.1); otherwise continue.",0,,False
+127,(2) Apply QE model:,0,,False
+128,(2.1) Apply UQE to generate candidate expansion terms.,0,,False
+129,(2.2) (2.3),0,,False
+130,CSeCleFcSt :tehxetrbaecstttteerrmmfseatotufroersmFtexfpoarncdaenddiqduaetreyteqrem. s.,0,,False
+131,(3) Second retrieval (Reranking):,0,,False
+132,"(3.1) If VAED(Fq )  0: if target corpus is the resource (i.e. C ,"" S), then return the retrieval results in step""",0,,False
+133,"(1.1); if C ,"" S, retrieve C for original query q. Exit.""",0,,False
+134,"(3.2) If VAED(Fq ) > 0: if C ,"" S, then rerank the retrieval results in step (1.1) for qe; if C "","" S, retrieve C for original query q, then rerank the results for qe. Exit.""",0,,False
+135,"to some extent. To this end, CCFS builds a feature selector VCCF S , which requires the time cost uf of each term feature f , and a pre-defined overall time cost upper bound U . In this way, there is Ft , VCCF S (Ft) and fFt uf  U .",0,,False
+136,"Accordingly, the complete retrieval process is shown in Table 2, which is self-evident to interpret. Below we will give more details about the two stages.",0,,False
+137,3.1.1 Adaptive expansion decision (AED),0,,False
+138,"Training. The training process of AED classifier VAED is as follows. For training query q, we first retrieve corpus C and record its retrieval accuracy as rq (e.g. ERR@20 value). Then we apply the SQE model H from Alg. 1 to get the expanded query qe. Retrieve C for qe by following the procedures in Table 2, and denote the retrieval accuracy as rqH. Then if rqH > rq, we assign label +1 to query q, which means SQE can help improve the retrieval effectiveness for q; otherwise we assign -1 to q. Finally, we extract query features Fq for q, and adopt some supervised learning algorithm (e.g. SVM) to get the classifier VAED.",1,ad,True
+139,"Discussion. The idea of AED stems from query performance prediction. It is known that query expansion may hurt the retrieval effectiveness for some queries [25, 7]. Therefore, accurately predicting those queries and avoid applying expensive SQE model to them can substantially improve the efficiency. This idea of adaptive expansion has also been applied in [18, 27, 23, 8], although their works mainly focused on retrieval effectiveness and did not report the efficiency advantage that this method might bring.",1,ad,True
+140,3.1.2 Cost constrained feature selection (CCFS),0,,False
+141,"Despite the existence of AED, queries that pass AED still face the problem of expensive term feature extraction in SQE. Now we will explain how cost constrained feature selection is designed for those SQE-suitable queries.",0,,False
+142,"Algorithm Design. As mentioned, CCFS aims to select a subset of term features Ft from the complete feature set Ft, so that the overall time cost will not exceed a pre-defined upper bound U , i.e. Ft , VCCF S (Ft) with fFt uf  U .",0,,False
+143,"Our CCFS algorithm is formulated as follows. Since the SQE model H is used to predict the quality of expansion terms, we assume X  RNK as the feature matrix for N candidate terms, where each row is a K-dimensional feature vector for each term. Denote Y  RN1 as the corresponding labels for terms in X, which is calculated as the rcq in Alg. 1. Assume the SQE model H is learned via a loss function LH(X, Y |), where  is the model parameter. We introduce feature selector d  {0, 1}K , where the ith element",0,,False
+144,Algorithm 2 Cost Constrained Feature Selection,0,,False
+145,"Input Learning algorithm H, algorithm parameter , data X  RNK , label Y  RN1, algorithm loss function LH(X, Y |), feature cost vector u  RK1, final cost upper bound U , cost decrease U .",0,,False
+146,"Output Feature selector d  {0, 1}K satisfying uT d  U , and the learned parameter .",0,,False
+147,"1: t  0, d ,"" 1K1, U 0 "","" uT 1K1 2: do 3: X  Xd, learn  "","" arg min LH(X, Y |). 4: Learn d "","" arg mind LH(Xd, Y |), s.t. d  {0, 1}K ,""",0,,False
+148,"uT d  U i. 5: U t+1  U t - U, t  t + 1. 6: while U i > U",0,,False
+149,"di ,"" 1 means the ith feature is selected. With fixed d, those unselected features in X will become invalid, which is equivalent to X  Xd. Together  and d form a revised learning objective as follows:""",0,,False
+150,"d,  ,"" arg min LH(Xd, Y |), s.t. uT d  U. (2)""",0,,False
+151,"The optimization process is shown in Alg. 2, where a coordinate descent strategy is adopted to iteratively optimize w.r.t  and d. During the iteration, we gradually decrease the cost upper bound (i.e. U ), so that the feature selection process can be smooth. In extreme case where U  U 0, Alg. 2 will produce the same results as vanilla H where no selection occurs (i.e. d , 1K1).",1,ad,True
+152,"Discussion. Feature selection is a hot research topic in machine learning [15], and has been successfully adopted in information retrieval [13, 14, 33]. Popular methods include L1 based regularization [28, 13], cascading structure [31], feature number constraint [34], etc. Theoretically, any feature selection method can reduce time cost. But in practice we find better effectiveness can be achieved if the time cost of each feature can be explicitly considered. Unfortunately, most of previous research did not model such feature cost difference, which can be suboptimal. Wang et al. [33] proposed a greedy search algorithm for time cost aware feature selection in learning to rank. We also compare this method in our experiments, which shows our formulation outperforms this greedy design. CCFS can also be applied to the AED if necessary, which is straightforward. But due to space limitation, we simplify our experiments by only applying CCFS to term features.",1,ad,True
+153,3.2 Instantiation for RankSVM based SQE,0,,False
+154,"So far we have elaborated all the details of TFS as a general framework. Now we will instantiate it with respect to a representative SQE algorithm, to show the implementation details. For SQE, we adopt a RankSVM based SQE method. Linear model has been widely applied in SQE literature [2, 13, 12]. Moreover, a ranking perspective has been proven to be very effective [22, 12] for SQE. Therefore, we believe RankSVM will make a representative example. Also Lavrenko's Relevance Model (RM) is utilized as the UQE model to generate candidate expansion terms, which is arguably one of the most successful UQE algorithms.",1,ad,True
+155,3.2.1 AED,0,,False
+156,"The AED stage is simple to implement. Here we utilize SVM with Gaussian kernel for VAED training. The adopted query features Fq are listed in Table 3, which are all well known query performance prediction features in the literature [17, 23, 16, 37].",1,ad,True
+157,268,0,,False
+158,Table 3: Query Features Fq,1,Query,True
+159,Description,0,,False
+160,Formulation,0,,False
+161,Qry length,0,,False
+162,|q|,0,,False
+163,Qry Entropy Qry Clarity 1 Qry Clarity 2,0,,False
+164,Feedback Radius,1,ad,True
+165,Qry IDF Var Max IDF,0,,False
+166,tq -P (t|DF )log2p(t|DF ),0,,False
+167,tq,0,,False
+168,P (t|q)log,0,,False
+169,P (t|q) P (t|C),0,,False
+170,tq,0,,False
+171,-P (t|DF,0,,False
+172,)log,0,,False
+173,P (t|DF ) P (t|C),0,,False
+174,1 |DF |,0,,False
+175,dDF,0,,False
+176,td,0,,False
+177,P,0,,False
+178,(t|d)log,0,,False
+179,P (t|d) p(t|d¯),0,,False
+180,",",0,,False
+181,"P (t|d¯) ,",0,,False
+182,1 |DF |,0,,False
+183,dDF,0,,False
+184,P (t|d),0,,False
+185,var(idf(t ,0,,False
+186,"q)),",0,,False
+187,"idf (t) ,",0,,False
+188,log2 (|C|+0.5)/|Dt | log2 (|C |+1),0,,False
+189,max idf (t  q),0,,False
+190,AvICTF,0,,False
+191,1 |q|,0,,False
+192,log2,0,,False
+193,tq,0,,False
+194,N Nt,0,,False
+195,Qry Collection Similarity Max of QCS,0,,False
+196,Qry Variability (QVar),0,,False
+197,Max of QVar,0,,False
+198,Similar Qry Click Score Similar Qry Click Rank,0,,False
+199,tq (1 + logNt)log(1 +,0,,False
+200,|C| |Dt |,0,,False
+201,),0,,False
+202,tq,0,,False
+203,maxtq (1 + logNt)log(1,0,,False
+204,+,0,,False
+205,|C| |Dt |,0,,False
+206,),0,,False
+207,1 |Dt |,0,,False
+208,"(wd,t - w¯t )2 , w¯t dDt",0,,False
+209,",",0,,False
+210,1 |Dt |,0,,False
+211,dDt,0,,False
+212,"wd,t ,",0,,False
+213,"wd,t",0,,False
+214,",",0,,False
+215,"1 + logNd,t",0,,False
+216, log(1 +,0,,False
+217,|C| |Dt |,0,,False
+218,),0,,False
+219,maxtq,0,,False
+220,1 |Dt |,0,,False
+221,"(wd,t",0,,False
+222,dDt,0,,False
+223,-,0,,False
+224,w¯t )2,0,,False
+225,1 |Qsim |,0,,False
+226,"RankScore(q , click",0,,False
+227,q Qsim,0,,False
+228,doc),0,,False
+229,1 |Qsim |,0,,False
+230,"Rank(q , click",0,,False
+231,q Qsim,0,,False
+232,doc),0,,False
+233,"Here q is the given query, t represents term, DF is the pseudo relevant documents obtained from first retrieval of unexpanded",0,,False
+234,"query, C is the entire corpus, |C| is the total document number in",0,,False
+235,"corpus, d represents document, N is the total term number in",0,,False
+236,"corpus, Nt is the number of term t in corpus, Dt is the set of documents containing t, Nd,t is the number of t in doc d. The last two features are based on search log for industry dataset, which",0,,False
+237,calculate the average clicked doc score/ranks of similar queries,0,,False
+238,(Qsim) in search log (see Sec. 4 for more details).,0,,False
+239,3.2.2 CCFS,0,,False
+240,"Applying Alg. 2 in practice requires a deeper insight into the SQE model itself. Nonetheless, as we show below, Alg. 2 can generate elegant solutions that are easy to implement.",0,,False
+241,"Objective. For training queries q, let xqi  R|Ft| be the feature vector for the ith candidate term of q. Here the term features Ft are adopted from [5, 13], and are listed in Table 4. Following the notations of u, U, d in Alg. 2, the objective of cost constrained RankSVM is as follows:",1,ad,True
+242,"w, d",0,,False
+243,",",0,,False
+244,arg min,0,,False
+245,1 wT w 2,0,,False
+246,+,0,,False
+247,G |P |,0,,False
+248,"q,i,jP",0,,False
+249,"q,i,j q,i,j",0,,False
+250,"s.t.(q, i, j)  P : wT (xqi  d) > wT (xqj  d) + 1 - q,i,j , q,i,j  0,",0,,False
+251,"d  {0, 1}|Ft|, uT d  U",0,,False
+252,(3),0,,False
+253,"Here P is the set of pairwise candidate terms (q, i, j) where",0,,False
+254,"riq q,i,j",0,,False
+255,"> ,",0,,False
+256,|rjqr;iq,0,,False
+257, is element-wise multiplication; and we add - rjq| as loss weight that emphasizes large,1,ad,True
+258,"relevance difference, which works well in practice. Notice",0,,False
+259,"for RankSVM, there's no need to add offset.",1,ad,True
+260,Eq. 3 is how Eq. 2 looks like when RankSVM objective,0,,False
+261,[19] is introduced. The first three lines (if without d) of,0,,False
+262,Eq. 3 constitute vanilla RankSVM (with slight modification,0,,False
+263,"of q,i,j), while the feature selector d and the last line of constraints formulate the cost constrained version of RankSVM.",0,,False
+264,The outcome d indicates what features are selected under,0,,False
+265,"cost upper bound U , and the w is the resulted RankSVM",0,,False
+266,model based on the selected features.,0,,False
+267,Optimization. We solve Eq. 3 by converting it into the,0,,False
+268,"dual form via Lagrange multiplier [4], which gives:",0,,False
+269,min,0,,False
+270,"k ,d",0,,False
+271,"K k,1",0,,False
+272,k,0,,False
+273,-,0,,False
+274,1 2,0,,False
+275,s.t.,0,,False
+276,0,0,,False
+277,k,0,,False
+278,"Gk , K",0,,False
+279,"K k,1",0,,False
+280,k (xk,0,,False
+281,d),0,,False
+282,T,0,,False
+283,"K k,1",0,,False
+284,k (xk,0,,False
+285,d),0,,False
+286,"d  {0, 1}|Ft|, uT d  U (4)",0,,False
+287,Table 4:,0,,False
+288,Description UQEScore Term Doc Num Term Prob in Corpus,0,,False
+289,Term Distribution,0,,False
+290,Co-occurrence with single query term,0,,False
+291,Co-occurrence with pair of query terms,0,,False
+292,Term Proximity,0,,False
+293,"Document Number of t,e together Probability in similar queries in search log Probability in docs that similar queries clicked",0,,False
+294,Term Features Ft,0,,False
+295,Formulation,0,,False
+296,log score of UQE model,0,,False
+297,log|De |,0,,False
+298,log(Ne/N ),0,,False
+299,"Nd,e",0,,False
+300,log dDF,0,,False
+301,"Nd,t",0,,False
+302,dDF td,0,,False
+303,"W in(t,e|d)",0,,False
+304,log,0,,False
+305,1 |q|,0,,False
+306,tq,0,,False
+307,dDF dDF,0,,False
+308,"Nd,t td",0,,False
+309,"W in(ti,j ,e|d)",0,,False
+310,log,0,,False
+311,"1 |ti,j q|",0,,False
+312,"|ti,j q|",0,,False
+313,dDF dDF,0,,False
+314,"Nd,t td",0,,False
+315,log,0,,False
+316,tq,0,,False
+317,W,0,,False
+318,"in(t,e)dist(t,e|DF W in(t,e)",0,,False
+319,),0,,False
+320,tq,0,,False
+321,log(,0,,False
+322,"I(t, e|d) + 0.5)",0,,False
+323,dDF,0,,False
+324,log,0,,False
+325,1 |Qsim |,0,,False
+326,P (e|q),0,,False
+327,qQ,0,,False
+328,log,0,,False
+329,1 |Dclick,0,,False
+330,|,0,,False
+331,dDclick,0,,False
+332,P (e|d),0,,False
+333,"Here e is the target term. DF means the working set of documents. W in(t, e|d) is the co-occurrence times that term t and e appear",0,,False
+334,"within distance 10 in d. W in(ti,j , e|d) is the co-occurrence times that e appear within distance 10 with both ti, tj . dist(t, e|DF ) is the minimal terms between t and e in doc set DF . The last two rows are search log based term features for industry dataset, which",0,,False
+335,calculate the probability of e in similar queries and their clicked,0,,False
+336,documents. These two features are essentially one-step random walk,0,,False
+337,"features in a more general context [13]. In [5], the doc working set",0,,False
+338,"DF has two choices, one is the pseudo relevant docs and the other is the entire corpus. The latter, however, is prohibitively expensive in",0,,False
+339,"large dataset. Therefore, we relax DF as follows: assume the number of pseudo relevant docs is K1, and the number of final evaluation is K2 (actually fixed as 1000 in this paper); DF is set as the top {0.5K1, K1, 2K1, 2.5K2, 5K2} docs from first retrieval.",0,,False
+340,"where (q, i, j) in Eq. 3 is re-indexed by k , 1 : K with",0,,False
+341,"each rjq ,",0,,False
+342,"k representing one (q, i, j) otherwise yk , -1; xk ,",0,,False
+343,triplet; xqi - xqj,0,,False
+344,yk ; k,0,,False
+345,", ,",0,,False
+346,"1 if riq q,i,j . ",0,,False
+347,"> ,",0,,False
+348,"[1, ..., K ] is the dual parameter to be learned, and we can",0,,False
+349,get w as,0,,False
+350,K,0,,False
+351,"w,",0,,False
+352,k(xk  d),0,,False
+353,(5),0,,False
+354,"k,1",0,,False
+355,"Based on Eq. 4, now the CCFS problem can be easily",0,,False
+356,optimized by iteratively solving step 3 and step 4 in Alg. 2.,0,,False
+357,"(Step 3) Fix d and optimize w. When d is fixed, we",0,,False
+358,can absorb d into X as X  X  d. Under this circum-,0,,False
+359,"stance, Eq. 3 and Eq. 4 become the standard RankSVM",0,,False
+360,"training problem without cost constraint, for which we can",0,,False
+361,utilize existing algorithms for optimization. Considering the,0,,False
+362,"potential large scale of pairwise term comparison, here we",0,,False
+363,adopt cutting plane method [19] for efficient optimization.,1,ad,True
+364,"(Step 4) Fix w and optimize d. With fixed w, now we",0,,False
+365,"aim to find the optimal d. Notice that from step 3, we have",0,,False
+366,"w,",0,,False
+367,"K k,1",0,,False
+368,k  xk,0,,False
+369,(recall,0,,False
+370,X,0,,False
+371,is,0,,False
+372,updated,0,,False
+373,to,0,,False
+374,absorb,0,,False
+375,previous,0,,False
+376,d,0,,False
+377,"in step 3). In this way, Eq. 4 can be reformulated as follows:",0,,False
+378,"d , arg max",0,,False
+379,K,0,,False
+380,"k,1 k(xk",0,,False
+381, d),0,,False
+382,T,0,,False
+383,K,0,,False
+384,"k,1 k(xk  d)",0,,False
+385,K,0,,False
+386,K,0,,False
+387,T,0,,False
+388,", arg max",0,,False
+389,"k,1 kxk ",0,,False
+390,"k,1 kxk",0,,False
+391,d,0,,False
+392,(6),0,,False
+393,", arg max(w  w)T d",0,,False
+394,d,0,,False
+395,"s.t. d  {0, 1}|Ft|, uT d  U",0,,False
+396,"This is a standard linear integer programming problem, for which we utilize Gurobi1 for efficient optimization.",0,,False
+397,"During iteration, the upper bound U is meant to be a tunable parameter for the users. In practice, we can set U as a portion of the overall time cost, i.e. U ,""   fFt uf ,""",0,,False
+398,1http://www.gurobi.com/,0,,False
+399,269,0,,False
+400,where,0,,False
+401,take,0,,False
+402,values,0,,False
+403,such,0,,False
+404,as,0,,False
+405,"{1,",0,,False
+406,1 2,0,,False
+407,",",0,,False
+408,1 4,0,,False
+409,",",0,,False
+410,...}.,0,,False
+411,U,0,,False
+412,controls the,0,,False
+413,"number of iterations. In our implementation, we set U ,",0,,False
+414,", fFt uf -U",0,,False
+415,#I ter,0,,False
+416,where,0,,False
+417,#I ter,0,,False
+418,is,0,,False
+419,the,0,,False
+420,desired,0,,False
+421,iteration,0,,False
+422,number,0,,False
+423,"(e.g. #Iter , 5 or 10).",0,,False
+424,4. EXPERIMENTS,0,,False
+425,So far we have elaborated all the details of the proposed TFS framework. Below we will present extensive experiments to verify its validity.,0,,False
+426,4.1 Datasets,0,,False
+427,"We adopt four corpora for experiments, including three academic and one industry corpus.",1,ad,True
+428,"Robust04. This dataset includes about 0.5 million high quality documents. 250 queries (301-450 and 601-700) provided by TREC'04 robust track [32] are utilized for the experiments. MAP is the primary evaluation metric. Notice here by primary evaluation metric, we mean the metric that is used to rank TREC competition teams.",1,Robust,True
+429,"Cw09BNS. Clueweb09 category B is used, which includes 50 million web pages. We utilize University of Waterloo's spam scores [9]2 to remove those with spam scores lower than 70, which leaves 29 million web pages. 150 queries (51 to 200 from TREC'10/11/12 web track) are examined. ERR@20 is the primary evaluation metric. We denote this dataset as Cw09BNS, as NS stands for no spam.",1,Clue,True
+430,"Cw12BNSLD. Clueweb12 category B is used, which also includes 50 million web pages. Since category B contains very few relevant documents that are labeled by TREC, we add all the labeled relevant documents into this dataset. Again University of Waterloo's spam scores [9]3 are applied to remove those spam web pages (with the same threshold 70), which leaves about 15 million documents. 50 queries from TREC'13 web track are utilized, with ERR@20 being the primary evaluation metric. We denote this dataset as Cw12BNSLD, as LD means labeled documents are added.",1,Clue,True
+431,"Industry. This is a large scale web page corpus collected from a major search engine company (i.e. Bing). We incorporate an industry corpus to diversify our experiment settings. For example, the availability of industry search log provides a new resource for query expansion, as well as the search log related features in Table 3 and Table 4. Specifically, this corpus includes about 50 million web pages and 2000 queries. NDCG@20 is the primary evaluation metric as in previous research on a similar industry corpus [13].",1,corpora,True
+432,4.2 Settings,0,,False
+433,"Now we present all the detailed experiment settings. Corpus Preprocessing. We utilize Indri4, one of the most popular academic search systems, to index all our corpora in the form of inverted index [38]. Krovetz stemmer is applied for stemming, and standard InQuery stopwords are removed. Except stopwords removal, we do not conduct any further pruning that might reduce document lengths. Code & Hardware. In accordance with Indri index, all our algorithms and experiments are implemented in C++ using Lemur/Indri API. The code is compiled by GCC4.7.3 with -O3 option. The code runs in a single thread on a single lab Linux server, which is equipped with a AMD 64bit",1,ad,True
+434,2https://plg.uwaterloo.ca/gvcormac/clueweb09spam/ 3http://www.mansci.uwaterloo.ca/ msmucker/cw12spam/ 4http://www.lemurproject.org/indri.php,0,,False
+435,Table 5: Examples of Search Log Records,0,,False
+436,Query,1,Query,True
+437,Clicked URL,0,,False
+438,Score Rank,0,,False
+439,bloomberg news,0,,False
+440,http://www.bloomberg.com/news/,0,,False
+441,201,0,,False
+442,1,0,,False
+443,firefox com,0,,False
+444,http://www.mozilla.org/ en-US/firefox/fx/,0,,False
+445,81,0,,False
+446,2,0,,False
+447,gibson althea,0,,False
+448,http://en.wikipedia.org/ wiki/Althea Gibson,1,wiki,True
+449,145,0,,False
+450,3,0,,False
+451,Smaller ranks and higher scores represent a better match between queries and clicked URLs. Notice these search log queries should not be misinterpreted as the 2000 queries for QE test. They actually serve as S to find the relevant web pages for those 2000 queries.,0,,False
+452,"2.0GHz quad-core CPU, 12G memory and a 3TB disk that contains all the indexed corpora.",1,ad,True
+453,"QE scenarios. As mentioned in Sec. 2, we can get different QE scenarios, depending on the resource S upon which expansion terms are extracted. For Robust04, we apply the traditional pseudo relevance feedback (PRF) for query expansion, where resource S is identical to the target corpus C. Top 20 documents retrieved for q are considered relevant, from which expansion terms are extracted.",1,Robust,True
+454,"This PRF scenario, however, did not work well on the other corpora, which include web pages of relatively low quality [9]. We find that, on Cw09BNS and Cw12BNSLD, even after filtering spams, the traditional PRF still does not work well, which is also reported in [1]. Therefore, we try the strategy of S , C.",1,corpora,True
+455,"For Cw09BNS and Cw12BNSLD, we follow the suggestion of Bendersky et al. in [1] to use Wikipedia as S. Top 5 ranked Wikipedia documents of original query q are considered relevant, upon which QE is applied. On Industry corpus, we follow the idea of Gao et al. in [13] to use search log as S. The search log is also acquired from the same search engine company, which includes one million distinct click records. Each record contains four elements: user issued query, clicked URL, the score and the rank of the clicked URL returned by the search engine. A snapshot of the search log records is shown in Table 5. For each of the 2000 queries to be experimented, we first find the top 20 similar queries from the log; then the corresponding clicked web pages are considered relevant, from which expansion terms are extracted. This is actually a one-step random walk in search log [13].",1,Wiki,True
+456,"Models & Parameters. Following [5], we utilize KL divergence (KLD) as the basic retrieval model for all the experiments below. The Dirichlet coefficient is set as 1500. The UQE and SQE algorithm are the same as explained in Sec. 3.2, i.e. relevance model for UQE and RankSVM for SQE. For both of them, we empirically set the number of expansion terms as m ,"" 20. Other values of m will be examined in Sec. 4.8. For SQE, the number of candidate terms are empirically set as M "","" 100. Selected expansion terms are added to the original query by probability interpolation, as introduced in Eq. 1. The interpolation coefficient  is tuned over a finite set of values {0, 0.1, ..., 0.9, 1} on the training/validation set.""",1,ad,True
+457,"Evaluation Metrics. Both retrieval effectiveness and efficiency will be evaluated. For effectiveness, MAP and Prec@20 are used for Robust04, and ERR@20 and NDCG@20 are utilized for the other three web page corpora. For efficiency, we report the retrieval time costs per query, which is averaged on each query set.",1,MAP,True
+458,"Training/Validation/Testing. For all the query sets, based on the order of their query IDs, we select the first 40% queries for training all the models (e.g. SQE and TFS), the",0,,False
+459,270,0,,False
+460,Table 6: Retrieval Performance on Robust04,1,Robust,True
+461,MAP(),1,MAP,True
+462,Prec @20,0,,False
+463,Time (sec),0,,False
+464,%,0,,False
+465,OrigRet,0,,False
+466,0.268,0,,False
+467,-,0,,False
+468,0.345,0,,False
+469,-,0,,False
+470,0.13,0,,False
+471,-,0,,False
+472,UQE UQE,0,,False
+473,0.319 0.321,0,,False
+474,0,0,,False
+475,0.369,0,,False
+476,0,0,,False
+477,0.002 0.373 0.004,0,,False
+478,0.61 0.78,0,,False
+479,0 +27.9%,0,,False
+480,SQE,0,,False
+481,SQE,0,,False
+482,SQE(,0,,False
+483,1 4,0,,False
+484,),0,,False
+485,0.327 0.329,0,,False
+486,0.325,0,,False
+487,0 0.002,0,,False
+488,-0.002,0,,False
+489,0.381 0.383,0,,False
+490,0.378,0,,False
+491,0 0.002,0,,False
+492,-0.003,0,,False
+493,4.73 4.65,0,,False
+494,1.66,0,,False
+495,0 -1.7%,0,,False
+496,-64.9%,0,,False
+497,SQE(,0,,False
+498,1 4,0,,False
+499,),0,,False
+500,0.327,0,,False
+501,0,0,,False
+502,0.380 -0.001 1.76 -62.8%,0,,False
+503,Table 7: Retrieval Performance on Cw09BNS,0,,False
+504,ERR @20(),0,,False
+505,NDCG @20,0,,False
+506,Time (sec),0,,False
+507,%,0,,False
+508,OrigRet,0,,False
+509,0.129,0,,False
+510,-,0,,False
+511,0.169,0,,False
+512,-,0,,False
+513,9.5,0,,False
+514,-,0,,False
+515,UQE UQE,0,,False
+516,0.149 0.159,0,,False
+517,0 0.01,0,,False
+518,0.190 0.194,0,,False
+519,0 0.004,0,,False
+520,11.3,0,,False
+521,0,0,,False
+522,11.67 +3.3%,0,,False
+523,SQE,0,,False
+524,SQE,0,,False
+525,SQE(,0,,False
+526,1 4,0,,False
+527,),0,,False
+528,SQE(,0,,False
+529,1 4,0,,False
+530,),0,,False
+531,0.181 0.187,0,,False
+532,0.176,0,,False
+533,0.186,0,,False
+534,0 0.006,0,,False
+535,-0.005,0,,False
+536,0.005,0,,False
+537,0.197 0.191,0,,False
+538,0.186,0,,False
+539,0.191,0,,False
+540,0 -0.006,0,,False
+541,-0.011,0,,False
+542,-0.006,0,,False
+543,27.9 20.7,0,,False
+544,15.6,0,,False
+545,13.8,0,,False
+546,0 -25.8%,0,,False
+547,-44.1%,0,,False
+548,-49.5%,0,,False
+549,"middle 10% queries for parameter validation, and the remaining 50% queries for testing evaluation. All experiments are repeated three times to report averaged time cost.",0,,False
+550,"TFS Notation. As the two stages in TFS can be applied independently, we will utilize superscript  and  to indicate the case when AED and CCFS are applied alone, such as UQE and SQE. When the full set of TFS is applied for SQE, then we denote as SQE.",0,,False
+551,4.3 More on Time Cost,0,,False
+552,"As mentioned, the time costs reported below are all obtained by running experiments using a single thread on a Linux server. The absolute value might appear larger than previous works (mainly on Cw09BNS and Cw12BNSLD), for which we feel necessary to give a full explanation.",1,ad,True
+553,"Versus Previous Studies. The reason why previous studies such as [3, 35, 20] reported very low time costs of QE retrieval is mainly due to their selection and pre-processing upon the corpus. For example, (1) Lavrenko et al. [20] and Billerbeck et al. [3] utilized corpora that only contains O(105  106) documents; in comparison our Clueweb09/12 and Industry corpora have O(107) documents, which are at least 10 times larger. (2) Billerbeck [3] and Wu [35] reduced the document length into 20  100 terms long, while the averaged document length for our corpora are 500  800, which are again about 5  40 times larger. The difference of corpus size and document length is the major reason why our reported time costs are larger than previous studies.",1,corpora,True
+554,"Versus Indri Official. With the above settings, our reported time costs are actually quite reasonable. As a proof, the Indri official website5 reported an averaged time cost of 20 seconds per query (wall clock time) on Cw09B (50 million docs, with spam, one thread program on a 3.0GHz CPU, average query length is about 4), while ours is 9.5 seconds per query (29 million docs, no spam, 2.0GHz CPU, average query length is 2.4). After normalizing various factors6, we can conclude that our time cost per query is very close to that reported by Indri official website. Although this is not an exact comparison, it indeed partially supports our claim.",1,ad,True
+555,5http://www.lemurproject.org/clueweb09/indri-howto.php,0,,False
+556,"6We divide the averaged time cost per query by the number of documents (in millions) and the averaged query length, and multiply the CPU frequency (in GHz). The result can be seen as an atomic time cost for a single query term on a million documents using 1GHz CPU. In this way, the atomic time cost from official Indri website is 0.3 seconds, while ours is 0.27, which is very close.",0,,False
+557,Table 8: Retrieval Performance on Cw12BNSLD,0,,False
+558,ERR @20(),0,,False
+559,NDCG @20,0,,False
+560,Time (sec),0,,False
+561,%,0,,False
+562,OrigRet,0,,False
+563,0.258,0,,False
+564,-,0,,False
+565,0.618,0,,False
+566,-,0,,False
+567,4.37,0,,False
+568,-,0,,False
+569,UQE UQE,0,,False
+570,0.261 0.262,0,,False
+571,0 0.001,0,,False
+572,0.632 0.626,0,,False
+573,0 -0.006,0,,False
+574,6.13 6.27,0,,False
+575,0 +2.3%,0,,False
+576,SQE,0,,False
+577,SQE,0,,False
+578,SQE(,0,,False
+579,1 4,0,,False
+580,),0,,False
+581,SQE(,0,,False
+582,1 4,0,,False
+583,),0,,False
+584,0.291 0.292,0,,False
+585,0.287,0,,False
+586,0.288,0,,False
+587,0 0.001,0,,False
+588,-0.004,0,,False
+589,-0.003,0,,False
+590,0.660 0.664,0,,False
+591,0.665,0,,False
+592,0.665,0,,False
+593,0 0.004,0,,False
+594,0.005,0,,False
+595,0.005,0,,False
+596,23.5 18.1,0,,False
+597,10.5,0,,False
+598,9.1,0,,False
+599,0 -23%,0,,False
+600,-55.3%,0,,False
+601,-61.3%,0,,False
+602,Table 9: Retrieval Performance on Industry,0,,False
+603,NDCG @20(),0,,False
+604,ERR @20,0,,False
+605,Time (sec),0,,False
+606,%,0,,False
+607,OrigRet,0,,False
+608,0.372,0,,False
+609,-,0,,False
+610,0.253,0,,False
+611,-,0,,False
+612,11.5,0,,False
+613,-,0,,False
+614,UQE UQE,0,,False
+615,0.387 0.391,0,,False
+616,0,0,,False
+617,0.260,0,,False
+618,0,0,,False
+619,0.004 0.268 0.008,0,,False
+620,12.1 12.3,0,,False
+621,0 +1.7%,0,,False
+622,SQE,0,,False
+623,SQE,0,,False
+624,SQE(,0,,False
+625,1 4,0,,False
+626,),0,,False
+627,SQE(,0,,False
+628,1 4,0,,False
+629,),0,,False
+630,0.403 0.408,0,,False
+631,0.4,0,,False
+632,0.406,0,,False
+633,0 0.005,0,,False
+634,-0.003,0,,False
+635,0.003,0,,False
+636,0.281 0.285,0,,False
+637,0.276,0,,False
+638,0.279,0,,False
+639,0 0.004,0,,False
+640,-0.005,0,,False
+641,-0.002,0,,False
+642,22.7 19.1,0,,False
+643,15.1,0,,False
+644,13.9,0,,False
+645,0 -15.8%,0,,False
+646,-33.5%,0,,False
+647,-38.8%,0,,False
+648,"Versus Engineering Strategy. The absolute value of time costs can be reduced by engineering strategies such as better hardware or distributed/parallel computing, which are widely adopted in commercial search engines like Bing and Google. However, such devices are usually very expensive to equip, and are not available to us. Moreover, accurately counting the time costs in distributed/parallel computing environment becomes difficult, because usually the computing resouces (e.g. CPU or memory) are automatically allocated and can vary as time passes. The advantage of us utilizing single thread program on single computer is that, the overall time costs directly reflects the amount of computation (thus the efficiency), and makes it easy to compare different retrieval methods.",1,ad,True
+649,4.4 Overall Performance,0,,False
+650,We first present the major results of retrieval performance,0,,False
+651,"on the four corpora, as shown in Table 6, 7, 8 and 9.",1,corpora,True
+652,Comparison Methods. We conduct extensive compar-,0,,False
+653,ison with the following retrieval configurations:,0,,False
+654,(1) Retrieval for original queries without QE (OrigRet);,0,,False
+655,(23) UQE and UQE+AED (UQE);,0,,False
+656,(47),0,,False
+657,"SQE,",0,,False
+658,SQE+AED,0,,False
+659,"(SQE),",0,,False
+660,SQE+CCFS,0,,False
+661,(SQE(,0,,False
+662,1 4,0,,False
+663,") ),",0,,False
+664,and,0,,False
+665,SQE+TFS,0,,False
+666,(SQE(,0,,False
+667,1 4,0,,False
+668,),0,,False
+669,).,0,,False
+670,Here,0,,False
+671,(,0,,False
+672,1 4,0,,False
+673,),0,,False
+674,is,0,,False
+675,an,0,,False
+676,example,0,,False
+677,pa-,0,,False
+678,"rameter for upper bound U in CCFS, which means the upper",0,,False
+679,bound U is a quarter of the overall time costs of all term fea-,0,,False
+680,"tures,",0,,False
+681,i.e.,0,,False
+682,U,0,,False
+683,",",0,,False
+684,1 4,0,,False
+685,fFt uf . Other choices of upper bounds,0,,False
+686,will be examined in Sec. 4.5.,0,,False
+687,"As mentioned earlier, by default reranking (top 1000 doc-",0,,False
+688,uments) is utilized in the second retrieval to report the time,0,,False
+689,costs for the above retrieval methods.,0,,False
+690,Table Explanation. We adopt evaluation metrics re-,1,ad,True
+691,"garding both effectiveness (e.g. ERR@20, NDCG@20, MAP)",1,MAP,True
+692,and efficiency (Time in seconds). Here () indicates pri-,0,,False
+693,mary evaluation metric. We treat UQE and SQE as the,0,,False
+694,"baseline, so that we can show how AED, CCFS and TFS",0,,False
+695,"improve the efficiency respectively. We use column """"",0,,False
+696,to represent the effectiveness difference between UQE/SQE,0,,False
+697,"and their speedup versions, and use % for the relative time",0,,False
+698,"cost reduction. For example, on Cw09BNS, SQE vs SQE",0,,False
+699,"has ERR@20 difference 0.187-0.181,0.006; their time cost",0,,False
+700,"change (%, in percentage) is (20.7-27.9)/27.9,-25.8%.  and",0,,False
+701, label the positive and negative effectiveness difference that,0,,False
+702,"are statistically significant, and  means the time cost reduc-",0,,False
+703,"tion upon SQE is statistically significant (t-test, p < 0.05).",0,,False
+704,271,0,,False
+705,"Figure 3: Comparison between different feature selection methods. The horizontal axis is the time cost for term feature extraction (excluding any retrieval time). Purple triangles at left end of curves are UQE method with no term features, and blue rectangles at right end are SQE algorithm with all available features. AED is not applied here.",0,,False
+706,Major Observations. From the tables we can draw the following two major observations.,0,,False
+707,"(1) SQE is more effective but also less efficient than UQE and OrigRet. Compared with OrigRet and UQE, the retrieval effectiveness of SQE can be substantially higher. However, the time costs are also substantially larger. This verifies our motivation that the efficiency issue of SQE is an important research topic.",0,,False
+708,"(2) Both AED and CCFS can substantially improve the efficiency of SQE, meanwhile only incurring insignificant effectiveness fluctuation. In the above tables, we progressively add each component to SQE, so that one can see how the efficiency is progressively improved. In general we can conclude that for SQE, CCFS achieves higher efficiency than AED, and their combination (i.e. our TFS framework) achieves the most efficiency improvement. For effectiveness, although both positive and negative changes are observed, most of them are statistically insignificant (t-test, p<0.05). I.e. most of the effectiveness changes are not labeled by  or . Therefore, we can conclude that our TFS framework can well maintain the effectiveness of SQE.",1,ad,True
+709,"We also notice that for UQE, UQE has slightly increased time costs. There are two reasons for this phenomenon. First, for UQE there is no expensive term feature extraction, so that AED only skips the generation of UQE expansion terms and the reranking process in second retrieval. Since these two steps are already very fast, the reduced time cost is not substantial. Second, AED will result in some extra time costs for query feature extraction as well as the application of AED classifier. Therefore, the overall time costs of UQE will be slightly higher than UQE. But notice, the absolute value of such increase is very low (at most 0.37 seconds). Furthermore, as we will show in Sec. 4.9, the efficiency improvement of AED can be very substantial, if the full second retrieval is applied instead of reranking, which verifies the usefulness of AED.",1,ad,True
+710,"Below, we will present more experiments to thoroughly investigate AED and CCFS. As CCFS will also be utilized in AED experiments, we will first analyze CCFS for sake of clear presentation.",0,,False
+711,4.5 Cost Constrained Feature Selection,0,,False
+712,In the above we have verified the validity of feature selection in speeding up SQE. Now we will investigate how our CCFS algorithm in Alg. 2 performs in this task.,0,,False
+713,Comparison Methods. The following two algorithms are compared with our CCFS algorithm.,0,,False
+714,"L1-RankSVM. L1 regularization is a very popular feature selection method. When feature selection occurs, we replace the L2 regularizer in vanilla RankSVM (Eq. 3) with",0,,False
+715,"L1 regularizer ||w||1. By adjusting the coefficient G, ||w||1",1,ad,True
+716,"will function to different extent, thus resulting in various",0,,False
+717,combinations of features. Notice this method is unaware of,0,,False
+718,the difference in the time costs of extracting each feature.,0,,False
+719,L1General library7 [28] is utilized for optimization.,0,,False
+720,Wang's method [33]. This is a greedy algorithm for cost,0,,False
+721,"aware feature selection, proposed by Wang et al. in [33] for",0,,False
+722,"learning to rank. In this algorithm, each feature is assigned",0,,False
+723,"a profit score, which is the ratio between feature weight",0,,False
+724,and time cost. Features are sorted by profit scores; then,0,,False
+725,top features are selected until the time cost upper bound is,0,,False
+726,"reached, which makes it a greedy selection. Different from",0,,False
+727,"L1-RankSVM, this is a cost aware feature selection method.",0,,False
+728,"For both Alg. 2 and Wang's method, we use the same cost",0,,False
+729,"upper bounds as U ,""  fFt uf as explained earlier, where""",0,,False
+730,we,0,,False
+731,adjust,1,ad,True
+732,to,0,,False
+733,different,0,,False
+734,values,0,,False
+735,such,0,,False
+736,as,0,,False
+737,"{1,",0,,False
+738,1 2,0,,False
+739,",",0,,False
+740,1 4,0,,False
+741,",",0,,False
+742,...},0,,False
+743,to,0,,False
+744,get,0,,False
+745,all,0,,False
+746,"the nodes along the curves in Figure 3. For L1-RankSVM,",0,,False
+747,"each node represents a different G value, which is tuned on",0,,False
+748,training set so that different time costs are obtained.,0,,False
+749,Overall Results. In Figure 3 we illustrate the curves of,0,,False
+750,the three methods on all corpora. These curves represent,1,corpora,True
+751,the retrieval effectiveness when various feature extraction,0,,False
+752,time is spent (excluding any retrieval time). The purple tri-,0,,False
+753,"angles at the left end of curves represent UQE algorithm,",0,,False
+754,i.e. no term feature is extracted. The blue rectangles at the,0,,False
+755,right end of curves represent SQE algorithm with all avail-,0,,False
+756,"able term features. In the middle, various feature selection",0,,False
+757,methods show different effectiveness-cost tradeoff. We can,1,ad,True
+758,clearly observe that more features can produce higher re-,0,,False
+759,"trieval accuracy, but this inevitably takes more time thus",0,,False
+760,decreasing the efficiency.,0,,False
+761,"CCFS performs best, particularly at low time cost.",0,,False
+762,"Comparing the three feature selection methods, we can see",0,,False
+763,"that our CCFS algorithm outperforms the others, especially",0,,False
+764,when the feature cost is low. L1-RankSVM penalizes the,0,,False
+765,"number of selected features. That means, each feature is",0,,False
+766,"treated equally, ignoring the cost difference among differ-",0,,False
+767,"ent features. Since expensive features can be included, to",0,,False
+768,"reach a certain time cost, usually L1-RankSVM will over-",0,,False
+769,"penalizes the number of selected features, which deteriorates",0,,False
+770,the retrieval effectiveness. Wang's method greedily selects,0,,False
+771,"features based on their profit scores, i.e. the ratio between",0,,False
+772,feature weight and cost. Here the feature weights are the,0,,False
+773,"ones derived when all features are available. However, this",0,,False
+774,"selection process is suboptimal, because for a single feature,",0,,False
+775,its weight will become different when fewer other features are,0,,False
+776,"available. Therefore, the profit score may not accurately re-",0,,False
+777,"flect the importance of individual features, particularly when",0,,False
+778,7http://www.cs.ubc.ca/schmidtm/Software/L1General.html,0,,False
+779,272,0,,False
+780,"Figure 4: Experiments for AED. Red curves correspond to the SQE curves in Figure 3. The UQE nodes (with zero term feature cost) are shown separately for better illustration. The horizontal axis is the overall retrieval time. The blue vertical line is the time cost of OrigRet, which is plotted as reference.",0,,False
+781,"few features exist (i.e. time cost is low). In comparison, our CCFS algorithm iteratively updates learning objective, and decreases the cost upper bound smoothly. Therefore, CCFS performs better, particularly when time cost is low.",0,,False
+782,4.6 Adaptive Expansion Decision,0,,False
+783,"Now we will examine how AED affects the effectiveness and efficiency of UQE and SQE retrieval. We show the performance in Figure 4, where UQE, SQE and SQE algorithms are all examined before and after applying AED. For SQE, the CCFS curves from Figure 3 are utilized.",0,,False
+784,"For both SQE and SQE, their performance is left-shifted after applying AED. Moreover, the SQE curves shrink after AED. This means, the process of term feature extraction and second retrieval (reranking) are skipped for some of the queries (i.e. SQE-unsuitable), which makes the averaged time costs over all queries become smaller.",0,,False
+785,"For UQE, the time costs of UQE is slightly higher. This has been explained in Sec. 4.4, which are due to the fast process of reranking and UQE expansion term generation, as well as the existence of AED overhead cost.",1,ad,True
+786,The extent of efficiency improvement of AED depends on,0,,False
+787,the number of skipped queries. In Table 10 we give the detailed number of skipped queries on each corpus for SQE.,0,,False
+788,"From the perspective of effectiveness, we can observe that on all corpora, for all of UQE, SQE and SQE, their effectiveness after applying AED is improved or at least maintained than before applying AED. This is particularly helpful in achieving a good balance between effectiveness and efficiency.",1,corpora,True
+789,Table 10: Number of skipped queries in AED for SQE.,0,,False
+790,Dataset,0,,False
+791,#Test Query #Skipped Query Percentage,1,Query,True
+792,Robust04,1,Robust,True
+793,125,0,,False
+794,8,0,,False
+795,6.4%,0,,False
+796,Cw09BNS,0,,False
+797,75,0,,False
+798,32,0,,False
+799,42.67%,0,,False
+800,Cw12BNSLD,0,,False
+801,25,0,,False
+802,8,0,,False
+803,32%,0,,False
+804,Industry,0,,False
+805,1000,0,,False
+806,361,0,,False
+807,36.1%,0,,False
+808,4.7 More on Step-wise Time Cost,0,,False
+809,In Figure 1 we have shown the step-wise time costs on,0,,False
+810,"Cw09BNS for UQE, SQE and their speedup improvements.",0,,False
+811,There for CCFS we adopt the same upper bound as in Ta-,1,ad,True
+812,ble 7 (i.e.,0,,False
+813,U,0,,False
+814,",",0,,False
+815,1 4,0,,False
+816,fFt uf ). This is a non Pseudo Rele-,0,,False
+817,vance Feedback (PRF) scenario where S is Wikipedia and C,1,Wiki,True
+818,"is Cw09BNS. In this case, the time cost of second retrieval",0,,False
+819,will be large because in second retrieval we need to firstly,0,,False
+820,search query q on C then apply the reranking.,0,,False
+821,Now we further show the step-wise time costs for PRF,0,,False
+822,"scenario on Robust04 in Figure 5(a). In this case, S , C ,",1,Robust,True
+823,"Robust04, so we only need to retrieve q once in first retrieval,",1,Robust,True
+824,and the second retrieval only needs to rerank the results of,0,,False
+825,"first retrieval. In this case, the cost of second retrieval will be much smaller than in non PRF scenario.",0,,False
+826,4.8 The Effect of Number of Expansion Terms,0,,False
+827,"Now let's see how different number of expansion terms m affects the retrieval effectiveness and efficiency. In Figure 5(b), we show the effectiveness-cost curves when m ,"" {10, 20, 30} for SQE on Industry corpus. We can see the effectiveness of m "","" 20, 30 is similar, while that of m "","" 10 is quite degraded. The time cost gap between OrigRet and SQE curves includes the cost of first retrieval (i.e. searching S), applying AED, extracting term features, etc. Also notice the overall time cost is not obviously affected as more expansion terms are utilized. This phenomenon is mainly due to the application of reranking. Otherwise if a full second retrieval is applied, the time cost of second retrieval will be (approximately) linear with the number of m, which can be very huge in practice (see Sec. 4.9).""",1,ad,True
+828,4.9 Reranking vs Full Second Retrieval,0,,False
+829,"Finally, for the SQE retrieval process, we compare the two strategies for second retrieval: reranking vs full second retrieval. Although we have argued the validity of reranking and have utilized it throughout the above experiments, we still feel it necessary to present a formal comparison with full second retrieval due to the following two reasons. First, as reviewed in Sec. 2.2, we find most of existing QE efficiency works [3, 35] only focused on indexing or document optimization, while ignored the value of reranking. It is only very recent that Diaz [11] pointed this out. Here we'd like to add more proof to support reranking. Second, in the above experiments for UQE and UQE, we observed that pure AED may not result in substantial speedup, and point out that the application of reranking is the major reason for that. By further showing the time costs of full second retrieval, we can justify the value of AED.",1,ad,True
+830,"In Figure 5(c) and (d), we show the performance of reranking top 1000 documents for expanded queries qe with 20 expansion terms. We can see that for both the case of UQE and SQE, reranking does not incur obvious effectiveness loss, yet results in substantial efficiency improvement. Particularly for the UQE case, the speedup becomes obvious when full second retrieval is utilized on Cw09BNS. These observations verify our adoption of reranking instead of full second retrieval, as well as the usefulness of AED on efficiency.",1,ad,True
+831,5. CONCLUSION & FUTURE WORK,0,,False
+832,"Supervised query expansion (SQE) has recently become the state-of-the-art in the QE literature, which usually outperforms the unsupervised counterparts. To obtain good retrieval effectiveness, SQE usually extracts many term fea-",0,,False
+833,273,0,,False
+834,(a),0,,False
+835,(b),0,,False
+836,(c),0,,False
+837,(d),0,,False
+838,"Figure 5: (a) Step-wise costs on Robust04, which is under PRF scenario. (b) Performance of SQE on Industry",1,Robust,True
+839,with different number of expansion terms. (c) Reranking vs full second retrieval for UQE and UQE on Cw09BNS.,0,,False
+840,(d) Reranking vs full second retrieval for SQE and SQE on Industry.,0,,False
+841,"tures to predict the quality of expansion terms. However, this can seriously decrease its efficiency. This issue has not been studied before, nor can it be handled by previous datalevel QE efficiency methods such as indexing or documents optimization. To address this problem, in this paper we propose a Two-stage Feature Selection (TFS) framework, which includes Adaptive Expansion Decision and Cost Constrained Feature Selection. Extensive experiments on four corpora show that the proposed TFS framework can significantly improve the efficiency of SQE algorithm, while maintaining its good effectiveness.",1,ad,True
+842,6. REFERENCES,0,,False
+843,"[1] M. Bendersky, D. Fisher, and W. B. Croft. Umass at trec 2010 web track: Term dependence, spam filtering and quality bias. In TREC, 2010.",1,trec,True
+844,"[2] M. Bendersky, D. Metzler, and W. B. Croft. Effective query formulation with multiple information sources. In WSDM, pages 443­452, 2012.",0,,False
+845,"[3] B. Billerbeck and J. Zobel. Efficient query expansion with auxiliary data structures. In Information System, pages 573­584, 2006.",0,,False
+846,"[4] C. M. Bishop. Pattern Recognition and Machine Learning. Springer, 2006.",0,,False
+847,"[5] G. Cao, J.-Y. Nie, J. Gao, and S. Robertson. Selecting good expansion terms for pseudo-relevance feedback. In SIGIR, pages 243­250, 2008.",0,,False
+848,"[6] C. Carpineto and G. Romano. A survey of automatic query expansion in information retrieval. In ACM Computing Surveys, 2012.",0,,False
+849,"[7] K. Collins-Thompson. Reducing the risk of query expansion via robust constrained optimization. In CIKM, 2009.",0,,False
+850,"[8] K. Collins-Thompson and P. N. Bennett. Predicting query performance via classification. In ECIR, pages 140­152, 2010.",0,,False
+851,"[9] G. V. Cormack, M. D. Smucker, and C. L. A. Clarke. Efficient and effective spam filtering and re-ranking for large web datasets. IR, pages 441­465, 2011.",0,,False
+852,"[10] H. Cui, J.-R. Wen, J.-Y. Nie, and W.-Y. Ma. Probabilistic query expansion using query logs. In WWW, pages 325­332, 2002.",0,,False
+853,"[11] F. Diaz. Condensed list relevance models. In ICTIR, 2015.",0,,False
+854,"[12] J. Gao, S. Xie, X. He, and A. Ali. Learning lexicon models from search logs for query expansion. In EMNLP, pages 666­676, 2012.",0,,False
+855,"[13] J. Gao, G. Xu, and J. Xu. Query expansion using path-constrained random walks. In SIGIR, pages 563­572, 2013.",1,Query,True
+856,"[14] X. Geng, T.-Y. Liu, T. Qin, and H. Li. Feature selection for ranking. In SIGIR, pages 407­414, 2007.",0,,False
+857,"[15] I. Guyon and A. Elisseeff. An introduction to variable and feature selection. JMLR, pages 1157­1182, 2003.",0,,False
+858,"[16] C. Hauff, D. Hiemstra, and F. de Jong. A survey of pre-retrieval query performance predictors. In CIKM, pages 1419­1420, 2008.",0,,False
+859,"[17] B. He and I. Ounis. Query performance prediction. In Information Systems, pages 585­594, 2006.",1,Query,True
+860,"[18] B. He and I. Ounis. Combining fields for query expansion and adaptive query expansion. IPM, pages 1294­1307, 2007.",1,ad,True
+861,"[19] T. Joachims. Training linear svms in linear time. In KDD, pages 217­226, 2006.",0,,False
+862,"[20] V. Lavrenko and J. Allan. Real-time query expansion in relevance models. In Tech Report, Univ Massachusetts Amherst, 2006.",0,,False
+863,"[21] V. Lavrenko and W. B. Croft. Relevance-based language models. In SIGIR, pages 120­127, 2001.",0,,False
+864,"[22] C.-J. Lee, R.-C. Chen, S.-H. Kao, and P.-J. Cheng. A term dependency-based approach for query terms ranking. In CIKM, pages 1267­1276, 2009.",0,,False
+865,"[23] Y. Lv and C. Zhai. Adaptive relevance feedback in information retrieval. In CIKM, pages 255­264, 2009.",0,,False
+866,"[24] Y. Lv and C. Zhai. Positional relevance model for pseudo-relevance feedback. In SIGIR, pages 579­586, 2010.",0,,False
+867,"[25] Y. Lv, C. Zhai, and W. Chen. A boosting approach to improving pseudo-relevance feedback. In SIGIR, pages 165­174, 2011.",0,,False
+868,"[26] C. D. Manning, P. Raghavan, and H. Schu¨tze. An introduction to information retrieval. In Cambridge University Press, 2009.",0,,False
+869,"[27] S. C.-T. ownsend Y un Zhou W. Bruce Croft. A language modeling framework for selective query expansion. In Univ Massachusetts Amherst Tech Report, 2004.",0,,False
+870,"[28] M. Schmidt. Graphical model structure learning with l1-regularization. Univ British Columbia PhD Thesis, 2010.",0,,False
+871,"[29] H. Schu¨tze and J. O. Pedersen. A coocurrence-based thesaurus and two applications to information retrieval. In IPM, 1997.",0,,False
+872,"[30] M. Theobald, R. Schenkel, and G. Weikum. Efficient and self-tuning incremental query expansion for top-k query processing. In SIGIR, pages 242­249, 2005.",0,,False
+873,"[31] P. Viola and M. J. Jones. Robust real-time face detection. IJCV, pages 137­154, 2004.",1,Robust,True
+874,"[32] E. M. Voorhees. Overview of the trec 2004 robust retrieval track. In TREC, pages 69­77, 2004.",1,trec,True
+875,"[33] L. Wang, D. Metzler, and J. Lin. Ranking under temporal constraints. In CIKM, pages 79­88, 2010.",0,,False
+876,"[34] J. Weston, S. Mukherjee, O. Chapelle, M. Pontil, T. Poggio, and V. Vapnik. Feature selection for svms. In NIPS, pages 668­674, 2000.",0,,False
+877,"[35] H. Wu and H. Fang. An incremental approach to efficient pseudo-relevance feedback. In SIGIR, pages 553­562, 2013.",0,,False
+878,"[36] C. Zhai and J. Lafferty. Model-based feedback in the language modeling approach to information retrieval. In CIKM, pages 403­410, 2001.",0,,False
+879,"[37] Y. Zhao, F. Scholer, and Y. Tsegay. Effective pre-retrieval query performance prediction using similarity and variability evidence. In ECIR, pages 52­64, 2008.",0,,False
+880,[38] J. Zobel and A. Moffat. Inverted files for text search engines. ACM Computing Surveys.,0,,False
+881,274,0,,False
+882,,0,,False

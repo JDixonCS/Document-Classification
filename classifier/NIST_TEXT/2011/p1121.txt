@@ -1,0 +1,77 @@
+Multi-Layer Graph-Based Semi-Supervised Learning for Large-Scale Image Datasets Using MapReduce
+Wen-Yu Lee, Liang-Chi Hsieh, Guan-Long Wu, Winston Hsu, and Ya-Fan Su
+National Taiwan University, Chunghwa Telecom Co., Ltd., Taipei, Taiwan
+
+ABSTRACT
+Semi-supervised learning is to exploit the vast amount of unlabeled data in the world. This paper proposes a scalable graph-based technique leveraging the distributed computing power of the MapReduce programming model. For a higher quality of learning, the paper also presents a multilayer learning structure to unify both visual and textual information of image data during the learning process. Experimental results show the effectiveness of the proposed methods.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval--Retrieval models
+General Terms
+Algorithms, Experimentation
+Keywords
+Image Retrieval, MapReduce, Semi-Supervised Learning
+1. INTRODUCTION
+Semi-supervised learning (SSL) is to automatically exploit lots of unlabeled data in the presence of a small amount of labeled data. Among the SSL methods, graph-based methods are quite popular where both labeled and unlabeled data are modeled as vertices followed by adding a weighted edge between any two vertices. This paper focuses on image data, where most previous works concentrated on the visual information of image contents only and then weighted each edge with the visual similarity between two image data (vertices). Previous work in [5] indicated that it is desirable to consider both visual and textual information for the learning quality improvement. As a result, (ad-hoc) early- and late-fusion methods, which fuse visual and textual information before or after learning, were proposed accordingly. On the other hand, learning on a large-scale dataset poses new challenges for the graph construction and the learning process, while most existing methods scale poorly with the data size [3]. In summary, this paper has three main contributions: (1) we propose a multi-layer learning structure to fuse image graphs seamlessly, (2) we combine distributed computation and a
+Copyright is held by the author/owner(s). SIGIR'11, July 24­28, 2011, Beijing, China. ACM 978-1-4503-0757-4/11/07.
+
+Visual Fusion Textual
+
+unlabeled
+
+labeled
+
+map
+
+reduce
+
+Figure 1: Multi-layer learning structure.
+graph-based learning method with a distributed graph-based labeling algorithm, and (3) we test the proposed methods on a large-scale image dataset to validate its applicability.
+2. MULTI-LAYER SEMI-SUPERVISED LEARNING
+2.1 Multi-Layer Learning Structure
+Given an image dataset, we construct a visual graph and a textual graph. The visual (textual) graph is a complete graph where each vertex denotes an image, and the weight of an edge between two images shows the visual (textual) similarity of the two image contents. Note that in practical implementation, we do not work on complete graphs, but on sparse graphs in which lots of edges are removed to eliminate the spurious connections on dissimilar vertices. More details about the construction of a sparse graph can be found in [3].
+The proposed multi-layer learning structure is sketched in Figure 1, where the top, middle, bottom layers are a visual graph, an abstract fusion layer, and a textual graph, respectively. Note that the given initial labels are shown in double circles. Our multi-layer SSL algorithm is an iterative process. Each iteration consists of two inferring processes and one fusion process. All of them are distributed algorithms based on the MapReduce programming model [1]. Note that the two inferring processes are the same but on different graphs: one is for the visual graph, and the other is for
+
+1121
+
+the textual graph. Take the visual graph as an example. As shown in the top layer, an inferring process is first activated to propagate the label information (e.g., a value) from each labeled vertex to its adjacent vertices. More precisely, the map procedure weights the (label) value on each labeled vertex while the reduce procedure collects the weighted value(s) for the unlabeled vertices. After the inferring processes, the fusion process is activated. The fusion process fuses every two vertices in the different graphs but referring to the same image, in a weighted fashion with a user-specified parameter   (0, 1) (cf. Eq. (2), e.g.,  = 0.5 for averaging) so that the two graphs can communicate with each other. Finally, both visual and textual graphs are updated by assigning each fused value back to the two corresponding vertices. The overall learning process is iterated until convergence.
+2.2 Proposed Multi-Layer SSL Algorithm
+This section details our multi-layer SSL algorithm, extended from [7], targeting at large-scale datasets. As space is limited, we shall concentrate on the operations in the visual graph, and shall not mention those in the textual graph. For simplicity, we assume each vertex in a visual graph contains a single label (i.e., value). However, our work can be extended to multiple labeling problems.
+In the sequel, let G be the sparse visual graph with vertex set X = {x1, ..., xn}, where n is the vertex number; let W  Rn×n be the similarity matrix of G, where Wij denotes the edge weight between vertices xi and xj; let D  Rn×n be a diagonal matrix with Dii equaling the inverse square root of the sum of the i-row of W ; let L = {1, ..., c} be the label set of G; let Y  Rn×c be a matrix with Yij = 1 if xi is initially labeled as j, and Yij = 0 otherwise; let F  Rn×c be a classification matrix, where each vertex xi will be marked as a label yi = argmaxjcFij; let   (0, 1) be a userspecified parameter. Without loss of generality, assuming that initially the first l (typically, l n) vertices {x1, ..., xl} are individually labeled as {y1, ..., yl}  L, and the other (n - l) vertices {x(l+1), ..., xn} are unlabeled. Our objective is to predict the labels of the unlabeled vertices.
+Initially, we assign Y to F . Then we create a normalized weight matrix S, which equals the product of D times W times D. Next, we iteratively perform the following two operations (for inferring labels and fusing two graphs).
+F ((t+1),vis) = S × F (t,vis) + (1 - )Y, (1)
+F ((t+1),vis) = F ((t+1),vis) + (1 - )F ((t+1),txt), (2)
+where the meaning of a matrix with the superscript "(t, vis)" is twofold: obtained in the t-th iteration, and used for learning on the visual graph (i.e., F (0,vis) = F ). Similarly, F ((t+1),txt) is the classification matrix for the textual graph obtained in the (t + 1)-th iteration. Note that  is the fused parameter (cf. Section 2.1). Note that fusion (Eq. (2)) in the t-th iteration can only be done after inferring labels (Eq. (1)) in both of the visual graph and textual graphs in the t-th iteration. The iterative process is repeated until a certain condition is met. Finally, following the definition, given a classification matrix, we assign the labels of the unlabeled vertices accordingly (i.e., yi = argmaxjcFij, 1  i  n).
+Note that all of the (sparse) matrix operations above are implemented based on the MapReduce programming model. It is worth noting that the rationale behind matrix multiplication is to distribute the multiplication task into n partitions and work on several servers.
+
+Table 1: Mean average precision comparison.
+
+VisualOnly TextualOnly EarlyFusion LateFusion MultiLayer
+
+Flickr11k 0.374 Flickr550k 0.239
+
+0.411 0.326
+
+0.442 0.341
+
+0.488 0.521 (39%) 0.356 0.374 (56%)
+
+3. EXPERIMENTS
+We implemented our algorithms using the Java programming language on a Hadoop cluster (version 0.20.2) consisting of 24 commodity machines. Empirically, parameters  and  were set to 0.9 and 0.5, respectively. The termination condition of our iterative process is a pre-defined number of iterations, 1, 000. All of the experiments were based on two image datasets: Flickr11k [2] and Flickr550k [6]. The former contains 11, 277 medium resolution (500 × 360) images while the latter contains 540, 321 images. Each image is represented in both visual and textual high-dimensional features. Each dataset contains 1, 282 ground truth images in seven query categories, including colosseum, eiffel tower, golden, torre pendente di pisa, starbucks, tower bridge, and triomphe.
+We extracted the visual and textual features in the following ways.We took visual word as visual features for similarity computation. For visual word generation, we adopted the difference-of-Gaussian approach to detect feature points followed by describing them with scale invariant feature transform (or SIFT). The detected descriptors were then quantized into 10k clusters using k-means clustering, where each cluster defined a visual word containing the feature descriptors (feature points) in this cluster. For the textural features, we adopted the expanded Google snippet from the Google search engine to perform query expansion to represent associated (noisy) tags in textual feature in 91, 004 dimensions.
+For the comparative studies, Table 1 compares the visual graph only, textual graph only, early-fusion [5], latefusion [5], and our multi-layer learning methods, where all of the them were implemented based on our SSL method (see Section 2.2). The percentages (%'s) are the improvement ratios between the visual graph only and the multi-layer methods. As revealed in the table, our multi-layer method can significantly improve the baselines by aggregating visual and textual contexts during message passing among the graphs.
+
+4. CONCLUSION
+We have presented a graph-based multi-layer SSL algorithm to unify the visual and textual information on largescale image datasets. Experimental results have shown that our algorithm can work on a large-scale image dataset while effectively predict the image labels.
+
+5. REFERENCES
+[1] J. Dean and S. Ghemawat, "MapReduce: simplified data processing on large clusters," ACM CACM, 2008.
+[2] Y.-H. Kuo, K.-T. Chen, and et al., "Query expansion for hash-based image object retrieval," ACM MM, 2009.
+[3] W. Liu, J. He, and S.-F. Chang, "Large graph construction for scalable semi-supervised learning," ICML, 2010.
+[4] D. Rao and D. Yarowsky, "Ranking and semi-supervised classification on large scale graphs using map-reduce," TextGraphs, 2009.
+[5] M. Wang, X.-S. Hua, and et al., "Optimizing multi-graph learning: towards a unified video annotation scheme," ACM MM, 2007.
+[6] Y.-H. Yang, P.-T. Wu, and et al., "ContextSeer: context search and recommendation at query time for shared consumer photos," ACM MM, 2008.
+[7] D. Zhou, Q. Bousquet, and et al., "Learning with local and global consistency," NIPS 16, 2004.
+
+1122
+
+

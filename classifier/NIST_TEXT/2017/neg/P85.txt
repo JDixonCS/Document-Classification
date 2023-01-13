@@ -1,0 +1,1117 @@
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+ICE: Item Concept Embedding via Textual Information
+
+Chuan-Ju Wang
+Research Center for Information Technology Innovation, Academia Sinica
+cjwang@citi.sinica.edu.tw
+
+Ting-Hsiang Wang
+Research Center for Information Technology Innovation, Academia Sinica
+thwang@citi.sinica.edu.tw
+
+Hsiu-Wei Yang
+Research Center for Information Technology Innovation, Academia Sinica
+leoyang@citi.sinica.edu.tw
+
+Bo-Sin Chang
+Department of Computer Science, National Chengchi University 105753001@nccu.edu.tw
+
+Ming-Feng Tsai
+Department of Computer Science, National Chengchi University m sai@nccu.edu.tw
+
+ABSTRACT
+is paper proposes an item concept embedding (ICE) framework to model item concepts via textual information. Speci cally, in the proposed framework there are two stages: graph construction and embedding learning. In the rst stage, we propose a generalized network construction method to build a network involving heterogeneous nodes and a mixture of both homogeneous and heterogeneous relations. e second stage leverages the concept of neighborhood proximity to learn the embeddings of both items and words. With the proposed carefully designed ICE networks, the resulting embedding facilitates both homogeneous and heterogeneous retrieval, including item-to-item and word-to-item retrieval. Moreover, as a distributed embedding approach, the proposed ICE approach not only generates related retrieval results but also delivers more diverse results than traditional keyword-matching-based approaches. As our experiments on two real-world datasets show, ICE encodes useful textual information and thus outperforms traditional methods in various item classi cation and retrieval tasks.
+KEYWORDS
+conceptual retrieval; concept embedding; textual information; information network
+ACM Reference format: Chuan-Ju Wang, Ting-Hsiang Wang, Hsiu-Wei Yang, Bo-Sin Chang, and MingFeng Tsai. 2017. ICE: Item Concept Embedding via Textual Information. In Proceedings of SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan, , 10 pages. DOI: h p://dx.doi.org/10.1145/3077136.3080807
+1 INTRODUCTION
+Learning meaningful and valuable representations of items is important for various applications where items that relate to information
+ e second author (Ting-Hsiang Wang) and the third author (Hsiu-Wei Yang) contributed equally.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3080807
+
+needs from a collection of information resources are to be obtained, such as item recommendation and entity retrieval. In traditional methods, each item is usually assumed to be independent of other items and is represented using a "one-hot" or "bag-of-objects" encoding format, for instance by representing a movie in terms of its genre or a song in terms of its listeners; this typically leads to di culty with data sparsity, resulting in relatedness among items being simply ignored.
+In recent years, distributed representations have been proposed to address the data sparsity problem in several elds, such as language modeling [1, 6­9] and information networks [2, 4, 10, 11, 14, 15]. e purpose of these approaches is to keep similar items (e.g., words, documents, or nodes) close to each other by embedding items as low-dimensional vectors. In [8], a skip-gram word embedding model is proposed to embed the target word to predict the embedding of each individual context word in a local window. Moreover, in [6] paragraph vectors are proposed to embed arbitrary pieces of text, e.g., sentences and documents. e fundamental idea behind these embedding approaches comes from the distributional hypothesis: "You shall know a word by the company it keeps" (Firth, J. R. 1957:11). In this quotation, Firth draws a ention to the context-dependent nature of meaning with his notion of `context of situation.' DeepWalk [10] further generalizes context dependency from sequences of words to graphs, and uses local information obtained from truncated random walks to learn latent representations of nodes in an information network. In addition, LINE [14] proposes an e cient edge-sampling method with carefully designed objective functions to learn latent representations in a large-scale information network. In comparison to classical approaches such as nearest neighbors that also utilize the distributional similarity of context, these embedding approaches have been proved to be e ective and e cient, and scale to millions of nodes on a single machine.
+Following the fruitful progress of these embedding approaches for information network modeling, several advanced embedding studies for more complex graphs or for speci c applications have recently been proposed [3, 5, 13, 16, 17]. For example, HPE (heterogeneous preference embedding) [3] uses heterogeneous graphs (including users, tracks, albums, and artists) and encodes user preferences into low-dimensional vector spaces for music recommendations. Also following progress in LINE, which is mainly designed for homogeneous networks, the authors extend their previous work of unsupervised information network embedding and propose a
+
+85
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+semi-supervised predictive text embedding approach via heterogeneous text networks [13]. In these approaches, the learned vectors are used to make meaningful similarity comparisons only between homogeneous nodes and are thus appropriate for tasks involving only one type of entity, such as document classi cation and itemto-item retrieval. Despite that, in practice, various scenarios call for similarity comparisons between heterogeneous entities, e.g., using words to discover related songs for music recommendation. However, due to the essence of the complex graph structures designed in previous studies, comparison of heterogeneous nodes (e.g., heterogeneous search) is a di cult and complicated problem.
+In this paper, we propose an item concept embedding (ICE) approach to model concepts of items via their associated textual information. We incorporate textual information because text is a coherent and readable set of symbols that transmits information, in which the learned low-dimension representations can easily be used to meet an information need in certain scenarios. In particular, there are two stages in our proposed approach: graph construction and embedding learning. In the rst stage, a generalized network construction method is proposed by which we assemble a graph involving heterogeneous nodes (i.e., items and words) and a mixture of both homogeneous and heterogeneous relations. Here we leverage conceptual similarity between words and integrate these relations into the graph to be er capture concepts behind both items and words. In the second stage, we leverage information about each node's neighbors to learn the embeddings of texts and items. e resulting embeddings are e ective for both homogeneous and heterogeneous retrieval, including item-to-item and word-to-item retrieval. Moreover, as a distributed embedding approach, the proposed ICE approach provides not only related retrieval results but also delivers more diverse results than traditional keyword-matching-based approaches.
+We conduct extensive experiments on two real-world datasets, including one movie dataset and one commercial music dataset. Experimental results show that the ICE network encodes useful textual information, outperforming traditional methods in various item classi cation and retrieval tasks. Most importantly, the proposed ICE approach is e ectual for the tasks involving heterogeneous objects, such as word-to-item and item-to-word search. In summary, we make three major contributions in this paper:
+(1) We propose a novel item concept embedding (ICE) approach to model concepts of items via their associated textual information.
+(2) We propose a generalized network construction method to assemble a graph involving heterogeneous nodes and a mixture of both homogeneous and heterogeneous relations. e resulting ICE improves on the limitations of previous network embedding approaches and enhances the e ectiveness of heterogeneous retrieval.
+(3) We conduct extensive experiments on two real-world datasets. Experimental results a est the e ectiveness of the proposed ICE approach. We also publish the IMDB dataset, which includes the textual descriptions of 36,586 movies.
+e rest of this paper is organized as follows. In Section 2, we present the proposed ICE methodology in detail, including the formal de nitions of the ICE problem, its related information network,
+
+graph construction, and embedding model learning. e results of empirical experiments are provided and discussed in Section 3.3. Section 4 concludes the paper.
+2 METHODOLOGY
+In Section 2.1, we de ne and formulate the item concept embedding (ICE) problem. We then describe in Section 2.2 how to construct the ICE network, and in Section 2.3 we show how to learn the ICE by leveraging neighborhood proximity, in the process brie y describing both model description and model optimization.
+2.1 Problem De nition and Formulation
+In this section we rst de ne the ICE problem, and formulate it as a heterogeneous information network with entities and texts.
+e proposed ICE network is composed of two types of networks: entity-text networks and text-text networks. Below we de ne and describe in detail the two networks together with ICE networks.
+De nition 2.1. (Entity-Text Network) An entity-text network, denoted as Get = (V  T , Eet ), is a directed bipartite graph with a has-a relation between items and words; V is a set of items, T is a set of words, and each edge r  Eet is associated with a positive weight re ecting the strength of the relation between an item and a word.
+In an entity-text network, nodes and relations are both heterogeneous [12]. For such a network, entities can be di erent types of items, and the text can be any descriptive textual information associated with the item, depending on the real-world application. For example, for music recommendation, songs and the words in their lyrics form a typical entity-text bipartite network, where the weights of the edges can be either binary or any positive real number (e.g., the tf-idf value of a word in the lyrics). Note that in this paper we consider only positive network weights.
+De nition 2.2. (Text-Text Network) A text-text network, denoted as Gtt = (T , Ett ), is a bidirected graph with a conceptually similar relation between two words in T , where T is a set of words, and each edge r  Ett is associated with a positive weight re ecting the strength of the relation between two words.
+By leveraging NLP resources (e.g., the pre-trained word2vec model [8] and ConceptNet1), a homogeneous text-text network can be built that illustrates the conceptual similarity between any two words in the network. For example, with a set of word2vec word vectors for words in a set T (denoted as Q = (qt1 , qt2 , . . . , qt|T | ), where qti denotes the low-dimensional vector of word ti ), one way to build such a network is to connect two words ti and tj if their cosine similarity is greater than a threshold h (i.e., cos(qti , qtj ) > h); the weight of the connecting edge can be set to either one or the cosine distance. Note that in the text-text network, each node has a self-referencing bidirectional link (i.e., a self-loop), and the nodes and relations are all homogeneous [12].
+In order to be er model the item concept via textual information and facilitate heterogeneous retrieval, we further present the ICE network, a novel expanded entity-text-text network, the de nition of which is below.
+1h p://conceptnet5.media.mit.edu
+
+86
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+De nition 2.3. (ICE Network) e ICE network is an entitytext-text network denoted as Gice = (V  T , Eet  Eet  Ett ), where Eet denotes the expanded has-a relations between items and words.
+Figure 1(a) is an example of the proposed ICE network, in which there exist heterogeneous nodes (items and words) and a mixture of both homogeneous (conceptually similar, purple lines) and heterogeneous (has-a, pink lines) relations. In the network, the expanded has-a relations Eet (the pink dashed lines in the gure) can be designed di erently depending on the application. A general method of establishing such relations is described in Section 2.2.
+Obtaining representative embeddings for such complex information networks is a vital but di cult problem; a solution for this would be of great use in a variety of retrieval and recommendation applications. In this paper, we aim to leverage the similarity of neighbor network structures of both items and words to describe each item and word via the corresponding low-dimensional vectors learned by our carefully designed ICE networks.
+De nition 2.4. (Neighborhood Proximity) Given a graph G = (V, E), the neighborhood proximity of a pair of nodes (u, ) in the network is de ned as the similarity between their neighborhood network structures. Mathematically, given the neighborhood structure of node b, denoted as Nb = (ub1, ub2, . . . , ub |V | ),2 the neighborhood proximity between nodes u and is decided by the similarity between the two vectors Nu and N . If there are no shared neighbors between u and , the neighborhood proximity between them is 0.
+In Figure 1, panels (b) and (c) illustrate the basic idea behind the ICE network, which can be seen as an alternative view of the original ICE network shown in panel (a). As shown in the gures, the neighbors of both items and words are of the same type (i.e., words), which means that both items and words are embedded via textual information. In this case, by quantifying neighborhood proximity, the resultant low-dimensional vectors of both items and words not only embed similar concepts illustrated with textual information but also facilitate homogeneous or heterogeneous retrieval. As an example, consider the second item (the music note with subscript 2) and the third word (w3) in Figure 1. ese two heterogeneous nodes share the same neighborhood structure, i.e., (w1, w2, w3), as illustrated in panel (c) of the gure; the learned representations of these two nodes are therefore close to each other.
+2.2 ICE Network Construction
+In this section, we describe a generalized network construction method for the proposed ICE network. Given an entity-text bipartite network Get = (V  T , Eet ) and a text-text bidirected network Gtt = (T , Ett ) (see De nitions 2.1 and 2.2), we represent the two networks and their relations as matrices MGet and MGtt respectively:
+· MGet = (eij ) is a biadjacency matrix of size |V | × |T | such that each element eij is the weight of an edge for adjacent nodes and zero for nonadjacent nodes (see Figure 2(a)).
+2 e neighborhood structure of b can be represented by the rst-order proximity of b to all the other nodes [14].
+
+ICE Network
+
+The Intuition of an ICE Network -- A Bipartite Graph
+
+1
+
+W1
+
+1
+
+1
+
+W2
+2
+W3
+3
+W4
+4
+W5
+Eet : has-a relation
+
+2
+W1
+3
+W2
+4
+W3 W1
+W4 W2
+W5 W3
+
+Eet : has-a relation (expanded) Ett : conceptually similar relation
+
+W4
+
+(a)
+
+W5
+
+(b)
+
+2
+W1
+3
+W2
+4
+W3 W1
+W4 W2
+W5 W3
+
+W4
+
+W5
+
+(c)
+
+Figure 1: e basic idea behind the ICE network
+
+· MGtt = (tij ) is an adjacency matrix of size |T | × |T | such that each element tij is the weight of an edge for adjacent
+nodes and zero for nonadjacent nodes (see Figure 2(b)).
+
+Note that since the conceptual similarity described by MGtt is a homogeneous relation, rows and columns should not be permuted
+independently, but simultaneously, whereas MGet relates to heterogeneous has-a relations, whose rows and columns can be permuted
+independently.
+Establishing the expanded relations Eet between each item i  V and each word t  T is a way to be er capture the concepts of items
+and words in the proposed ICE network. In this paper, we present
+a uni ed approach to construct these relations and construct the
+ICE network on the basis of the resulting relations. Assume for
+simplicity and demonstration purposes that both the entity-text
+bipartite network Get and the text-text bidirected network Gtt are (0, 1)-graphs; i.e., each element in MGet or MGtt , which represents the relation between nodes i and j, is one when there is a directed
+edge from node i to node j, and zero when there is no edge. Note
+that the diagonal elements of MGtt are all set to one to represent the self-referencing links in the network Gtt . e inner product of the two matrices MGet and MGtt is de ned as
+
+A = (ai j )
+
+= MGet
+
+· MGtt
+
+
+
+|V
+R
+
+|× | T
+
+|.
+
+(1)
+
+e intuition behind this operation is described as follows. Each element aij  A is the inner product of two vectors:
+· ei = (ei1, ei2, . . . , ei | T | )  R| T | for item i, and · tj = (t1j , t2j , . . . , t | T |j )  R| T | for word j.
+ere are two cases in which aij > 0:
+· ere is a directed edge from item i to word j; · ere is no directed edge from item i to word j, but there
+is at least one directed edge from item i to another word k and word j is bi-directionally connected to word k (the two words k and j are conceptually similar); i.e., k such that k j, eik = 1, tjk = tk j = 1.
+Given the two matrices MGet and MGtt associated with the two initial graphs Get and Gtt , respectively, we de ne the transformation function f (·) to carry out the aforementioned operations together with a matrix augmenting operation to construct the ICE
+
+87
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Entity-Text Network
+
+Text-Text Network
+
+(a) W1 W2 W3 W4 W5
+I1 1 0 1 0 1 I2 1 1 0 0 0 I3 0 0 1 1 0 I4 0 1 0 1 0
+MGet
+
+(b) W1 W2 W3 W4 W5
+W1 1 0 1 0 0 W2 0 1 1 1 0 W3 1 1 1 0 0 W4 0 1 0 1 1 W5 0 0 0 1 1
+
+1
+
+W1
+
+2
+
+W2
+
+3
+
+W3
+
+W4 4
+
+W5
+
+Eet : has-a relation
+
+W2 W4
+
+Eet : has-a relation (expanded) Ett : conceptually similar relation
+
+MGtt
+W1 W3
+W5
+
+ICE Network
+
+(c) W1 W2 W3 W4W5
+I1 2 1 2 1 1 I2 1 1 2 1 0 I3 1 2 1 1 1 I4 0 2 1 2 1
+A = MGet · MGtt
+
+Gice: ICE Network
+
+1
+
+W1
+
+2
+
+W2
+
+W3
+
+3 W4
+
+4
+
+W5
+
+W1 W2 W3 W4 W5
+
+I1 1 1 1 1 1
+
+A~ =
+
+I2 I3
+
+1 1
+
+1 1
+
+1 1
+
+1 0 1 1
+
+I4 0 1 1 1 1
+
+W1 1 0 1 0 0 W2 0 1 1 1 0 MGtt = W3 1 1 1 0 0 W4 0 1 0 1 1 W5 0 0 0 1 1
+
+MGice = f(MGet , MGtt ) =
+
+A~ MGtt
+
+Figure 2: ICE network construction
+
+network (the expanded entity-text-text network de ned in De nition 2.3) as follows:
+
+MGice = f (MGet , MGtt ) =
+
+A~ MGt t
+
+ R(|V |+|T |)×|T |,
+
+(2)
+
+in which the matrix A~ can be derived from matrix A in Equation (1).
+
+When building a (0, 1)-ICE-network, we have
+
+A~ = (a~i j ) = 1{aij >0} .
+
+(3)
+
+Although matrix A~ can be designed in di erent ways (e.g., A~ = A
+for weighted graphs), it is straightforward to apply our uni ed
+approach to di erent transformations. Finally, given the result-
+ing matrix MGice (see Equation (2)), we obtain the ICE network, Gice , treated as the input of the embedding learning algorithm (introduced in Section 2.3).
+Figure 2 illustrates the ICE network construction method with
+an example (a (0,1)-graph), in which the matrix representations for
+the directed bipartite entity-text network Get and the bidirected text-text network Gtt are shown in panels (a) and (b), respectively. As shown in panel (c), we obtain the expanded has-a relations by
+multiplying the two matrices MGet and MGtt . For instance, there is no edge between the rst item (the music note with subscript 1) and
+the second word (w2) in the original entity-text network; however, since the rst item is linked to the third word (w3) and w2 and w3 are conceptually similar according to Gtt in panel (b), we have an expanded link between the rst item and the second word (the pink
+dashed line) in panel (c).
+
+2.3 Learning Embedding via Similarity of
+Neighborhood Network Structures
+In a previous study [14], the LINE model was mainly proposed to learn the embeddings for homogeneous information networks, that is, graphs with the same type of vertices. In this paper we adopt neighborhood proximity, an essential idea from LINE as well as from various word embedding models, to manage the ICE networks, which are composed of heterogeneous nodes and a mixture of both homogeneous and heterogeneous relations. Neighborhood proximity presumes that nodes with similar neighborhood structures are similar and thus, when represented in a low-dimensional vector space, should be positioned close to each other.
+To capture this proximity, each node in the graph plays two roles: the node itself and a speci c "context" of other nodes. Although
+
+in an ICE network, both types of nodes (i.e., items and words) and
+relations (i.e., has-a and conceptually similar relations) are hetero-
+geneous, the neighbors of each node are the same type: words; this
+re ects the careful design behind the ICE network, as introduced
+in Section 2.2.
+Given an ICE network Gice = (V  T , Eet  Eet  Ett ), constructed via Equation (2), we introduce two vectors c and c , where c is the vector representation of node c when it plays the role of itself, whereas c denotes node c's representation when it is taken as a speci c context of other nodes. For each has-a relation between
+an item ni  V and a word nw  T , the conditional probability of word nw generated by item ni is modeled as
+
+P (nw | ni ) = exp nw · ni
+
+.
+
+(4)
+
+s T exp ns · ni
+
+Similarly, for each conceptually similar relation between two words,
+nw  T and nw  T , we have the conditional probability of word w given word w as
+
+P (nw | nw ) = exp nw · nw
+
+.
+
+(5)
+
+s T exp ns · nw
+
+To model neighborhood structures via the item-word and word-
+word relations while preserving neighborhood proximity, for each
+node nk , the conditional probabilities P ( · | nk ) described by a set of low-dimensional representations should approximate the empirical probabilities P^( · | nk ). Here we follow the se ing in [14] in se ing the empirical probability for P^(n | nk ) equal to xk /d (nk ), in which xk denotes the weight of the edge between nodes nk and n , and d (nk ) is the out-degree of node nk ; that is, d (nk ) =
+n N B(nk ) xk , where N B(nk ) is the set of the direct successors of node nk . We proceed to minimize the following two objective functions OE and OT to learn the embeddings of items and words, respectively:
+
+OE =
+
+d (ni ) DKL P^ ( · | ni ) , P ( · | ni ) ,
+
+(6)
+
+ni V
+
+and
+
+OT =
+
+d (nw ) DKL P^ ( · | nw ) , P ( · | nw ) ,
+
+(7)
+
+nw T
+
+in which the Kullback-Leibler divergence DKL (·, ·) is adopted to measure the di erence between the two distributions. By omi ing
+some constants and adding OE and OT in Equations (6) and (7), the objective function becomes
+
+Oice = -
+
+xi log P (n | ni )
+(ni,n ) E~et
+
++
+
+xw log P (n | nw ) , (8)
+
+(nw,n ) Ett
+
+where E~et = Eet  Eet . Equation (8) is minimized with stochastic gradient descent using edge sampling [14] and negative sam-
+pling [8], resulting in two sets of optimized representations { c }c VT and { c }c VT .
+
+88
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 1: Statistics of the two real-world datasets
+
+# movies/songs Average text length Average # unique words
+Vocabulary size # single genres # multi-label genres
+
+IMDB
+36,586 65.0 47.8 66,924 28 915
+
+KKBOX
+33,106 215.24 81.37 101,395
+-
+
+3 EXPERIMENTS
+We evaluate the performance of our proposed ICE approach on two real-world datasets. Section 3.1 rst provides the details of the two datasets and the data processing conducted for the experiments. We then describe the experimental se ings in Section 3.2, including the compared baselines and state-of-the-art methods, and the statistics of the constructed ICE information networks. Experimental results on various classi cation and retrieval tasks are provided in Section 3.3, where some interesting cases are also discussed.
+3.1 Datasets and Data Preprocessing
+In the experiments, two real-world datasets are used to assess the performance of the proposed ICE method, including one movie dataset (denoted as IMDB) and one music dataset (denoted as KKBOX, which is partially provided by a music-streaming company). Table 1 lists the statistics of the two data collections.
+Below, we describe how we collect and process the datasets. e movie list of the IMDB dataset is that of the MovieLens 10/2016 Full datasets,3 and we crawl the descriptions and genres of each movie from the IMDB website via the OMDB API.4 en, we lter out those movies without any descriptions, resulting in total 36,586 movies out of the 40,110 ones of the original MovieLens dataset; in average, the description of each movie contains around 65.0 words and 47.8 unique words. Moreover, there are 28 di erent single genres (e.g., horror and action) and 915 multi-label genres (e.g., horror-action-thriller) in total. For the KKBOX dataset, the music list is obtained from a commercial music-streaming company consisting of 33,106 Chinese songs, and we crawl the lyrics of each song for the following experiments. To process lyrics in the dataset, we use the Jieba Chinese segmentation toolkit5 to conduct the word segmentation. A er the procedure, there are in average 215.24 words and 81.37 unique words in each song, and there are in total 101,395 unique vocabularies, as shown in Table 1.
+3.2 Experimental Setup
+In our experiments, two di erent types of tasks are conducted to evaluate the performance of the proposed ICE approach, including classi cation task and retrieval task, the purpose of which is to verify the quality of the representations learned by ICE. Below, we describe the se ings for each di erent task, respectively.
+3.2.1 Se ings for the Classification Task. For the classi cation task, we conduct a multi-label genre classi cation on the IMDB
+3h ps://grouplens.org/datasets/movielens/ 4h ps://www.omdbapi.com 5h ps://github.com/fxsjy/jieba
+
+dataset. e classi cation model is trained via the LIBSVM toolkit,6 and its input feature vectors are generated from 3 di erent types of document representation methods, which leverage the textual information of the movie descriptions:
+(1) BOW: is is the traditional bag-of-words method for generating the word features for text classi cation. In speci c, we use top tf-idf keywords of each movie description to represent a movie and train the classi cation models;
+(2) BPT: is is the baseline embedding method for learning the representation of heterogeneous entities using a bipartite structure. In particular, we also use the top tf-idf keywords and movies to construct a simple entity-text bipartite network, as de ned in De nition 2.1, and we use network embedding techniques to learn the representation of each movie for training the classi cation models;
+(3) ICE: is is the proposed item concept embedding (ICE) method for learning the representations of heterogeneous entities. In speci c, we also use the top tf-idf keywords and movies to construct the ICE network. However, di erent from the simple bipartite structure, the ICE network contains several careful designs, as described in Section 2.2, to be er learn the representation of each movie for training the classi cation models.
+For the experiments of this task, 5-fold cross validation is applied to verify the classi cation performance in terms of three measures: exact match ratio, micro-average and macro-average F-measures.
+3.2.2 Se ings for the Retrieval Tasks. For the retrieval tasks, there are two kinds of retrievals: homogeneous (i.e., word-to-word or item-to-item) and heterogeneous (i.e., item-to-word or word-toitem). In addition to the traditional keyword-based retrieval, we also conduct several methods based on embedding techniques for a comprehensive comparison. Below, we describe the se ings of each retrieval method for the retrieval tasks:
+(1) RAND: is is the baseline method which selects items or words randomly for each search task;
+(2) KBR: is is the traditional keyword-based retrieval method for selecting items based on the given query. Note that the traditional keyword-based retrieval method can only be used for the word-to-item search task;
+(3) AVGEMB: is is the method which represents entities using averaged word embeddings. In speci c, we select top tf-idf words of each movie description or song lyric, and then average their word embeddings to represent the movie or song. In our experiments, the word embeddings used to represent entities in the IMDB dataset and the KKBOX dataset are trained on the Google News dataset7 and the Chinese Wikipedia archive8 using word2vec, respectively. e dimension of the word embedding vectors is set to 300;
+(4) BPT: is is the baseline embedding method for learning the representation of heterogeneous entities using a bipartite structure. In particular, we also use the top tf-idf keywords and all items to construct a bipartite network, as de ned in De nition 2.1, and apply network embedding
+6h ps://www.csie.ntu.edu.tw/cjlin/libsvm/ 7h ps://code.google.com/archive/p/word2vec/ 8h ps://dumps.wikimedia.org/zhwiki/latest/zhwiki-latest-pages-articles.xml.bz2
+
+89
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 2: Statistics of IMDB information networks
+
+|W |
+|V | |T | |Eet | |Ett | |Eet | d (·)
+
+BPT
+
+10
+
+20
+
+36,586 62,066 358,160
+-
+7.3
+
+36,586 65,036 622,004
+-
+12.2
+
+ICE (exp-3)
+
+10
+
+20
+
+36,586 84,990 358,160 281,368 942,633
+26.0
+
+36,586 87,222 622,004 289,800 1,696,638
+42.1
+
+ICE (exp-5)
+
+10
+
+20
+
+36,586 113,820 358,160 444,194 1,569,753
+31.5
+
+36,586 116,630 622,004 457,566 2,823,767
+51.0
+
+techniques to learn the representations of both items (i.e., movies or songs) and words; (5) ICE: is is the proposed item concept embedding (ICE) method for learning the representation of heterogeneous entities. In speci c, we also use the top tf-idf keywords and items to construct the ICE network. However, unlike the simple bipartite structure, the ICE network contains several careful designs, as described in Section 2.2, to be er learn the representations of both items and words.
+Note that, during the retrieval task, the above three embedding methods (i.e., AVGEMB, BPT, and ICE) will select the entities whose embeddings are the most similar to that of the user query in terms of the cosine similarity.
+3.2.3 Information Networks. In the experiments, there are two types of information networks: the BPT and ICE networks. Table 2 and Table 3 tabulate the statistics of the two information networks. In these two tables, W denotes the set of the top tf-idf words of an item (e.g., movie descriptions or song lyrics) that is used to represent the item and to construct the information network; the "exp-n" in the parentheses denotes the number of expanded n words for each word. In the experiments, the expanded words for each given word are selected according to the cosine similarity of their pre-trained word embeddings, which are trained on the Google News dataset and the Chinese Wikipedia archive for the IMDB dataset and the KKBOX dataset using word2vec, respectively. For the IMDB dataset, the number of the top tf-idf words is set to 10 or 20 for each movie to construct the network, whereas for the KKBOX dataset, since songs are usually lyrically repetitive, the number is set to 1, 3, 5, 8, or 10 for each song to allow exploration for the optimal se ing. Note that for the BPT networks, since there is only one type of relationship (has-a, described by Eet in the tables), the average degrees of nodes, d (·), in such networks are smaller than those of the ICE networks.
+3.2.4 Evaluation Metrics and Parameter Se ings. In our experiments, the performance of multi-class classi cation is measured by three metrics: exact match ratio, micro-average F1, and macroaverage F1, whereas that of retrieval is measured by precision and diversity. For the classi cation task, all the parameters are set to the LIBSVM's default values. For the network embedding approaches (BPT and ICE), the number of negative samples is set as 5, and the dimensionality of item and word vectors is set to 256 and 300 for the experiments on the IMDB and KKBOX datasets, respectively.
+
+Horror Action Sci-Fi Thriller Western Short
+(a) BPT with |W | = 20
+
+Horror Action Sci-Fi Thriller Western Short
+(b) ICE (exp-5) with |W | = 20
+
+Figure 3: Visualization of the movies embeddings
+
+3.3 antitative Results
+3.3.1 Performance of the Classification Task. Table 4 lists the results of the three compared methods (i.e., BOW, BPT, and ICE) on the IMDB movie genre prediction, in which there are two sets of experiments, including |W | = 10 and |W | = 20. Note that, for this task, the testing items are all the same type (i.e., homogeneous). As shown in the table, increasing the number of words for representing a movie (i.e., |W | = 10  |W | = 20) clearly improves the classi cation performance of the three methods in terms of the three measures. Moreover, the two embedding-based methods (i.e., BPT and ICE) considerably outperform the BOW method, which suggests that the learned low-dimensional representations are indeed e ective for such a classi cation task, as demonstrated in [13]. Furthermore, as observed in the table, the proposed ICE method yields comparable results with the BPT method; the result is anticipated due to the network constructions of both embedding-based methods are appropriate for the homogeneous classi cation task.
+Figure 3 visualizes the learned representations of the movies from 6 di erent genres based on the BPT and ICE methods, in which 100 randomly picked movies for each genre are used for the visualization.9 As shown in both gures, the movies of the same genre generally aggregate into one group, especially for western and action movies; the groups of thriller and horror movies overlap substantially with each other, which means that the usage of words in those movie descriptions are highly similar.
+3.3.2 Performance of the Word-to-Movie Retrieval Task. We rst conduct a heterogeneous retrieval task, i.e., word-to-movie retrieval task, on the IMDB dataset. e goal of this task is to use keywords to retrieve the movies with similar genre. In speci c, we select the top 20 tf-idf words from all the movie descriptions in each genre as the query words, and then use the queries to retrieve the similar genre movies. For instance, the word "killer" is the top 1 tf-idf word from all thriller movie descriptions; therefore, we use "killer" as a query in an a empt to retrieve thriller movies.
+Table 5 tabulates the retrieval results of the ve compared methods in terms of precision@50 and precision@100. For the AVGEMB method, in addition to using top 20 tf-idf words of each movie description (i.e., |W | = 20), we also conduct an experiment of
+9Each movie representation is a 256-dimensional real-valued embedding vector and transformed into two-dimensional space using t -distributed stochastic neighbor embedding (t -SNE), a technique for dimensionality reduction that is particularly well suited for the visualization of high-dimensional data.
+
+90
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 3: Statistics of KKBOX information networks
+
+|W |
+|V | |T | |Eet | |Ett | |Eet | d (·)
+
+1
+33,106 15,483 33,106
+1.4
+
+3
+33,074 25,806 99,222
+3.4
+
+BPT
+5
+32,999 29,357 164,995
+5.3
+
+8
+32,603 31,292 260,824
+8.2
+
+10
+31,527 31,315 315,270
+10.0
+
+1
+33,106 32,372 33,106 120,368 99,318
+7.7
+
+ICE (exp-3)
+
+3
+
+5
+
+8
+
+33,074 42,225 99,222 184,133 296,455
+15.4
+
+32,999 44,964 164,995 204,942 491,875
+22.1
+
+32,603 46,269 260,824 215,861 775,502
+31.8
+
+10
+31,527 46,204 315,270 215,780 935,767
+37.7
+
+Table 4: Movie genre classi cation task
+
+Exact match ratio Micro-average F-measure Macro-average F-measure
+
+BOW
+0.136 0.365 0.087
+
+BPT
+0.160 0.401 0.166
+
+|W | = 10
+ICE (exp-3)
+0.156 0.408 0.170
+
+ICE (exp-5)
+0.157 0.410 0.170
+
+TF-IDF
+0.162 0.415 0.156
+
+|W | = 20
+
+BPT ICE (exp-3)
+
+0.182 0.464 0.229
+
+0.182 0.462 0.223
+
+ICE (exp-5)
+0.181 0.463 0.222
+
+Other movies Godzilla movies Japan (word) Godzilla (word)
+(a) BPT with |W | = 20
+
+Other movies Godzilla movies Japan (word) Godzilla (word)
+(b) ICE (exp-5) with |W | = 20
+
+Figure 4: Visualization of the Representations of the Godzilla-related Movies and Two Related Keywords
+
+AVGEMB (all) of averaging all word embeddings learned by word2vec, which can be considered another competitive baseline for this task. As shown in the table, in terms of average precision@50 and precision@100, the proposed ICE method can outperform all the compared baselines. Although, for some genres, the performance of ICE is only comparable with KBR and AVGEMB, for both action and short movies, the proposed ICE approach outperforms all of the baselines with a considerable amount. Note that for this heterogeneous word-to-movie retrieval task, BPT yields poor performance compared to our ICE approach; the result is due to the straightforward bipartite network is appropriate for the tasks involving only one type of entity, such as document classi cation and item-to-item retrieval, and fails for such a heterogeneous retrieval task.
+Figure 4 visualizes an example to explain the phenomenon. In the gure, the red triangles represent Godzilla-related movies; the two selected words: Japan and Godzilla, which are highly related to the Godzilla-related movies, are denoted as cross and plus symbols, respectively. As shown in the gure, these two words are distant from all Godzilla-related movies with BPT, whereas the proposed ICE demonstrates an opposite outcome -- the two words are close to the highly correlated movies, which again shows the superior ability of our ICE approach for the heterogeneous retrieval task.
+
+3.3.3 Performance of the Word-to-Song Retrieval Task. We then conduct another heterogeneous retrieval task -- word-to-song retrieval -- on the KKBOX music dataset. In the experiments, three types of contextual keywords: mood, location, and time related keywords, are used as our queries; we select the top 5 tf-idf words for each category from our crawled song lyrics. Since we do not have a relevancy ground truth for this retrieval task, we consider a retrieved song as a relevant result on the following two conditions: (1) the lyrics of the retrieved song contains the query word, or (2) the song lyric contains at least one of the top k concept-similar words of the query. Note that each query case has its own set of relevant songs in our experiments.
+Figures 5 and 6 report the results of the proposed ICE together with the four comparing models (i.e., RAND, KBR, AVGEMB, and BPT) with respect to the size of words used to describe a song (|W |). Overall, both ICE and AVGEMB improve their performance as |W | increases; however, BPT hardly retrieve any songs containing the query word, which con rms again that the embeddings learned on the simple bipartite network is not appropriate for a heterogeneous retrieval. Note that in Figure 5, we do not compare the performance of these models with KBR because its performance is the upper bound of this task. For the case that songs with any of the top 3 concept-similar words are considered relevant, the proposed ICE approach generally outperforms the other four baseline methods, as shown in Figure 6. e experiments in these two gures suggest that the word embeddings learned by ICE are capable of retrieving the songs containing the given query and/or the query's concept-similar words, and thus the ICE method is e ective for heterogeneous retrieval on the basis that the items and the query words are embedded by the textual information.
+Table 6 tabulates the precision of each query word, in which there are ve query words for each of the contexts. With Figures 5 and 6, we can observe some interesting phenomenon in the experiments. As shown in the table, for most of the queries, our ICE approach obtains much be er precision than both AVGEMB and BPT; that is, in average, ICE achieves 0.533 and 0.201 for precision@100 in the keyword and concept-similar word retrieval tasks, surpassing
+
+91
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Precision@10
+
+Table 5: Word-to-movie retrieval task
+
+|W | = 20
+RAND KBR
+AVGEMB AVGEMB (all)
+BPT ICE (exp-5)
+RAND KBR
+AVGEMB AVGEMB (all)
+BPT ICE (exp-5)
+
+Horror (3754/36586)
+0.080 0.324 0.322 0.324 0.096 0.354
+0.050 0.327 0.324 0.314 0.088 0.321
+
+riller (4636/36586)
+0.080 0.230 0.212 0.225 0.104 0.204
+0.100 0.224 0.215 0.208 0.116 0.193
+
+Western (751/36586)
+0.060 0.321 0.316 0.304 0.010 0.294
+0.030 0.236 0.266 0.269 0.012 0.264
+
+Action (5029/36586)
+P@50
+0.080 0.418 0.406 0.366 0.154 0.444
+P@100
+0.110 0.395 0.385 0.376 0.156 0.421
+
+Short (1094/36586)
+0.000 0.062 0.092 0.089 0.032 0.142
+0.000 0.057 0.074 0.074 0.034 0.109
+
+Sci-Fi (2004/36586)
+0.120 0.373 0.392 0.401 0.086 0.392
+0.060 0.307 0.372 0.382 0.086 0.362
+
+Average
+0.070 0.288 0.290 0.285 0.080 0.305
+0.058 0.258 0.273 0.270 0.082 0.278
+
+Word-to-Song Retrieval Task (Keyword) 0.9
+
+0.8
+
+0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0.0
+
+1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(a)
+
+Precision@50
+
+Word-to-Song Retrieval Task (Keyword) 0.7
+
+0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0.0
+
+1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(b)
+
+Precision@100
+
+Word-to-Song Retrieval Task (Keyword) 0.6
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0.0
+
+1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(c)
+
+Figure 5: Word-to-song retrieval task (relevant songs: keyword included songs)
+
+Word-to-Song Retrieval Task (Concept-similar Word) 0.25
+
+0.20
+
+0.15
+
+0.10
+
+0.05
+
+0.00 1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(a)
+
+Precision@50
+
+Word-to-Song Retrieval Task (Concept-similar Word) 0.25
+
+0.20
+
+0.15
+
+0.10
+
+0.05
+
+0.00 1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(b)
+
+Precision@100
+
+Word-to-Song Retrieval Task (Concept-similar Word) 0.30
+
+0.25
+
+0.20
+
+0.15
+
+0.10
+
+0.05
+
+0.00 1
+
+3
+
+5
+
+8
+
+10
+
+|W |
+
+(c)
+
+Figure 6: Word-to-song retrieval task (relevant songs: concept-similar words included songs)
+
+RAND AVGEMB BPT ICE (exp-3)
+RAND KBR AVGEMB BPT ICE (exp-3)
+
+Precision@10
+
+those of the AVGEMB (0.239 and 0.186) and the BPT (0.017 and 0.037). Moreover, we can observe that it is relatively di cult for the location-based queries to retrieve songs containing the conceptsimilar words, which is due to the fact that few location-based songs exist in our datasets; for example, the query " (room)" has 3 expanded words, " (bathroom)", " (basement)", and " (bedroom)", but only 28 songs contain any of these three concept-similar words in the KKBOX dataset.
+
+Finally, we evaluate the proposed ICE in terms of precision and diversity using ConceptNet10 (see Table 7). Given a keyword, we use ConceptNet, a human-labeled semantic knowledge graph, to obtain the keyword's concept-similar words.11 On the basis of these obtained concept-similar words, we consider the songs that contain at least one concept-similar word relevant in our experiments; note
+10h p://conceptnet5.media.mit.edu 11In this experiments, we only selected 5 queries, whose corresponding concept-similar words are greater than 10 and less than 40, for consideration. Note that we also remove the one-character word in the set of concept-similar words.
+
+92
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 6: Performance comparison on the 15 keywords
+
+Time
+
+Location
+
+Mood
+
+|W | = 10
+ery
+ (lost)  (heartache)  (pining)  (a ectionate)  (sad)
+ (home)  (room)  (seaside)  (train)  (garden)
+ (dusk)  (sunrise)  (sunset)  (moon)  (dark night)
+Total/Avg. P@100
+
+# keyword songs
+516 824 1,729 380 1678
+934 610 264 151 139
+387 240 226 598 1,189
+9,865
+
+Keyword
+
+P@100
+
+BPT AVGEMB ICE (exp-3)
+
+0.000 0.050 0.050 0.000 0.040
+
+0.160 0.080 0.250 0.090 0.200
+
+0.470 0.250 0.700 0.550 0.530
+
+0.040 0.000 0.000 0.010 0.000
+
+0.310 0.420 0.230 0.330 0.160
+
+0.900 0.510 0.360 0.510 0.390
+
+0.010 0.000 0.030 0.000 0.030
+
+0.180 0.290 0.380 0.360 0.140
+
+0.360 0.430 0.590 0.930 0.510
+
+0.017 0.239
+
+0.533
+
+Concept-similar word
+
+P@100
+
+# concept-similar songs BPT AVGEMB ICE (exp-3)
+
+403 4,075 1,176 442 1,781
+
+0.030 0.170 0.080 0.020 0.080
+
+0.120 0.500 0.180 0.110 0.320
+
+0.050 0.610 0.060 0.250 0.070
+
+1,190 28 91 20 2
+
+0.020 0.000 0.000 0.000 0.000
+
+0.340 0.010 0.070 0.040 0.000
+
+0.160 0.060 0.080 0.020 0.000
+
+307 390 407 1,608 279
+
+0.020 0.060 0.010 0.030
+0.030
+
+0.100 0.380 0.270 0.320 0.030
+
+0.070 0.690 0.530 0.350 0.010
+
+12,199
+
+0.037 0.186
+
+0.201
+
+Table 7: Performance evaluated by ConceptNet
+
+|W | = 10
+ery
+ (dusk)  (room)  (sunrise)  (garden)  (dark night)
+Average
+
+# words in ConceptNet
+11 39 17 33 17
+23.4
+
+P@10
+
+KBR ICE (exp-3)
+
+0.00
+
+0.20
+
+0.60
+
+0.10
+
+0.40
+
+1.00
+
+0.30
+
+0.10
+
+0.50
+
+1.00
+
+0.36
+
+0.48
+
+Diversity@10
+
+KBR ICE (exp-3)
+
+0.00
+
+0.00
+
+0.00
+
+0.00
+
+0.00
+
+0.70
+
+0.00
+
+0.00
+
+0.00
+
+0.00
+
+0.00
+
+0.14
+
+P@100
+
+KBR ICE (exp-3)
+
+0.25
+
+0.08
+
+0.36
+
+0.16
+
+0.30
+
+0.24
+
+0.34
+
+0.08
+
+0.50
+
+0.57
+
+0.35
+
+0.23
+
+Diversity@100
+
+KBR ICE (exp-3)
+
+0.00
+
+0.75
+
+0.00
+
+0.69
+
+0.00
+
+0.75
+
+0.00
+
+0.50
+
+0.00
+
+0.68
+
+0.00
+
+0.67
+
+that, in this task, the songs containing the query word only are not considered as relevant songs. en, we use the following measure to assess the diversity of the retrieved songs:
+
+Diversity@n
+
+=
+
+|R
+
+ Sk |R|
+
+|
+
+,
+
+(9)
+
+where R denotes the set of relevant songs and Sk denotes the set of songs containing the given keyword k, from the retrieved n songs. Observing from the table, the proposed ICE outperforms the KBR method for the top 10 retrieval results, although the KBR method is naturally easy to achieve high precision in this task; that is because all songs retrieved by this method contain the given query word. Although the proposed ICE method cannot outperform the KBR method in terms of precision@100, our method provides more diverse retrieved results than the KBR approach does; that is, our ICE approach can retrieve the songs relevant in terms of similar concepts without resorting to keyword-matching, which is intractable for the classic KBR approach.
+
+3.4 Case Study
+is section provides several interesting case studies to demonstrate the capability of the proposed ICE in managing tasks which involve
+
+Table 8: An example for movie-to-word retrieval
+
+ery movie: Toy Story, 1995 (Animation, Adventure, Comedy)
+
+BPT
+
+ICE (exp-5)
+
+manias entraineuse taddeo anuelo portico bep meanness zanchi sarti ra n
+
+andy gave give sid tabbed robertson Named stu ed animals toys Toys
+
+both homogeneous and heterogeneous entities. First, Table 8 gives an example for a movie-to-word retrieval task, in which the top 10 cosine-similar words in the given movie, Toy Story (1995), are listed. As demonstrated in the table, while using the embeddings learned on BPT produces words unrelated to the given movie, our method provides much more reasonable results; for example, Andy is a major character and Sid is the main antagonist in the Toy Story.
+
+93
+
+Session 1C: Document Representation and Content Analysis 1
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 9: An example for movie-to-movie retrieval
+
+Movie query: e Avengers, 2012 (Action, Adventure, Sci-Fi)
+
+BPT
+
+ICE (exp-5)
+
+Justice League: War, 2014 (Animation, Action, Adventure) Lego DC Comics Super Heroes, 2015 (Animation, Action, Adventure) Falling Skies, 2011-2015 (Action, Adventure, Drama) Marvel Super Hero Adventures: Frost Fight!, 2015 (Animation) Doctor Mordrid, 1992 (Action, Fantasy, Horror)
+
+Justice League: War, 2014 (Animation, Action, Adventure) A Cosmic Christmas, 1977 (Animation, Short, Sci-Fi) Howard the Duck, 1986 (Action, Adventure, Comedy) Hellboy II: e Golden Army, 2008 (Action, Adventure, Fantasy)
+e War in Space, 1977 (Action, Adventure, Sci-Fi)
+
+Table 10: An example for word-to-movie retrieval
+
+Word query: alien
+
+BPT
+
+ICE (exp-5)
+
+e Blue Lagoon, 1949 (Adventure, Drama, Romance) Turner & Hooch, 1989 (Comedy, Crime, Drama) Only the Young, 2012 (Documentary, Comedy, Romance) Brute Force, 1947 (Crime, Drama, Film-Noir) Home, 2015 (Animation, Adventure, Comedy)
+
+Coneheads, 1993 (Comedy, Sci-Fi) Without Warning, 1980 (Sci-Fi, Horror)
+ey Came from Beyond Space, 1967 (Adventure, Sci-Fi) Ba le of the Stars, 1978 (Sci-Fi) Howard the Duck, 1986 (Action, Adventure, Comedy)
+
+Table 9 tabulates the top 5 retrieved movies given the movie, e Avengers (2012), as the query, which again demonstrates the fact that both BPT and ICE are e ective for homogeneous retrieval. Finally, we use the word alien to search for the relevant movies (see Table 10). Clearly, the BPT approach fails on this task because of retrieving irrelevant movies in terms of genre, whereas 4, if not all, of the top 5 movies retrieved by the proposed ICE are highly correlated Sci-Fi movies.
+4 CONCLUSION
+is paper presents a novel item concept embedding approach called the "ICE," which aims to model item concepts via textual information. In this approach, we provide a generalized network construction method to build a network involving heterogeneous nodes and a mixture of both homogeneous and heterogeneous relations. We then leverage the concept of neighborhood proximity to learn the embeddings of both items and words. With the proposed carefully designed ICE networks, the resulting embedding facilitates both homogeneous and heterogeneous retrieval, including item-toitem and word-to-item search tasks. Experiments on two real-world datasets show that ICE encodes useful textual information and thus outperforms traditional methods in various item classi cation and retrieval tasks. In the future, we plan to investigate how to integrate the proposed ICE method into the recommender systems to advance contextual recommendation tasks.
+5 ACKNOWLEDGEMENTS
+e authors thank Chih-Ming Chen for his helpful comments and thank KKBOX Inc. for providing the music dataset for investigation.
+is research was partially supported by the Ministry of Science and Technology in Taiwan under the grants MOST 105-2221-E-001035,104-2221-E-004-010, and 104-2420-H-004-033-MY3.
+REFERENCES
+[1] Yoshua Bengio, Re´jean Ducharme, Pascal Vincent, and Christian Janvin. 2003. A neural probabilistic language model. Journal of Machine Learning Research 3
+
+(2003), 1137­1155. [2] Shaosheng Cao, Wei Lu, and Qiongkai Xu. 2015. GraRep: Learning graph
+representations with global structural information. In Proceedings of the 24th ACM International on Conference on Information and Knowledge Management. 891­900. [3] Chih-Ming Chen, Ming-Feng Tsai, Yu-Ching Lin, and Yi-Hsuan Yang. 2016.
+ery-based music recommendations via preference embedding. In Proceedings of the 10th ACM Conference on Recommender Systems. 79­82. [4] Aditya Grover and Jure Leskovec. 2016. node2vec: Scalable feature learning for networks. In Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. 855­864. [5] H. Gui, J. Liu, F. Tao, M. Jiang, B. Norick, and J. Han. 2016. Large-Scale embedding learning in heterogeneous event data. In Proceedings of IEEE 16th International Conference on Data Mining. 907­912. [6] oc V Le and Tomas Mikolov. 2014. Distributed representations of sentences and documents. In Proceedings of the 31st International Conference on Machine Learning. 1188­1196. [7] Tomas Mikolov, Martin Kara a´t, Lukas Burget, Jan Cernocky`, and Sanjeev Khudanpur. 2010. Recurrent neural network based language model. In Proceedings of Interspeech. 1045­1048. [8] Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg S Corrado, and Je Dean. 2013. Distributed representations of words and phrases and their compositionality. In Advances in Neural Information Processing Systems 26. 3111­3119. [9] Je rey Pennington, Richard Socher, and Christopher D Manning. 2014. Glove: Global vectors for word representation. In Proceedings of Conference on Empirical Methods in Natural Language Processing, Vol. 14. 1532­1543. [10] Bryan Perozzi, Rami Al-Rfou, and Steven Skiena. 2014. DeepWalk: Online learning of social representations. In Proceedings of the 20th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. 701­710. [11] Bryan Perozzi, Vivek Kulkarni, and Steven Skiena. 2016. Walklets: Multiscale graph embeddings for interpretable network classi cation. arXiv preprint arXiv:1605.02115 (2016). [12] Gunther Schmidt. 2011. Relational Mathematics. Vol. 132. Cambridge University Press. [13] Jian Tang, Meng , and Qiaozhu Mei. 2015. PTE: Predictive text embedding through large-scale heterogeneous text networks. In Proceedings of the 21th ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. 1165­1174. [14] Jian Tang, Meng , Mingzhe Wang, Ming Zhang, Jun Yan, and Qiaozhu Mei. 2015. Line: Large-scale information network embedding. In Proceedings of the 24th International Conference on World Wide Web. 1067­1077. [15] Daixin Wang, Peng Cui, and Wenwu Zhu. 2016. Structural deep network embedding. In Proceedings of the 22Nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining. 1225­1234. [16] Suhang Wang, Jiliang Tang, Charu Aggarwal, and Huan Liu. 2016. Linked document embedding for classi cation. In Proceedings of the 25th ACM International on Conference on Information and Knowledge Management. 115­124. [17] Min Xie, Hongzhi Yin, Fanjiang Xu, Hao Wang, and Xiaofang Zhou. 2016. Graphbased metric embedding for next poi recommendation. In Proceedings of International Conference on Web Information Systems Engineering. 207­222.
+
+94
+
+

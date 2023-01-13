@@ -1,0 +1,186 @@
+SEJoin: an Optimized Algorithm towards Efficient Approximate String Searches
+Junfeng Zhou, Ziyang Chen, Jingrong Zhang
+School of Information Science and Engineering, Yanshan University
+{zhoujf, zychen}@ysu.edu.cn; jr.zhang.zjr@gmail.com
+
+ABSTRACT
+We investigated the problem of finding from a collection of strings those similar to a given query string based on edit distance, for which the critical operation is merging inverted lists of grams generated from the collection of strings. We present an efficient algorithm to accelerate the merging operation.
+Categories and Subject Descriptors
+H.3.3 [Information Systems]: Search process
+General Terms
+Algorithms, Experimentation
+Keywords
+Approximate String Search
+1. INTRODUCTION
+Approximate string searching is very important and has attracted great attention with its ever increasing applications in Web service-based environment, such as data cleaning, query suggestion, spell checking, etc., where a prerequisite is supporting instant feedbacks to many users, and any improvements on the search algorithm will have a great impact on the overall system performance.
+A query used for approximate string search finds from a collection of strings those similar to a given string. The similarity between two strings can be measured by different metrics such as edit distance, Jaccard similarity, and cosine similarity. In this paper, we focus on similarity search with edit distance thresholds. A broadly adopted method is using q-gram based strategy, which assumes that inverted lists of q-grams generated from the strings are built in advance [2­ 4], and works in two steps: (1) find from a set of lists the candidate strings; (2) apply the similarity function on the candidates to eliminate false positives. Similar to existing methods [2, 3], we aims at efficiently computing the set of candidates in the first step.
+2. PRELIMINARIES
+Let be an alphabet, for a string s consisting of the characters in , "|s|" is used to denote the length of s, "s[i, j] is the substring of s from the i-th to j-th character.
+Q-Grams: For a given positive integer q, a positional qgram of a given string s is a pair (i, g), where g is the q-gram
+Copyright is held by the author/owner(s). SIGIR'11, July 24-28, 2011, Beijing, China. ACM 978-1-4503-0757-4/11/07.
+
+of s starting at the i-th character, that is g = s[i, i + q - 1]. For example, if q = 2, and s = sigir, we have the set of qgrams G(s, q)={(1,si),(2,ig),(3,gi),(4,ir)}. For simplicity, the positional information is omitted in the following discussion.
+Approximate String Search: For two strings s1 and s2, the edit distance of s1 and s2 is the minimum number of edit operations (insertion, deletion, and substitution) on single character needed to transform s1 to s2, which is denoted as ed(s1, s2) in our discussion. For example, ed("sigir", "sigmod") = 3. Let M be a collection of strings and Q the query string, the problem can be stated as: finding all s  M such that ed(s, Q)  k for a given threshold k.
+According to the result of [1], if for two strings s1 and s2, ed(s1, s2) = k, then they have at least t common grams, where t = max(|s1|, |s2|) - q + 1 - qk. Therefore for a given query string Q, the problem of computing candidate strings can be solved by finding the set of string ids that appear at least t times on the inverted lists of the grams of Q.
+3. SWITCH-ELIMINATOR BASED JOIN
+For a given string query Q with m grams q1, q2, ..., qm, each qi corresponds to a list Li of sorted ids, Li is associated with a cursor Ci pointing to some element of Li. Henceforth, "Ci" or "element Ci" refers to the element Ci points to, when there is no ambiguity. The cursor can move to the element (if any) next to element Ci using advance(Ci). Initially, all cursors point to the first elements of the corresponding lists.
+Assume that for each list Li, all elements before Ci have been processed, and without loss of generalization, we use C1(Cm) to denote the list with the minimum (maximum) cursor value, i.e., C1  C2  ...  Cm, then we have the following result.
+Lemma 1. Assume that each cursor Ci(1  i  m) points to the first element of Li, then any element e of list Lj(1  j  t - 1) satisfying C1  e < Ct is impossible to appear at least t times.
+Proof. Since all cursors point to the first elements of the set of lists, e is impossible to appear in Lt since Ct is the first element of Lt. For the same reason, e would not appear in Lj(t < j  m). Thus e will not appear in all lists at least t times.
+Lemma 1 tells us that all elements that are less than Ct can be safely discarded initially. Accordingly, the basic idea of our method is to use Ct as the eliminator to probe list Li(1  i < t) until Ci  Ct. If Ct satisfies the requirements, output it as a candidate answer and move it to the next element.
+
+1249
+
+Algorithm 1: SEJoin(t, L1, L2, ..., Lm)
+
+1 R  ;
+
+2 while (there are at least t lists not empty) do
+
+3
+
+Sort all cursors such that C1  C2  ...  Cm;
+
+4
+
+k  0;
+
+5
+
+foreach(1  i  m, i = t) do
+
+6
+
+if (Ci > Ct) then break;
+
+7
+
+if (Ci < Ct) then
+
+8
+
+if (Li[pos(Ci) + ] < Ct) then
+
+9
+
+indexLookup(Li, Ct);
+
+10
+
+else sequencialScan(Li, Ct);
+
+11
+
+endif
+
+12
+
+if (Ci = Ct) then
+
+13
+
+k  k + 1; Move Ci to the next element;
+
+14
+
+endif
+
+15
+
+endfor
+
+16
+
+if (k  t) then R  R  {Ct};
+
+17
+
+Move Ct to the next element;
+
+18 endwhile
+
+Function indexLookup(Li, Ct)
+
+1 nStart  pos(Ci) +  + 1; 2 nEnd  |Li|; 3 while (nEnd - nStart > ) do
+
+4
+
+nM id  (nStart + nEnd)/2;
+
+5
+
+if (Li[nM id] = Ct) then
+
+6
+
+Ci  Li[nM id]; return;
+
+7
+
+else if (Li[nM id] < Ct) then
+
+8
+
+nStart  nM id + 1;
+
+9
+
+else nEnd  nM id - 1;
+
+10 endwhile
+
+11 foreach(x  [nStart, nEnd]) do
+
+12
+
+if (Li[x]  Ct) then
+
+13
+
+Ci  Li[x]; return;
+
+14
+
+else x  x + 1;
+
+15 endfor
+
+As shown in Algorithm 1, in each iteration (line 2-18), we first sort all lists according to their cursor values (line 3), such that after the sort operation, we have C1  C2  ...  Cm. In line 5-15, we probe all lists in the direction from 1 to m, and increase the counter k by 1 if Ci = Ct (line 12-13). Note that pos(Ci) is used to get the position of Ci in Li, seqentialScan() (line 10) is used to sequentially scan each element to make comparison with Ct, which is invoked only when the matched element1 of Ct is located very close to Ci in Li (less than  elements). In our experiment,  = log |Li| . If Li[pos(Ci) + ] < Ct, it means that the matched element of Ct in Li is located far away from Ci, thus we use indexLookup() to find the matched element for Ct. According Lemma 1 and Algorithm 1, we have the following theorem, the correctness is obvious and we omit the proof for limited space.
+Theorem 1. According to Algorithm 1, at any time, any element e of list Lj(1  j < t) satisfying C1  e < Ct cannot be a candidate answer.
+Compared with existing methods [2, 3], the difference lies in three aspects: (1) the eliminator element Ct that is used to conduct lookup operation on other lists is selected dynamically according to cursors values, not the length of lists, so as to skip more useless elements if possible; (2) before conducting lookup operation, we first check whether the matched element of Ct in Li is located close to Ci so as to take advantage of the benefits of sequential scan operation
+1For a given number n, the matched element ni of n in list Li is the first element that satisfies ni  n.
+
+Running Time (ms)
+
+80
+
+MergeSkip
+
+SEJoin
+
+60
+
+40
+
+20
+
+0 Q1 Q2 Q3 Q4 Q5 Q6 Q7 Q8 Q9 Q10 Q11 Q12 Q13 Q14 Q15 Q16 Q17 Q18 Q19 Q20 Q21 Q22 Q23 Q24
+
+Figure 1: Comparison of running time.
+
+(line 10 in Algorithm 1); (3) when finding the matched element by calling indexLookup(), unlike existing search methods, e.g., binary search, galloping search and interpolation search, that use a single strategy to reduce the search scope, our method uses binary search to quickly shrink the search interval (line 3-10 in Function indexLookup()) if its length is greater than ; otherwise, we use sequential scan operation to complete the index lookup operation (line 11-15 in Function indexLookup()).
+4. EXPERIMENT
+We have conducted experiments to verify the efficiency of SEJoin algorithm by comparing it with the MergeSkip [2] algorithm. We implement both the MergeSkip and SEJoin algorithms using Visual C++. We use DBLP dataset and generate lists of 2-grams for strings. We have compared 24 query strings containing 4 to 11 grams, of which the longest inverted list contains 115947 ids, and the shortest list contains 616 ids. In our experiment, t = n - 2, where n is the number of grams for a query string.
+As shown in Figure 1, SEJoin is more efficient than MergeSkip algorithm for all queries. The reason lies in that the eliminator used to probe other lists comes from the tth list, and the index lookup operation used in our method will firstly check whether the matched id for the current eliminator is located close to the cursor of the probed list, so as to take advantage of the sequential scan operation.
+5. CONCLUSIONS
+In this paper, we presented a novel algorithm, namely SEJoin, for efficient processing of approximate string search. The experimental results verified the performance advantage of our method.
+Acknowledgments: This research was partially supported by the grants from the National Natural Science Foundation of China (No.61073060, 61040023).
+6. REFERENCES
+[1] P. Jokinen and E. Ukkonen. Two algorithms for approximate string matching in static texts. In MFCS, pages 240­248, 1991.
+[2] C. Li, J. Lu, and Y. Lu. Efficient merging and filtering algorithms for approximate string searches. In ICDE, pages 257­266, 2008.
+[3] S. Sarawagi and A. Kirpal. Efficient set joins on similarity predicates. In SIGMOD Conference, pages 743­754, 2004.
+[4] Z. Yang, J. Yu, and M. Kitsuregawa. Fast algorithms for top-k approximate string matching. In AAAI, 2010.
+
+1250
+
+

@@ -1,0 +1,1446 @@
+Document Clustering with Universum
+
+Dan Zhang
+Computer Science Department
+Purdue University,
+West Lafayette, IN 47907, US
+zhang168@cs.purdue.edu
+
+Jingdong Wang
+Microsoft Research Asia Beijing, P.R. China, 100080
+jingdw@microsoft.com
+
+Luo Si
+Computer Science Department
+Purdue University, West Lafayette, IN 47907, US
+lsi@cs.purdue.edu
+
+ABSTRACT
+Document clustering is a popular research topic, which aims to partition documents into groups of similar objects (i.e., clusters), and has been widely used in many applications such as automatic topic extraction, document organization and filtering. As a recently proposed concept, Universum is a collection of "non-examples" that do not belong to any concept/cluster of interest. This paper proposes a novel document clustering technique ­ Document Clustering with Universum, which utilizes the Universum examples to improve the clustering performance. The intuition is that the Universum examples can serve as supervised information and help improve the performance of clustering, since they are known not belonging to any meaningful concepts/clusters in the target domain. In particular, a maximum margin clustering method is proposed to model both target examples and Universum examples for clustering. An extensive set of experiments is conducted to demonstrate the effectiveness and efficiency of the proposed algorithm.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval--clustering; I.2.6 [Artificial Intelligence]: Learning
+General Terms
+Algorithms, Performance, Experimentation
+Keywords
+Clustering, Universum, Maximum Margin Clustering, Constrained Concave-Convex Procedure (CCCP)
+1. INTRODUCTION
+Document clustering is a very important topic in information retrieval, and has received substantial attentions for
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+unsupervised document organization, automatic topic extraction, etc (e.g. [1, 2, 7, 13, 15, 21, 23]). It aims to partition documents into groups of similar objects (i.e., clusters). From the information retrieval perspective, what document clustering does is to learn hidden patterns underlying the available documents, where these hidden patterns may contain some interesting concepts. A good clustering algorithm can automatically organize documents into a set of meaningful clusters for efficient browsing and navigation.
+Current document clustering algorithms can be roughly divided into two categories (i.e., hierarchical methods and partitioning methods). The hierarchical methods divide the data into a hierarchical structure by employing bottom up or top down methods [6, 15, 18]. A typical algorithm for the hierarchical method is the hierarchical agglomerative clustering, which starts from taking each document as a single cluster, and then merges these documents gradually to build larger and larger clusters, until the whole dataset is merged as one single cluster. Partitioning methods divide the whole dataset into a fixed number of disjoint clusters [5]. A typical algorithm for the partitioning method is KMeans [5]. The basic motivation of KMeans is to find a set of clustering assignments such that the sum of distances between examples and their associated cluster centers can be minimized. Besides KMeans, some probabilistic methods such as Gaussian Mixture Model (GMM) [14] and Probabilistic Latent Semantic Analysis (PLSA) [8], as well as some graph based methods such as Normalized Cut (NCut) [19], have also shown promising results in clustering. However, one of the most significant drawbacks of these methods is that they only consider the target examples that need to be partitioned, but neglect other information that could be beneficial for clustering. It makes the clustering results only depend on the target examples. As shown in Fig.1(a), the traditional partitioning method wrongly groups one data point (square) into the other cluster, without employing any other prior knowledge.
+Universum is a set of examples that do not belong to any concept/cluster of interest, which are different from the target examples that we need to cluster. Some previous work [4, 20, 28, 35] has demonstrated the benefits of treating these examples as prior knowledge imposed on the classification hyperplanes. However, there is no work on applying the Universum examples to the clustering problems. The major contribution of this paper is to show that Universum examples can be used to improve the performance of document clustering. The intuition is that Universum examples should not have a clear pattern, or meaningful concepts/clusters in
+
+873
+
+(a)
+
+(b)
+
+Figure 1: (a) An example clustering result of a typical clustering algorithm (partitioning) with two classes of examples (i.e., circles for class 1 and squares for class 2). It is clear that one square is misclassified; (b) An example clustering result with the guidance of Universum examples (i.e., check marks). Since Universum examples should not have a clear pattern/meaningful cluster to belong to, they should be distributed around the hyperplane, and provide some supervised information for the clustering problem. As can be seen from this picture, the previous misclassified example is now correctly classified.
+
+the target domain. This intuition provides valuable guidance of the clustering process. As shown in Fig.1(b), since the Universum examples do not belong to any of the two clusters, it should only distribute around the hyperplane that separates these two clusters. With the guidance of these Universum examples, the square that was mis-clustered in Fig.1(a) can now be assigned to the right group.
+This paper proposes a novel Document Clustering with Universum (DCU ) problem, which utilizes Universum examples in document clustering. In particular, a formulation ­ Maximum Margin Document Clustering with Universum (M2DCU ) is presented to solve this problem. This formulation is based on Maximum Margin Clustering [30], and aims at finding desired hyperplanes that maximize the margins on the (target) examples that need to be partitioned, and minimize the margins on the Universum examples. The new formulation is not a convex optimization problem and therefore cannot be optimized directly. So, we first relax the original problem and then solve it by using Constrained Concave-Convex Procedure (CCCP ) [26]. To accelerate the optimization speed for each sub optimization problem derived from CCCP, an extension of the Cutting Plane method [11] is designed. Our experiments on four real world datasets demonstrate the performance improvement brought by the Universum examples and show that the proposed method substantially outperforms state-of-the-art methods.
+The rest of the paper is organized as: Section 2 introduces the related work. Section 3 puts forward the novel DCU problem. Section 4 proposes the M2DCU algorithm. Section 5 presents the experimental results. Section 6 concludes this paper and points out some future research directions. The appendix proposes a novel optimization method to accelerate the optimization speed of the algorithm.
+2. RELATED WORK
+2.1 Universum
+The concept of Universum was first proposed in solving classification problems, and was defined as a set of "nonexamples" distributed in the same domain as the problem
+
+of interest, but known not belonging to any classes that need to be classified [28]. The channels of obtaining Universum examples are very diverse. In [28], three simple ways are suggested, i.e., the examples from some other categories that are known unlikely to belong to any of the target categories; the randomly generated examples; as well as the examples generated by randomly combining examples from different categories. Since they are not likely to belong to any of the target categories, when designing classifiers, these Universum examples should not be classified to any of the categories either.
+Out of this motivation, in [28], Jeston et al. designed the first classification algorithm that utilizes Universum examples ­ U -Support Vector Machines (U -SVM). This work adds a penalty term on the Universum examples to the formulation of the traditional Support Vector Machines (SVM) [5] so that the output given by the classifier will minimize the empirical classification loss on the target examples, and will not give clear classification assignments for the Universum examples. This work is reasonable and performs better than SVM, as shown in an extensive set of experiments [28]. However, it can only deal with binary supervised classification problems. Inspired by this paper, in [35], Zhang et al. extended the Universum algorithm to solve multi-class classification problems and improved the performance of semisupervised learning by using Universum examples. Later, Huang et al. proposed to use the Universum examples in a different way to solve the semi-supervised classification problems [9]. In [20], the authors analyzed some properties of U -SVM. In [4], Chen et al. designed a method to choose the most useful Universum examples for classification.
+All of the previous work has contributed a lot to the use of Universum examples in classification problems. However, there is no prior work on how to use Universum examples in clustering problems. In fact, in clustering, it is natural to consider the Universum examples as examples that do not belong to any of the clusters in the target domain. In this way, the Universum examples can be viewed as some supervised information in an unsupervised problem. It is also interesting to notice that in the toy experiments of [20], U -SVM performs much better than SVM when the number of labeled examples is small. In a clustering problem, since no labeled example is given, we would also expect a great advantage over the traditional clustering algorithms by the utilization of the Universum examples.
+
+2.2 Maximum Margin Clustering (MMC)
+The proposed method M2DCU is based on a recently developed algorithm ­ Maximum Margin Clustering (MMC ). MMC was first proposed in [30]. In [30], the authors borrowed the idea of a standard machine learning principle maximum margin principle, and used it for clustering. In particular, they tried to assign each of n instances to two classes {-1, +1} so that the separation between the two classes can be as large as possible. It is formulated as:
+
+min min
+y{-1,+1}n w,b,i
+s.t.
+
+1 2
+
+w
+
+2
+
++
+
+C n
+
+n
+i
+i=1
+
+(1)
+
+i = 1, . . . , n, yi(wT xi + b)  1 - i,
+
+i  0, -l  eT y  l,
+
+where
+
+n i=1
+
+i
+
+is
+
+divided
+
+by
+
+the
+
+number
+
+of
+
+examples
+
+to
+
+bet-
+
+ter capture how C scales with the data set size, where C is
+
+a trade-off parameter for the two parts of this formulation.
+
+874
+
+l  0 is a constant controlling the class imbalance and e is an all-one vector [30]. The final clustering result is given by y. It is clear that if we subsequently run an SVM with the clustering assignment obtained from MMC, the margin would be maximal among all possible labelings.
+In this paper, we consider the distribution of Universum examples as prior knowledge in MMC. With similar motivations, in [29, 32], the authors propose to use some known similarity relationships (e.g., must-link, cannot-link and family/possible-link) between examples as the prior information in clustering. However, in their work, all the documents are still associated with some meaningful clusters, while this is not the case for clustering with Universum.
+
+3. PROBLEM STATEMENTS
+First of all, the new problem ­ Document Clustering with Universum (DCU) is formally proposed. Suppose we are given a set of documents/examples, represented by X = {x1, x2, . . . , xn}, xi  Rd, where n is the total number of documents. Besides these documents, some Universum documents/examples, which are in the same domain as X , but known not belonging to any meaningful groups in X , are also available, and denoted as X  = {x1, x2, . . . , xN }, xi  Rd. N is the number of Universum examples. For convenience, throughout this paper, the examples in X are denoted as "target examples/documents", while the examples in X  are referred to as "Universum examples/documents". The main objective of DCU is to divide the target examples into k clusters, with the help of Universum examples. A 1 × n vector y is used here to denote the cluster assignment array, with yi being the cluster assignment for xi.
+
+4. MAXIMUM MARGIN DOCUMENT CLUSTERING WITH UNIVERSUM
+
+4.1 Formulation
+The proposed formulation tries to find a set of hyperplanes that can separate examples from different clusters, and minimize the confidence of assigning Universum examples to any category. To model these hyperplanes, for each cluster p  {1, 2, . . . , k}, we define a weight vector wp. For the target examples, we expect their cluster assignments to be as determined as possible. Therefore, M2DCU intends to maximize the clustering margins/confidence on the target examples. For the Universum examples, since they should not be assigned to any one of the k clusters, we expect that the margins1/confidence on them should be small, which is expressed as:
+
+i = 1, . . . , N, wuTi xi - wvTi xi  i + 1,
+
+(2)
+
+where 1 is a tolerance parameter, ui = arg maxp wpT xi , vi = arg maxp\ui wpT xi 2. i is the nonnegative hinge loss that needs to be optimized on the Universum examples. The
+
+1It can also be considered as the difference between the largest output and the second largest output. As we shall see later, this kind of margin definition on Universum examples is also consistent with the margin defined on the target examples in Eq.(7). 2Throughout this paper, "\" means ruling out.
+
+concrete formulation of M2DCU can be written as:
+
+min
+wp ,y,i 0,i 0
+
+1k 2 p=1
+
+wp
+
+2
+
++
+
+Cl n
+
+n
+i
+i=1
+
++
+
+Cu N
+
+N
+i
+i=1
+
+(3)
+
+s.t. i = 1, . . . , n, r = 1, . . . , k
+
+(4)
+
+wyTi xi + yi,r - wrT xi  1 - i
+
+i = 1, . . . , N, wuTi xi - wvTi xi  i + 1
+
+(5)
+
+n
+
+n
+
+p, q {1, . . . , k}, - l  wpT xi - wqT xi  l,
+
+i=1
+
+i=1
+
+where yi,r is the indication function, which equals 1 if r equals yi and otherwise 0. Constraint (4) is the large margin constraint on the target examples. Constraint (5) minimizes the margins on the Universum examples. l is a parameter that controls the cluster balance to avoid trivially "optimal" solutions, which may assign most of the examples to one cluster. It is clear that the proposed formulation tries to maximize the margins/confidence on the target examples, and minimize the margins/confidence on Universum examples simultaneously. By doing so, the maximum margin clustering procedure can be guided by the prior knowledge from the Universum examples.
+Next we will show the number of variables involved in problem (3) can be reduced by n. In particular, Eq.(3) is equivalent to the following optimization problem:
+
+min
+wp ,i 0,i 0
+
+1k 2 p=1
+
+wp
+
+2
+
++
+
+Cl n
+
+n
+i
+i=1
+
++
+
+Cu N
+
+N
+i
+i=1
+
+(6)
+
+s.t. i = 1, . . . , n, r = 1, . . . , k
+
+(7)
+
+wuTi xi + ui,r - wrT xi  1 - i
+
+i = 1, . . . , N, wuTi xi - wvTi xi  i + 1
+
+(8)
+
+n
+
+n
+
+p, q {1, . . . , k}, - l  wpT xi - wqT xi  l,
+
+i=1
+
+i=1
+
+where ui = arg maxp wpT xi, and the optimal yi equals ui. Furthermore, for the convenience of computation, three concatenated vectors are introduced:
+
+w = [w1T , w2T , · · · , wpT , · · · , wkT ]T ,
+
+(9)
+
+xi(p) = [0, · · · , xTi , · · · , 0]T , xi(p) = [0, · · · , xi T , · · · , 0]T ,
+
+where 0 is a 1 × d zero vector. In xi(p), only the (p - 1)d to pd-th elements are nonzero and equals xi and it is clear that wT xi(p) = wpT xi. xi(p) is defined similarly as xi(p). We propose to absorb ui,r into i and use a separate variable ir for each constraint. The function wvTi xi is nonconvex. To simplify the formulation, we relax this function by meant\ui {wT xi(t)}. Here, the "mean" function calculates the average value of the input function with respect to the subscript variable. Then, Eq.(6) is rewritten as:
+
+min
+w,ir 0,i0
+s.t.
+
+1 2
+
+w
+
+2
+
++
+
+Cl nk
+
+nk
+ir
+i=1 r=1
+
++
+
+Cu N
+
+N
+i
+i=1
+
+i = 1, . . . , n, r = 1, . . . , k
+
+(10) (11)
+
+wT xi(ui) - wT xi(r)  1 - ir i = 1, . . . , N,
+
+(12)
+
+k
+
+k -
+
+1
+
+(wT
+
+xi(ui )
+
+-
+
+meant{wT
+
+xi(t) })
+
+
+
+i
+
++
+
+1
+
+n
+p, q {1, 2, . . . , k}, - l  wT (xi(p) - xi(q))  l.
+
+i=1
+
+875
+
+This formulation is reasonable, however, it is both nonconvex and nonsmooth. Therefore, it cannot be solved directly. We will show how to solve this problem by using CCCP in the following section.
+
+4.2 CCCP Decomposition
+
+The nonconvexity in problem (10) is caused by the con-
+
+straint (11) and (12). However, it can be considered as the
+
+difference between two different convex functions3. There-
+
+fore the Constrained Concave-Convex Procedure (CCCP)
+
+can be employed to solve this problem.
+
+Given an initial point w0, CCCP computes w(t+1) 4 from
+
+w(t) iteratively by replacing wT xi(ui) and wT xi(ui ) in problem (10) with their corresponding first order Taylor expan-
+
+sions at w(t) and solves the resulting quadratic programming
+
+problem, until convergence. Since wT xi(ui) and are non-smooth, their sub-gradients are used in
+
+twheTirxifi(urist)
+
+order Taylor expansions. More precisely, for the t-th CCCP
+
+iteration, wT xi(ui) and wT xi(ui ) are replaced by wT xi(u(it))
+
+and
+
+wT
+
+x
+i(ui(t)
+
+)
+
+,
+
+where
+
+u(it)
+
+=
+
+arg maxp(w(t))T xi(p)
+
+and
+
+ui (t) = arg maxp(w(t))T xi(p). In this way, problem (10) is
+
+decomposed into a set of convex subproblems and for the
+
+t-th CCCP iteration, the corresponding subproblem is:
+
+min
+w,ir 0,i0
+s.t.
+
+1 2
+
+w
+
+2+
+
+Cl nk
+
+n
+
+k
+
+ir
+
++
+
+Cu N
+
+N
+
+i
+
+i=1 r=1
+
+i=1
+
+i = 1, . . . , n, r = 1, . . . , k
+
+(13)
+
+wT xi(u(it)) - wT xi(r)  1 - ir i = 1, . . . , N,
+
+k
+
+k -
+
+1 (wT
+
+x
+i(ui (t))
+
+-
+
+meanb{wT
+
+xi(b) })
+
+
+
+i
+
++
+
+1
+
+n
+p, q {1, 2, . . . , k}, - l  wT (xi(p) - xi(q))  l.
+
+i=1
+
+It is clear that by using CCCP together with the subgradi-
+
+ent, during each iteration, we are trying to maximize the
+
+clustering margin on the target examples, and minimize
+
+the margin on the Universum examples, based on the clus-
+
+ter assignments obtained in the previous iteration. It has
+
+been verified that CCCP decreases the objective function
+
+monotonically [26], and is guaranteed to find a local op-
+
+timal solution in a relatively small number of iterations.
+
+The whole algorithm is then described in Table 1. Here,
+
+J (t)
+
+=
+
+1 2
+
+w(t)
+
+2
+
++
+
+Cl nk
+
+n i=1
+
+k r=1
+
+i(rt)
+
++
+
+Cu N
+
+N i=1
+
+i(t) .
+
+The proposed algorithm is straightforward. But if the
+
+number of target examples, as well as the Universum exam-
+
+ples goes large, or/and if the data dimension is high, directly
+
+solving problem (13) in the primal form may be very time
+
+consuming, since it involves a lot of optimization variables
+
+and constraints. There are many optimization alternatives
+
+to solve this efficiency problem [10, 24]. In this paper, we
+
+3For constraint (11), wT xi(ui) is a convex and nonsmooth function, and wT xi(r) - ir is convex and smooth. This constraint can be considered as the difference of these two convex functions, i.e., (wT xi(r) - ir) - wT xi(ui)  -1. In the same way, constraint (12) can also be considered as the difference of two convex functions. 4The superscript t is used to denote that the result is obtained from the t-th CCCP iteration.
+
+Algorithm: M2DCU Input: 1. A set of target documents: X = {x1, ...., xn} 2. A set of Universum examples: X  = {x1, ...., xN } 2. parameters: regularization parameter Cl and Cu, tolerance parameter for Universum examples 1 = 0.5, CCCP solution precision 2 = 0.01, cluster number k, cluster size balance parameter l Output: The cluster assignment y CCCP Iterations: 1. Construct X = {xi(r)}, X  = {xi(r)} 2. Initialize w0, t=0, J = 103, J (-1) = 103 3. while J/J (t-1) > 2 do 4. Derive problem (13) by updating u(it) = arg maxp(w(t))T xi(p) and ui (t) = arg maxp(w(t))T xi(p). 5. t = t + 1 6. Get (w(t), J (t)) by solving problem (13). 7. J = J (t-1) - J (t) 8. end while 9. Cluster Assignment: For xi, the corresponding cluster assignment yi = arg maxp (w(t))T xi(p).
+Table 1: Algorithm description: M2DCU
+suggest a novel optimization method, which is an extension of the cutting plane method [10], to solve problem (13). The detail of this optimization method is elaborated in the Appendix A.
+5. EXPERIMENTS
+An extensive set of experiments is conducted to validate the effectiveness and the efficiency of the proposed method5. These experiments are conducted with Matlab r2008a on a 2.0GHZ Intel Quad Core computer with 4.0GB main memory.
+5.1 Universum Examples
+In practice, the Universum examples can be obtained easily. In this paper, three different ways are first employed to generate the Universum examples. A Universum selection method is then used to choose the most useful Universum examples.
+Urest: some documents that are not included in the clustering tasks [28, 35]. We will elaborate Urest for different clustering tasks when introducing datasets. Although this generation method sounds like needing category information, this is not necessary for a real application of clustering because it can obtain a separate set of documents that are not in categories in consideration. For example, we may be interested in clustering publications in some major computer science conferences (documents in major categories in their datasets), and we can assume Urest consists of articles in a set of very specialized conferences on minority subject areas in computer science or even articles in another discipline.
+Urand: Generate uniformly distributed features within the
+5The code and data can be found on the author's homepage.
+
+876
+
+range of the min and max values on each dimension of the
+
+target examples [28, 35].
+
+Umean: In [28], the authors designed some Universum examples which are combinations of different pictures from
+
+different categories. However, in a clustering problem, no la-
+
+bel information is given. Therefore, an alternative method
+
+is used to design the Universum examples in the cluster-
+
+ing problem. KMeans is first employed to pre-partition the
+
+whole dataset into k groups.
+
+k(k-1) 2
+
+Universum
+
+examples
+
+are then generated by picking two clustering centers each
+
+time from the k groups and merging them together.
+
+Uselect: In [4], the authors pointed out that the Universum examples that lie between different categories are the most
+
+helpful ones. Their basic motivation is reasonable. How-
+
+ever, their method is only designed for classification prob-
+
+lems, and is very time consuming. In this paper, we pick the
+
+most useful Universum examples for clustering in a different
+
+way. Our basic intuition is that the Universum examples
+
+that are closest to the target examples are the most useful
+
+ones for clustering. Although these Universum examples are
+
+close to the target examples, they do not belong to any of
+
+the clusters. So, they should have much higher impacts on
+
+the clustering results than the ones that lie far away. In or-
+
+der to measure the closeness of the Universum examples, a
+
+Gaussian Mixture Model is first trained on the target exam-
+
+ples, with k being the number of gaussian models. Then, for
+
+each Universum example, we calculate the probability that
+
+it is generated by using this Gaussian Mixture Model. The
+
+Universum examples with the highest generation probabili-
+
+ties are then selected for use, and are referred to as Uselect. In our experiments, the top 10 percents of all the Universum
+
+examples are selected. As observed from these experiments,
+
+the selected proportions of Urest and Umean are much higher
+
+than that of Urand. This is because the randomly generated
+
+Universum often has a very low probability to be close to
+
+the target examples. But for Urest and Umean, they are often
+
+closer to the target examples.
+
+5.2 Datasets
+We use four text datasets in our experiments. 20Newsgroup: This is a benchmark dataset6, which contains four main categories, i.e., `comp', `rec', `sci', `talk', as well as some other categories with small number of examples, such as `alt.atheism', `misc.forsale', etc. The four main categories are used for clustering, while examples in the remaining categories are used as Urest. WebKB This dataset contains webpages from computer science departments at around four different universities7. They are divided into 7 categories (i.e., student, faculty, staff, course, project, department and other). We choose webpages from four categories as target examples for clustering (i.e., course, faculty, project, student), and the remaining 2 categories, i.e., "other" and "staff" will serve as Urest . Reuters-Volume I (ReutersV1): It is an archive of over 800, 000 manually categorized newswire stories [12]. A subset of ReutersV1 is used. There are in total 126 topics in it. In the experiments, we choose examples from three categories "ECAT", "C151", and "M14" in this subset as target examples, and some examples from the remaining categories
+
+6http://people.csail.mit.edu/jrennie/20Newsgroups/ 7http://www.cs.cmu.edu/webkb/
+
+are randomly selected as Urest. To avoid some overlap problems, the target examples with more than one label from these three categories are removed.
+Reuters21578: This dataset contains documents collected from the Reuters newswire in 19878. There are in total 135 categories in this dataset. In our experiments, we use two subsets of this data collection, i.e., Reuters21578-1 and Reuters21578-2. Reuters21578-1 contains 6 categories among these 135 topics. Similar to ReutersV1, the documents associated with more than one of these 6 categories are not used. Reuters21578-2 contains another 10 categories. And the documents associated with more than one of these 10 categories are not used. For both of these sub-datasets, Urest are randomly selected from examples in the remaining categories.
+The basic information of these datasets is summarized in Table 2. For all of these documents, the tf-idf (normalized term frequency and log inverse document frequency) [15] features are extracted, with the stop words being removed and porter [15] as the stemmer. Furthermore, the most frequently appeared words are picked.
+5.3 Methods
+In experiments, the number of clusters k is set to be the true number of classes in target examples for all clustering algorithms. As described in Section 5.1, three different Universum methods are used in this paper. But we will not use them directly. The selection method mentioned previously is used to select the most useful Universum examples. Uselect is then used for M2DCU as selected Universum examples. The class imbalance parameter l is set by grid search from the grid [0.001, 0.01, 0.1, 1, 10]. The parameter Cl is searched from the exponential grid 2[1:1:6] and the parameter Cu is searched through [0.001, 0.01, 0.1, 1, 10]. To measure the effect brought by the Universum examples, we further report the performance of M2DCU-0, in which the Cu in problem (13) is set to be 0, and tune the other parameters using exactly the same way as we do for M2DCU.
+Several different kinds of clustering methods are used for comparison. It includes: the probability generative method ­ Gaussian Mixture Model (GMM) [14]; the methods based on matrix factorizations, such as Nonnegative Matrix Factorization (NMF) [31] and Probabilistic Latent Semantic Analysis (PLSA) [8]; spectral/graph based methods, such as Normalized Cut (Ncut) [33], Clustering with Local and Global Consistency (CLGR) [27] and KMeans; Maximum Margin based clustering, such as CPM3C [36]. For both KMeans and GMM, for each experiment, the result is summarized over 50 independent runs to avoid local optimal. For Ncut, its gaussian similarity is determined by local scaling [34]. The formulation of CPM3C [36] is similar to M2DCU0, but there is a significant difference in their optimization methods. The outer iteration of CPM3C is the cutting plane method and its inner iteration is CCCP. However, when using the cutting plane method to solve a nonconvex problem, the convergence property and optimality of the solution cannot be guaranteed. The parameters of CPM3C are tuned using exactly the same settings as M2DCU-0.
+8http://www.daviddlewis.com/resources/testcollections /reuters21578/
+
+877
+
+5.4 Evaluation Metrics
+
+5.4.1 Clustering Accuracy (Acc)
+
+The clustering accuracy (Acc) [25, 30, 36] is used to evaluate the final clustering performance. Specifically, we first take a set of labeled examples, remove the labels of these examples and run the clustering algorithms, then we relabel these examples using the clustering assignments returned by the algorithms. Finally, we measure the percentage of correct classifications by comparing the true labels and the labels assigned by the clustering algorithms as follows:
+
+Acc
+
+=
+
+1 n
+
+n
+
+(yi, map(ci)),
+
+i=1
+
+where, map(·) is a function that maps each cluster index to a class label, which can be found by the Hungarian algorithm [16]. ci and yi are the cluster index of xi and the true class label. (a, b) is a function that equals 1 when a equals b, and 0 otherwise.
+
+5.4.2 Normalized Mutual Information (NMI)
+Another evaluation metric we employed here is the Normalized Mutual Information (NMI) [22], which was originally a symmetric measure to quantify the statistical information shared between two distributions. More precisely, for two random variables X and Y , NMI is defined as:
+
+N M I(X, Y ) = I(X, Y ) .
+
+(14)
+
+H(X)H(Y )
+
+Here, I(X, Y ) is mutual information between X and Y , while H(X) and H(Y ) are entropies of X and Y . If there is a one to one correspondence between the distribution of X and that of Y , NMI equals one. From the perspective of information theory, it means all of the information encoded in X (sender) has already been correctly delivered to Y (receiver). Otherwise, if Y is merely a uniform distribution, NMI equals zero, which means no information would be transferred from X to Y . It is clear that N M I(X, X) = 1, which achieves the maximal possible value of NMI. Given two clustering results, we can consider the clustering assignments as distributions of random variables, and NMI in Eq.(14) can be estimated as:
+
+NMI =
+
+k p=1
+
+k q=1
+
+np,q
+
+log(
+
+n·np,q np n^ q
+
+)
+
+,
+
+(
+
+k p=1
+
+nplog
+
+np n
+
+)(
+
+k q=1
+
+n^q
+
+log
+
+n^ q n
+
+)
+
+(15)
+
+where np refers to the number of data contained in the pth cluster, nq is the number of data belonging to the q-th cluster, and np,q denotes the number of data that are in the intersection between the p-th and the q-th clusters.
+
+5.4.3 Rand Index (RandInd)
+
+Suppose two clustering assignments, I and L, are given.
+
+I = {I1, I2, . . . , Ik} represents the set of final clustering re-
+
+sults and Ii is the i-th cluster. L = {L1, L2, . . . , Lk} denotes
+
+the set of true data classes such that Li represents the i-th
+
+class.
+
+The rand index measures the similarity between I and L
+
+as
+
+[17]:
+
+R
+
+=
+
+a+b a+b+c+d
+
+,
+
+where
+
+a
+
+is
+
+the
+
+number
+
+of
+
+data
+
+pairs
+
+in X that are in both of these two clusters. b represents the
+
+number of data pairs in X that are in different sets in these
+
+two clusters. c is the number of data pairs that are in the
+
+same set in I but in the different sets in L. d denotes the number of data pairs in X such that they are in different sets in I but the same set in L. It is natural to consider a + b as the number of agreements between I and L, while c + d represents the number of disagreements. If R equals 0, it means I and L are totally different, and if R equals 1, it means these two cluster assignments are exactly the same.
+5.5 Clustering Results
+The clustering results are reported from Table 3 to Table 5. In Table 6, the CPU running time of these different methods is also given.
+From the clustering results, we can see that in all cases M2DCU performs better than M2DCU-0, which clearly demonstrates the benefits brought by the involvement of Universum examples. When compared with the probability generative methods, such as GMM, M2DCU prevails in all cases. For the methods based on matrix factorizations, such as NMF and PLSA, their performances are good in some cases. As can be seen from Table 4, the NMI performance of M2DCU on 20Newsgroup is worse than that of PLSA and NMF, and on Reuters21578-2, the Rand Index of NMF is also higher than M2DCU. But it is clear that for the other clustering measurements on these datasets, the proposed method performs better than NMF and PLSA. For example, for the clustering accuracy and Rand Index measurements on 20Newsgroup, the performances of the proposed method are higher than NMF and PLSA. It is safe to say that in most cases, the proposed method performs much better than the matrix factorization based methods. Ncut, CLGR, and KMeans are spectral based methods, whose performances mainly rely on graph factorization. These methods are reasonable, which place the cluster boundaries in the low density regions of the dataset. However, they do not utilize the Universum examples to further guide the clustering process, and therefore, their performances are inferior to that of M2DCU.
+As a maximum margin clustering method, although the formulations of CPM3C and M2DCU-0 are similar, CPM3C uses the cutting plane method to solve a non-convex optimization problem. As previously claimed, the cutting plane method is not originally designed to solve non-convex optimization problems, and therefore, the performance of CPM3C cannot be guaranteed. Different from CPM3C, M2DCU uses the CCCP to solve the non-convex optimization problem, and the cutting plane method is suggested to solve the convex sub-problems derived from each CCCP iteration, and therefore it is theoretically much more elegant than CPM3C. As we shall see from experiments, in almost all cases, both M2DCU and M2DCU-0 perform better than CPM3C, which clearly validates our claims.
+As for the CPU time, M2DCU is ranked among the top three fastest algorithms in three of the five datasets. For the experiments on Reuters21578-1 and Reuters21578-2, the proposed method are seemingly slower than some other algorithms. However, it is clear that the corresponding clustering performances of the proposed method are much higher than those of the ones with faster CPU running times. We suspect that the lower efficiency of the proposed method on these two datasets is caused by the data distributions in these two datasets, which increases the number of convergence steps. It is interesting to notice that on WebKB dataset the CPU running time of M2DCU is shorter than
+
+878
+
+Dataset 20Newsgroup
+WebKB ReutersV1 Reuters21578-1 Reuters21578-2
+
+Categories 4 5 3 6 10
+
+#Dim 6600 4560 8625 927 927
+
+# PCA Dim 1025 700 473 189 189
+
+#Documents 16060 3223 19619 8050 1689
+
+# Urest 2768 3660 7592 2192 4233
+
+# Urand 1000 1000 1000 1000 1000
+
+# Umean 6 10 3 15 45
+
+# Uselected 378 467 860 321 528
+
+Table 2: The detailed description of the datasets. # Dim represents the original data dimension, while #PCA Dim means the dimension after using Principal Component Analysis (PCA). For M2DCU, KMeans, Ncut, GMM, CPM3C, CLGR, the datasets are processed by PCA to increase the efficiency and reduce some noise. But for NMF, PLSA, since they require that the features should be non-negative, the dataset processed by PCA cannot be used. So, we run these two algorithms in the original feature space. The Universum examples used in experiments are denoted as Uselected, which are selected from Urest, Urand and Umean.
+
+20Newsgroup WebKB
+ReutersV1 Reuters21578-1 Reuters21578-2
+
+M2 DCU 69.0 62.6 95.7 76.6 53.2
+
+M2 DCU-0 63.1 59.2 94.8 73.2 50.7
+
+KMeans 60.7 48.3 61.1 45.6 38.4
+
+NMF 64.3 47.8 84.4 57.4 50.0
+
+Ncut 54.9 47.2 75.2 62.6 40.4
+
+GMM 51.9 60.4 69.1 59.4 41.8
+
+CPM3C 56.6 51.4 88.1 60.6 43.9
+
+CLGR 45.8 48.9 80.4 47.6 38.7
+
+PLSA 66.5 52.7 85.6 48.7 47.1
+
+Table 3: Clustering Accuracy (%) comparisons. The results marked with black represent the best performances on the corresponding datasets. M2DCU-0 represents the case when the weight of the Universum term Cu in Eq.(13) is set to be 0. It is clear that the Universum examples increase the maximum margin clustering performances dramatically. Although the formulations are similar, CPM3C and M2DCU-0 differ in their optimization methods. For KMeans and GMM, the results are summarized over 50 independent runs.
+
+20Newsgroup WebKB
+ReutersV1 Reuters21578-1 Reuters21578-2
+
+M2 DCU 0.408 0.372 0.827 0.575 0.503
+
+M2 DCU-0 0.361 0.340 0.803 0.536 0.486
+
+KMeans 0.357 0.283 0.435 0.442 0.397
+
+NMF 0.443 0.342 0.576 0.517 0.456
+
+Ncut 0.252 0.181 0.585 0.448 0.422
+
+GMM 0.205 0.333 0.468 0.508 0.365
+
+CPM3C 0.278 0.307 0.624 0.412 0.418
+
+CLGR 0.209 0.242 0.617 0.275 0.399
+
+PLSA 0.476 0.335 0.592 0.497 0.434
+
+Table 4: Normalized Mutual Information (NMI) comparisons. The results marked with black represent the best performances on the corresponding datasets. M2DCU-0 represents the case when the weight of the Universum term Cu in Eq.(13) is set to be 0. Although in 20Newsgroup, the NMI of M2DCU is smaller than that of PLSA and NMF. But we can see that it improves the clustering results of M2DCU-0 with the use of Universum examples. And as we shall see, on the other two corresponding clustering indices, i.e, clustering accuracy, and rand index, M2DCU performs better than PLSA. For KMeans and GMM, the results are summarized over 50 independent runs.
+
+20Newsgroup WebKB
+ReutersV1 Reuters21578-1 Reuters21578-2
+
+M2 DCU 0.802 0.794 0.952 0.840 0.854
+
+M2 DCU-0 0.740 0.698 0.934 0.799 0.808
+
+KMeans 0.701 0.654 0.618 0.741 0.800
+
+NMF 0.727 0.740 0.814 0.778 0.860
+
+Ncut 0.591 0.643 0.778 0.673 0.792
+
+GMM 0.669 0.689 0.715 0.784 0.834
+
+CPM3C 0.711 0.667 0.855 0.691 0.748
+
+CLGR 0.598 0.609 0.839 0.614 0.813
+
+PLSA 0.785 0.737 0.825 0.759 0.847
+
+Table 5: Rand Index comparisons. The results marked with black represent the best performances on the corresponding datasets. M2DCU-0 represents the case when the weight of the Universum term Cu in Eq.(13) is set to be 0. It is clear that M2DCU shows the best performances on most of these datasets. For KMeans and GMM, the results are summarized over 50 independent runs.
+
+20Newsgroup WebKB
+ReutersV1 Reuters21578-1 Reuters21578-2
+
+M2 DCU 801 232 576 685 735
+
+M2 DCU-0 789 307 304 662 691
+
+KMeans 15204 1940 6303 3449 465
+
+NMF 35515 3465 32355 4065
+346
+
+Ncut 151760
+771 128810
+1094 99
+
+GMM 105440 18373 21495 11445
+1550
+
+CPM3C 22838 190 2264 382 256
+
+CLGR 207752
+821 162374
+4203 119
+
+PLSA 10032
+682 7551 447 197
+
+Table 6: CPU Running Time (in seconds). For each dataset, the top 3 fastest algorithms are marked in black. M2DCU-0 represents the case when the weight of the Universum term Cu in Eq.(13) is set to be 0. From this table, it is clear that the efficiency of M2DCU is comparable with that of the other methods. Please note that the CPU running time for KMeans and GMM reported here are the results of 50 independent runs. It is interesting to note that in WebKB, M2DCU is faster than M2DCU-0, which indicates introducing the Universum examples may sometimes reduce the number of CCCP iterations.
+
+879
+
+Clustering Accuracy NMI
+
+20Newsgroup
+70
+68
+66
+64
+62
+600 0.001 0.01 0.1 1 10
+Cu
+(a)
+
+20Newsgroup
+0.44
+0.42
+0.4
+0.38
+0.36
+0.340 0.001 0.01 0.1 1 10
+Cu
+(b)
+
+Figure 2: Parameter Sensibility on 20Newsgroup, with different Cu. It is clear that the performance is improved by incorporating the Universum examples.
+
+20Newsgroup
+70
+
+20Newsgroup
+0.5
+
+Clustering Accuracy
+NMI
+
+65
+
+0.4
+
+60
+
+0.3
+
+550
+
+20
+
+40
+
+60
+
+Cl
+
+(a)
+
+0.20
+
+20
+
+40
+
+60
+
+Cl
+
+(b)
+
+Figure 3: Parameter Sensibility on 20Newsgroup,
+with different Cl. From these two pictures, we can see that Cl is relatively stable in a very large range of the whole parameter space.
+
+that of M2DCU-0. We suspect that sometimes, introducing the Universum examples can reduce the number of CCCP iterations and therefore result in a shorter running time.
+Besides these comparison experiments, we also measure the parameter sensibility of the proposed method for Cu, Cl, l. The experiments are conducted on 20Newsgroup. In these experiments, Cu is tuned and evaluated through the grid [0.001, 0.01, 0.1, 1, 10]. Cl is from the grid 2[1:1:6]. And l is from the grid [0.001, 0.01, 0.1, 1, 10]. The parameter sensitivity experiments are shown from Fig.2 to Fig.4. In Fig.2, the performances with different Cu values are evaluated. Cu reflects the involvement of the Universum examples, where Cu = 0 means no involvement for the Universum examples. As can be seen from the trend of the performances, we can conclude that M2DCU benefits a lot by introducing the Universum examples. In Fig.3, it is shown that the performance of the proposed method increases with Cl at first, and is relatively stable within a very large range of the whole parameter space, especially after Cl reaches a relatively large value. And in Fig.4, we can see that the proposed method is relatively stable with respect to l. But the performance of the proposed method does decrease a little after a fixed l value. Therefore, a relatively small value of l is normally suggested. We have also observed similar behaviors on the other three datasets, i.e., WebKB, ReutersV1 and Reuters21578. But due to the limit of space, we cannot put these experimental results here.
+6. CONCLUSIONS
+Document clustering is an important research topic with
+
+Clustering Accuracy NMI
+
+80
+
+20Newsgroup
+
+75
+
+70
+
+65
+
+60
+
+505.001 0.01 l0.1
+
+1
+
+10
+
+(a)
+
+20Newsgroup
+0.5
+
+0.45
+
+0.4
+
+0.35
+
+0.3
+
+0.205.001 0.01 0.1
+
+1
+
+10
+
+l
+
+(b)
+
+Figure 4: Parameter Sensibility on 20Newsgroup, with different l. The proposed method is relatively stable w.r.t l. But if l is too large, the performance will deteriorate. So, normally a relatively small value of l is suggested.
+
+many practical applications. Previous document clustering methods only consider the examples that need to be clustered, but neglect the useful examples that can be obtained from some other sources. As a newly proposed concept, Universum, which is defined as a set of "non-examples" has been receiving more and more attentions. These examples can often be obtained easily and have already been shown the capability of improving the performances in classification problems. In this paper, we proposed a novel research problem ­ Document Clustering with Universum (DCU), which extends the idea of the utilization of Universum examples to document clustering problems, and suggest a method ­ Maximum Margin Document Clustering with Universum (M2DCU) to solve this problem. The experimental results show that the Universum examples can be used to improve the performance of clustering under the framework of Maximum Margin Clustering, and the proposed method performs substantially better than state-of-the-art methods in most cases. In the future, we will further investigate: 1. how the Universum examples can be integrated to other clustering algorithms, such as KMeans, GMM, NMF; 2. how to design better ways to select Universum examples.
+7. ACKNOWLEDGEMENT
+We thank the anonymous reviewers for valuable comments. This research was partially supported by the NSF research grants IIS-0746830, CNS-1012208, IIS-1017837, CCF- 0939370.
+References
+[1] R. Bekkerman, H. Raghavan, J. Allan, and K. Eguchi. Interactive clustering of text collections according to a userspecified criterion. In IJCAI, pages 684­689, 2007.
+[2] R. Bekkerman, S. Zilberstein, and J. Allan. Web page clustering using heuristic search in the web graph. In IJCAI, pages 2280­2285. IJCAI, 2006.
+[3] S. Boyd and L. Vandenberghe. Convex Optimization. Cambridge University Press, March 2004.
+[4] S. Chen and C. Zhang. Selecting informative universum sample for semi-supervised learning. In IJCAI, pages 1016­ 1021, 2009.
+[5] R. O. Duda, P. E. Hart, and D. G. Stork. Pattern Classification (2nd Edition). Wiley-Interscience, 2 edition, November 2001.
+[6] J. Gong and D. W. Oard. Selecting hierarchical clustering cut points for web person-name disambiguation. In Proceedings of the 32nd international ACM SIGIR conference on
+
+880
+
+Research and development in information retrieval, SIGIR '09, pages 778­779, New York, NY, USA, 2009. ACM. [7] J. He, E. J. Meij, and M. de Rijke. Result diversification based on query-specific cluster ranking. Journal of the American Society of Information Science and Technology, 2011. To appear. [8] T. Hofmann. Probabilistic latent semantic indexing. In SIGIR, pages 50­57, 1999. [9] K. Huang, Z. Xu, I. King, and M. R. Lyu. Semi-supervised learning from general unlabeled data. In ICDM, pages 273­ 282, 2008. [10] T. Joachims. Training linear svms in linear time. In KDD, pages 217­226, 2006. [11] J. Kelley Jr. The cutting-plane method for solving convex programs. Journal of the SIAM, pages 703­712, 1960. [12] D. D. Lewis, Y. Yang, T. G. Rose, and F. Li. Rcv1: A new benchmark collection for text categorization research. Journal of Machine Learning Research, 5:361­397, 2004. [13] Q. Li, B. M. Kim, and S.-H. Myaeng. Clustering for probabilistic model estimation for cf. In WWW (Special interest tracks and posters), pages 1104­1105, 2005. [14] X. Liu, Y. Gong, W. Xu, and S. Zhu. Document clustering with cluster refinement and model selection capabilities. In SIGIR, pages 191­198, 2002. [15] C. D. Manning, P. Raghavan, and H. Schu¨tze. Introduction to Information Retrieval. Cambridge University Press, 1 edition, July 2008. [16] C. H. Papadimitriou and K. Steiglitz. Combinatorial Optimization : Algorithms and Complexity. Dover Publications, July 1998. [17] W. M. Rand. Objective Criteria for the Evaluation of Clustering Methods. Journal of the American Statistical Association, 66(336):846­850, 1971. [18] N. Sahoo, J. Callan, R. Krishnan, G. T. Duncan, and R. Padman. Incremental hierarchical clustering of text documents. In CIKM, pages 357­366, 2006. [19] J. Shi and J. Malik. Normalized cuts and image segmentation. IEEE Trans. Pattern Anal. Mach. Intell., 22(8):888­ 905, 2000. [20] F. H. Sinz, O. Chapelle, A. Agarwal, and B. Sch¨olkopf. An analysis of inference with the universum. In NIPS, 2007. [21] M. Spitters and W. Kraaij. Unsupervised clustering in multilingual news streams. In LREC 2002 workshoop: Event Modelling for Multilingual Document Linking, pages 42­46, 2002. [22] A. Strehl and J. Ghosh. Cluster ensembles -- a knowledge reuse framework for combining multiple partitions. Journal of Machine Learning Research, 3:583­617, 2002. [23] T. Tao and C. Zhai. A mixture clustering model for pseudo feedback in information retrieval. In IFCS, 2004. [24] C. H. Teo, S. V. N. Vishwanathan, A. J. Smola, and Q. V. Le. Bundle methods for regularized risk minimization. Journal of Machine Learning Research, 11:311­365, 2010. [25] H. Valizadegan and R. Jin. Generalized maximum margin clustering and unsupervised kernel learning. In NIPS, pages 1417­1424, 2006. [26] A. S. Vishwanathan, A. J. Smola, and S. V. N. Vishwanathan. Kernel methods for missing variables. In AISTAT, pages 325­332, 2005. [27] F. Wang, C. Zhang, and T. Li. Regularized clustering for documents. In SIGIR, pages 95­102, 2007. [28] J. Weston, R. Collobert, F. H. Sinz, L. Bottou, and V. Vapnik. Inference with the universum. In ICML, pages 1009­ 1016, 2006. [29] E. P. Xing, A. Y. Ng, M. I. Jordan, and S. J. Russell. Distance metric learning with application to clustering with side-information. In NIPS, pages 505­512, 2002. [30] L. Xu, J. Neufeld, B. Larson, and D. Schuurmans. Maximum margin clustering. In NIPS, 2004. [31] W. Xu, X. Liu, and Y. Gong. Document clustering based on non-negative matrix factorization. In SIGIR, pages 267­273, 2003. [32] H. Yang and J. P. Callan. Near-duplicate detection by
+
+instance-level constrained clustering. In SIGIR, pages 421­ 428. ACM, 2006. [33] S. X. Yu and J. Shi. Multiclass spectral clustering. In ICCV, pages 313­319, 2003. [34] L. Zelnik-Manor and P. Perona. Self-tuning spectral clustering. In NIPS, 2004. [35] D. Zhang, J. Wang, F. Wang, and C. Zhang. Semisupervised classification with universum. In SDM, pages 323­333, 2008. [36] B. Zhao, F. Wang, and C. Zhang. Efficient multiclass maximum margin clustering. In ICML, pages 1248­1255, 2008.
+
+APPENDIX
+
+A. EFFICIENT OPTIMIZATION
+
+Formulation (13) is a standard quadratic programming subproblem for the t-th CCCP iteration. But if the number of constraints, i.e., the number of target examples and Universum examples, is huge, it would be very time consuming to solve this problem. Some of the previous large scale optimization methods can be adapted to solve this problem, such as [10] and [24]. In this section, inspired by [10], the cutting plane method [11], which has shown its effectiveness and efficiency in solving similar tasks, is suggested to solve this subproblem. But different from [10], which is mainly designed for optimization problems with only one set of constraints, in this paper, we propose a novel optimization method ­ Two-View Cutting Plane method that can be used to solve the optimization problem with two different sets of constrains, as is the case in problem (13).
+Similar to [10], problem (13) is first transformed to the following equivalent form:
+
+min
+w,0, 0
+
+1 2
+
+w
+
+2 + Cl + Cu
+
+(16)
+
+s.t. c  {0, 1}n×k
+
+wT
+
+1 nk
+
+n i=1
+
+k
+r=1 cir (xi(u(it))
+
+- xi(r))
+
+
+
+1 nk
+
+n i=1
+
+k
+cir
+r=1
+
+-
+
+d  {0, 1}N
+
+k N (k - 1)
+
+N
+
+i=1
+
+di(wT
+
+x
+i(ui (t))
+
+-
+
+meanb{wT
+
+xi(b) })
+
+
+
+
+
++
+
+1
+N
+
+N
+di
+i=1
+
+n
+
+p, q {1, 2, . . . , k}, - l  wT (xi(p) - xi(q))  l
+
+i=1
+
+ and  are two newly introduced variables, where  =
+
+1 nk
+
+n i=1
+
+k r=1
+
+ir
+
+and
+
+
+
+=
+
+1 N
+
+N i=1
+
+i.
+
+By
+
+doing
+
+this,
+
+the
+
+number of variables that need to be optimized is further
+
+reduced by (n × k + N - 2). However, it contains a large
+
+number of constraints. Fortunately, we don't need to take all
+
+of these constraints into account. to solve the problem, the
+
+cutting plane algorithm is adapted to find two polynomially
+
+sized subset of constraints  and  from the whole set
+
+of constraints {0, 1}n×k and {0, 1}N respectively in problem
+
+(16). In particular, the constraint sets  and  are initially
+
+set to be empty, and are built step by step until the solution
+
+of the relaxed problem satisfies all the constraints up to the
+
+two cutting plane precisions 3 and 4, i.e., c  {0, 1}n×k,
+
+wT
+
+1 nk
+
+n i=1
+
+k
+r=1 cir (xi(u(it))
+
+- xi(r))
+
+
+
+1 nk
+
+n i=1
+
+k
+cir
+r=1
+
+- (
+
++
+
+3)
+
+(17)
+
+881
+
+and d  {0, 1}N ,
+
+k N (k - 1)
+
+N i=1
+
+di
+
+(wT
+
+x
+i(ui (t)
+
+)
+
+- meanb{wT xi(b)})
+
+N
+
+  +
+
+4
+
++
+
+1
+N
+
+di
+
+i=1
+
+(18)
+
+It means, the remaining exponential number of the two sets of constraints will not be violated up to the precision 3 and 4 respectively. Therefore, we don't need to explicitly add them to  and .
+The cutting plane algorithm starts with two empty sets of constraints  and  as follows:
+
+min
+w,0,i 0
+s.t.
+
+1 2
+
+w
+
+2 + Cl + Cu
+
+p, q  {1, 2, . . . , k}
+
+(19)
+
+n
+- l  wT (xi(p) - xi(q))  l
+i=1
+
+After getting the solution w(t0) 9 of the above optimization problem, the most violated constraints can be computed as:
+
+1, ctir0 = 0,
+
+if (wt0 )T xi(u(it)) - (wt0 )T xi(r)  1 otherwise
+
+(20)
+
+and 1,
+dti0 = 0,
+
+if
+
+(wt0 )T
+
+x
+i(ui (t))
+
+-
+
+meanb{(wt0 )T
+
+xi(b) }
+
+
+
+1
+
+otherwise
+
+(21)
+
+Then, ct0 will be added to  if Ht0 is true, and dt0 will
+
+be added to  if Ht0 is true. Here, Hts is used to de-
+
+note
+
+the
+
+condition
+
+(w(ts ) )T
+
+1 nk
+
+i,r ctirs (xi(u(it)) - xi(r)) 
+
+1 nk
+
+i,r ctirs - ((ts) + 3), and Hts indicates whether
+
+k N (k-1)
+
+N i=1
+
+dtis (wT
+
+x
+i(ui (t))
+
+-
+
+meanb{wT
+
+xi(b)})
+
+
+
+ (ts )
+
++
+
+4
+
++
+
+1
+N
+
+N i=1
+
+dtis
+
+holds
+
+or
+
+not.
+
+After
+
+updating
+
+
+
+and
+
+,
+
+the
+
+optimization problem becomes:
+
+min
+w,0, 0
+s.t.
+
+1 2
+
+w
+
+2 + Cl + Cu
+
+c  ,
+
+(22)
+
+wT
+
+1 nk
+
+n i=1
+
+k
+r=1 cir (xi(u(it))
+
+- xi(r))
+
+
+
+1 nk
+
+n i=1
+
+k
+cir
+r=1
+
+-
+
+d  ,
+
+k N (k -
+
+1)
+
+N i=1
+
+di
+
+(wT
+
+x
+i(ui (t)
+
+)
+
+- meanb{wT xi(b)})
+
+N
+
+
+
+
+
++
+
+1
+N
+
+di
+
+i=1
+
+n
+p, q {1, 2, . . . , k}, - l  wT (xi(p) - xi(q))  l
+
+i=1
+
+9Throughout this paper, ts is used to denote the s-th iteration of the cutting plane iteration for solving the problem derived from the t-th CCCP iteration.
+
+Algorithm: Two-View Cutting Plane
+
+Input:
+
+1. Problem (13).
+
+2. Cutting Plane precision for View 1: 3 = 0.01, for View 2: 4 = 0.01 Output:
+
+The cluster hyperplane w(t) and the objective function value J (t)
+
+1. s = -1.  = ,  = , Hts = true, Hts = true 2. while Hts |Hts is true do
+
+3. s = s + 1
+
+4. Get (w(ts), (ts), (ts)) by solving (22) under 
+
+and .
+
+5. and
+
+Compute dtis , by
+
+the
+
+most
+
+violated
+
+constraints,
+
+i.e.,
+
+ctirs
+
+ctirs =
+
+1, if (w(ts))T xi(u(it)) - (w(ts))T xi(r)  1 0, otherwise
+
+and dtis =
+
+1, if (wts )T (xi(ui (t)) - meanb{xi(b)})  1 0, otherwise
+
+6. Update Hts and Hts .
+
+7. If Hts is true, then update the constraint set  by
+
+ =  cts ; If Hts is true, then update the constraint
+
+set  by  =  dts
+
+8. end while
+
+9. w(t) = wts
+
+10.
+
+J (t)
+
+=
+
+1 2
+
+w(t)
+
+2 + Cl(ts) + Cu(ts)
+
+Table 7: Algorithm description: Two-View Cutting Plane. It can be used to solve the step 6 in Table 1 efficiently.
+
+Both  and  contain at most one constraint vector at this time. From this updated optimization problem, we can get the solution w(t1). Then, the constraints ct1 and dt1 can be computed similarly as that in Eq.(20) and Eq.(21), where the only difference is that w(t0) would be replaced by w(t1). The procedure is repeated until all of the constraints satisfy the requirement in Eq.(17) and Eq.(18), i.e., both Hts and Hts are false. In this way, a successive strengthening approximation series of the problem (13) can be constructed by the expanding number of cutting plane procedures that cut off the current optimal solution from the feasible set [11].
+The concrete procedure is summarized in Table 7. In Step 4, the problem can also be solved efficiently through the dual form [3], since there are only a few constraints involved. Here, due to the limit of space, the concrete dual form is omitted.
+It is clear that the Two-View Cutting Plane algorithm is an iterative method. One of the nice properties of employing this method is the guaranteed fast convergence rate as can be derived similar to that in [10]. So, the algorithm will converge with polynomial number of constraints in a linear time, and therefore is much faster than directly solving the optimization problem (13).
+
+882
+
+

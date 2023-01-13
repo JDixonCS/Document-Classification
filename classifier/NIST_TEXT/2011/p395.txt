@@ -1,0 +1,1037 @@
+Scalable Multi-Dimensional User Intent Identification using Tree Structured Distributions
+
+Vinay Jethava
+Chalmers University Gothenburg, Sweden
+jethava@chalmers.se
+
+Liliana CalderónBenavides
+UNAB Bucaramanga, Colombia
+mcalderon@unab.edu.co
+
+Ricardo Baeza-Yates
+Yahoo! Research Barcelona, Spain
+rbaeza@acm.org
+
+Chiranjib Bhattacharyya
+Indian Institute of Science Bangalore, India
+chiru@csa.iisc.ernet.in
+
+Devdatt Dubhashi
+Chalmers University Gothenburg, Sweden
+dubhashi@chalmers.se
+
+ABSTRACT
+The problem of identifying user intent has received considerable attention in recent years, particularly in the context of improving the search experience via query contextualization. Intent can be characterized by multiple dimensions, which are often not observed from query words alone. Accurate identification of Intent from query words remains a challenging problem primarily because it is extremely difficult to discover these dimensions. The problem is often significantly compounded due to lack of representative training sample. We present a generic, extensible framework for learning the multi-dimensional representation of user intent from the query words. The approach models the latent relationships between facets using tree structured distribution which leads to an efficient and convergent algorithm, FastQ, for identifying the multi-faceted intent of users based on just the query words. We also incorporated WordNet to extend the system capabilities to queries which contain words that do not appear in the training data. Empirical results show that FastQ yields accurate identification of intent when compared to a gold standard.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval - Search process; G.3 [Probability and Statistics]: Probabilistic algorithms
+General Terms
+Algorithms, Performance, Theory
+Keywords
+web search, query intent, facets, Chow-Liu, WordNet, FastQ
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+1. INTRODUCTION
+Identifying user intent1 behind search queries plays a crucial role in providing a better search experience [16, 29, 28]. The traditional classification of user intent as navigational, transactional or informational has focused on intent as a single dimension [3] or hierarchical extensions [26, 2, 14].
+There is a need for a systematic framework to analyze user intent in terms of multiple dimensions (or facets) of interest. In fact, if a facet can be predicted well, it is possible to contextualize the answer for a query, triggering a different ranking algorithm or even a completely different user experience. For example, an informational query will rank better information coming from trusted web sites or a time sensitive query may give better ranking to news. Similarly, a local query may trigger a map or a genre specific query may show a particular screen layout. The multiple facets of interest might be correlated, which poses a challenge compared to past approaches [19, 2, 15]. Further, one should be able to predict the user intent for new queries in a reasonably fast manner which can be incorporated into existing search engine technology [8].
+This paper tries to model the probabilistic dependencies between the various dimensions underlying the user intent of a search query, and then proposes to use the model to identify the intent behind the query. Our hope is that by modeling the dependencies well, it might yield a more accurate identification of the underlying intent. We use the set of facets from [4] to illustrate our method. As our model is more complex, we explore the potential of our technique using the minimal set of features available, that is, just the query words. Using more features, such as clicks, would just improve our results.
+Our approach immediately raises several challenging questions, namely (a) What kind of models should one use in modeling dependencies? (b) How does one model the joint distribution of query words and the dimensions? and (c) Is it possible to augment the model to cater for unseen query words?
+This paper poses the problem of identifying the user's intent behind a query as an inference problem over a tree structured graphical model. We argue that the tree structured
+1In this paper we use intent in a broad sense, including generic and specific intents.
+
+395
+
+model serves as a natural choice for discovering latent dependencies between several dimensions of a query as it is the simplest distribution which goes beyond the independence assumption. The associated learning problem is solved by using the Chow-Liu algorithm [6, 21, 27]. In addition, the resultant algorithm should be scalable and preferably online for real world use.
+Most of the works available in the literature are based on the analysis of query logs and click-through data. However, the additional information might not be available, or restricted due to privacy concerns. Our method infers the user intent from the query words only, without using clickthrough documents, web session information, and other metadata. This shows the potential of the algorithm, as with more features, the performance should improve.
+We model the query as a factorial distribution over the observed query words, which is equivalent to making the assumption that the impact of a word in the query is independent of the other words. This results in a simplified model which allows an online algorithm for user's intent identification. We also incorporate WordNet [12], a lexical database, to improve the classification accuracy of the user intent of search queries for unseen query words.
+In order to perform the identification of the underlying user's needs in the described setting, we introduce FastQ, an online distributed algorithm for classifying user intent for search queries. The algorithm dynamically constructs a tree structured factor graph [18] with the appropriate distribution. The intent is inferred by using standard belief propagation (BP) algorithms, and the tree structure of the dynamically constructed factor graph guarantees the convergence of the BP algorithm. Further, the small size of the resulting factor graph corresponding to a search query allows fast (approximate) inference and allows online classification of the user's intent. Experimental timing results show that the method can be incorporated into existing search engine technology [8, 5].
+Our Contribution. The main contributions of this work
+are:
+1. We cast the problem of identifying user intent for web search queries as an inference problem; and present a tree structured graphical model for modeling the user intent based on just the query words,
+2. The resulting inference is difficult; and we present a scalable, online algorithm FastQ for classifying user intent for search queries, and
+3. We incorporate WordNet [12], a lexical database, to identify new words present in the search query which are absent in the existing training vocabulary.
+4. Our framework is generic and naturally lends itself to extension using other facets or query features, thus enabling its use in other settings.
+The rest of this paper is organized as follows: Section 2 outlines previous work related to ours. Section 3 describes our query intent model for the web query classification; and the algorithm for the online query classification; and Section 4 presents our experimental setup and the results obtained. Finally, Section 5 presents our conclusions.
+
+2. RELATED WORK
+User's intent. According to Broder's taxonomy [3], the user intents can be informational, navigational and transactional. Albeit this taxonomy was further extended by Rose & Levinson [26], the original categories are the most widely used, and have been the basis for an important number of studies in the IR area. In the same context, BaezaYates et al. [2] have proposed that the user intents can be classified as informational, not-informational and ambiguous. Hu et al. [14] have interpreted the user's query intent through the concepts included in Wikipedia; the authors exemplify their proposal throughout the identification of the following intents: travel, personal name, and job finding. More recently, Calder´on-Benavides et al. [4] have studied the user's intent as a multi-dimensional composition of facets.
+Sources to identify the user's intent. In their work, Kang & Kim [17] used information from document content, links and URLs to classify the user's queries into topic relevance task (informational intent), homepage finding task (navigational intent), and service finding task (transactional intent). Lee et al. [19] took into account the past user­ click behaviour and the anchor link distribution to determine the navigational and informational intents of queries. The content of the documents selected by the users in answer to a query is used in [2]. Liu et al. [20] exploited click-through data in order to find navigational and informational/transactional type queries.
+Nguyen and Kan [23] defined functional facets to describe the user's intent. In their work, Ashkan et al. [1] developed a methodology to determine commercial/non-commercial and navigational/informational intent of queries by using ad clickthrough features, query features, and the content of search engine result pages. In [14], the authors have mapped the user's query intent into the concepts included in Wikipedia, and have represented them through the articles and categories related to each concept.
+Recent work on query personalization has focused on modeling the query intent [9, 29, 24, 28] and user behaviour [10, 31]. In particular, Teevan et al. [29] investigated the variability in user intent and the relevance search results obtained in terms of implicit relevance measures based on clickthrough data. They use interdependent sets of features defined using information available in (i) the queries (e.g. query strings, special syntax, etc.); (ii) history of similar queries (e.g. #{queries issued}, etc.); and (iii) query results (e.g. click entropy, etc.). Our work can be viewed as a probabilistic framework for semi-supervised inference of multi-dimensional user intent using query strings and the history information available in the queries.
+Methods to determine the user's intent. Although early research was based on the manual classification of small sets of queries [3, 26], the use of some of the existing machinery from IR, machine learning, as well as natural language processing techniques have allowed an important progress towards determine the user query intents in bigger datasets. In this context, [17] calculated the probability that the task of a user query is topic relevance (informational queries), or homepage finding (navigational queries), based on the occurrence patterns of the query terms in web pages. Lee et al. [19] made an automatic identification of goals (navigational and informational) through the application of heuristics over clicks made by the users on the results offered by the search engine. In [2] supervised and unsupervised learning meth-
+
+396
+
+ods were applied in order to determine the user goals in context of ODP2 categories for a set of six thousand queries from a vertical search engine.Jansen et al. [15] presented a rule-based automated classification system for queries into hierarchical level of informational, transactional, and navigational intent. However, a clear principle for deriving new rules is not presented and the extension of the rules for a new system of classification or another language is not clear. In [14] they use the Wikipedia link graph to represent the relations among the concept articles and the relations among articles and categories. Such a graph is traversed randomly to obtain a vector with the probabilities that each concept belong to a intent.
+Existing methods use multiple features (click-through, weblogs, etc.) to identify the intent either as a simple hierarchy within the framework of navigational, transactional and informational goals. To the best of our knowledge, ours is the first work that identifies user's intent in terms of multiple meaningful dimensions using automated server-side classification. The multi-dimensional based description encapsulates additional information about the user intent in a number of related dimensions, instead of a hierarchical scheme. As a difference to other proposals, in this work the identification of the user's intent does not include click-through data or the document content, but is done by using solely the query words. Additionally, the task of identifying the user intent is performed in an online setting, creating a technology that can be incorporated into existing search engines environments with reasonably fast response time.
+
+3. PROBLEM DEFINITION
+
+3.1 Dimensions of the User's Intent
+We chose the multi-dimensional description of user intent presented in [4]. A description of the dimensions, as well as the values that each one of them can take, is presented in Table 1. The multi-dimensional based description encapsulates additional information about the user intent in a number of related dimensions, instead of a hierarchical scheme.
+
+3.2 The Query Classif cation Problem
+Let q = [q1, . . . , qm] denote a query of length |q| = m consisting of distinct3 query words {q1, . . . , qm}. We assume that the user intent can be encapsulated in terms of K facets e.g. Genre, Scope, etc., where Fk denote the state space of the kth facet e.g. {Yes, No} for the facet Time Sensitivity.
+Given the training data D = {(q(n), f (n))}1nN consisting on N queries q(n) and the corresponding user intent (in terms of facets) f (n), we cast the problem of finding the user intent f^  F for a new query q as an inference problem
+
+f^ = arg max P (F = f |Q = q, D)
+
+(1)
+
+f F
+
+= arg max P (Q = q|F = f , )P (F = f |) (2)
+f F
+
+where F = F1 × F2 × . . . × FK denotes the state space of facet classifications corresponding to a query;  = (D) and  = (D) are parameters based on the training data.
+
+2http://dmoz.org 3Duplicate instances of a word in a query are removed during pre-processing.
+
+Dimension Genre Topic
+Task Objective Specificity Scope Authority Sensitivity Spatial Sensitivity Time Sensitivity
+
+Values & Meaning
+{News, Business, Reference, Community}. It is considered a meta-category that provides a generic context to the user query intent. {Adult & Sex, Arts & Culture, Beauty & Style, Cars & Transportation, Computers & Internet, Education, Entertainment, Music & Games, Finance, Food & Drink, Health, Home & Garden, Industrial Goods & Services, Politics & Government, Religion & belief systems, Science & Mathematics, Social Science, Sports, Technology & Electronic, Travel, Work }. This list of topics was created by taking the first level categories included in ODP, Yahoo!, and Wikipedia. {Informational, Not Informational, Both} [2]. Considered as the primary need reflected by a query. {Resource, Action}. Represents the aim of a query, without considering the format of the information to retrieve. {Specific, Medium, Broad }. This facet describes how specialized is a query. {Multiple, Unique}. Shows whether the query contains polysemic words or not. {Yes, No}. Is the query designed to retrieve authoritative and trusted answers? [23] {Yes, No}. Reflects the interest of the user to obtain a resource that is related to a particular spatial location (explicit or not). {Yes, No}. Whether the information to retrieve, involves a date or period of time.
+
+Table 1: The dimensions or facets which characterize user intent as in [4]. .
+
+The following section discusses the choice of  and  based on the training data; and and then we discuss FastQ, a scalable, convergent algorithm for solving the overall inference problem.
+
+3.3 The Query Intent Model
+
+Now we present our generative model for search query q
+
+and corresponding user intent f assuming queries and cor-
+responding user intents are drawn from an unknown joint distribution P (Q = q, F = f ).
+
+A full realization of the joint distribution P (q, f ) is com-
+
+putationally prohibitive. For example, if the query words
+
+are drawn from the vocabulary V with maximum query
+
+length M , there are
+
+M m=1
+
+C (|V |,
+
+m)
+
+possible
+
+queries
+
+where
+
+C(|V|, m)
+
+=
+
+(|V |)! (|V |-m)!m!
+
+;
+
+and
+
+the
+
+facets
+
+have
+
+K i=1
+
+|Fi|
+
+pos-
+
+sible states; the full probabilistic modeling would require
+
+O(2|V|
+
+K i=1
+
+|Fi|)
+
+states.
+
+Hence,
+
+we
+
+use
+
+a
+
+parametric
+
+repre-
+
+sentation to reduce the dimensionality of the problem.
+
+We assume the dataset D consists of i.i.d. samples drawn
+
+from a joint distribution
+
+P (q(n), f (n)|, ) = P (Q = q(n)|F = f (n), )P (F = f (n)|) (3)
+where  and  are parameters which model the dependencies between the inter-related facets (), and the impact of words of the query on its facet classification () respectively.
+
+3.3.1 Relationship between Facets
+We model the dependencies between the facets using the class of second order product distributions defined on the
+
+397
+
+genre
+
+time s.
+
+authority s.
+
+objective
+
+topic
+
+task
+
+spatial s
+
+scope specificity
+
+Figure 1: Example spanning tree (T ) on facets.
+
+facet variables. Let T be the set of possible spanning trees defined on the facets. Then, the parameter  = T defines a marginal polytope [30] on the spanning tree T  T . In other words T = {ij : (i, j)  T }  {i : i  K} is the set of probability distributions ij defined on the edges of the spanning tree (i, j)  T ; and the probability distributions i defined on the facet variables i  K such that
+
+ij (fi, fj )  0;
+
+ij (fi, fj ) = 1 (i, j)  T (4)
+
+fi fi
+
+i(fi)  0;
+
+i(fi) = 1
+fi
+
+i  K (5)
+
+which satisfy the marginal consistency
+
+ij (fi, fj ) = j (fj ) j  Fj , (i, j)  T (6)
+fi Fi
+
+Then, the probability distribution P (F |T ) is given by
+
+P (F = f |T ) =
+
+(i,j)T ij (fi, fj ) iK i(fi)di-1
+
+(7)
+
+where di denotes the degree of the ith facet in the spanning tree T . Figure 1 shows a possible tree structure T defined on the facet variables.
+
+3.3.2 Impact of Query Words on Facets
+Now we describe the probability distribution of queries P (Q^ = q^|F = f ) conditioned on the facet variables where
+q = {q1, . . . , qm} denotes a query of length |q| = m and f = {f1, . . . , fK } denotes the facet states. The model assumes the following,
+
+1. Each query has at most M distinct words. This is a valid assumption since, according to [22], nearly 70% of informational queries consists of at most 5 words, and the higher number of terms in not informational queries is 3. In our experimental data M = 8.
+
+2. The length of the query |q| is distributed as P (|q| =
+
+m) = (m) chosen according to [32], such that (m) 
+
+0 and
+
+M m=1
+
+(m)
+
+=
+
+1.
+
+3. The query words are chosen independently conditioned on the facet state f
+P (Q^ = q^|F = f ) = P (w  q|F = f )1wq (8)
+wV
+where V = {w : q  D  w  q} is the vocabulary of words present in the training data.
+
+4. The probability of a word being present in a query P (w  q|F = f ) conditioned on the joint facet state,
+f ; can be factorized into a product of probability distributions P (w  q|Fk = fk) of a word w being a query, conditioned on individual facet states fk
+
+K
+P (w  q|F = f ) =
+
+(kw;f )1fk=f
+
+(9)
+
+k=1 f Fk
+
+where {kw;f  0 : w  V, k  K, f  Fk} is a parameter subject to the constraints
+
+kw;f = 1 k  K, f  Fk
+wV
+
+(10)
+
+The resulting probability distribution P (Q = q|F = f , ) parametrized by  is given as
+
+P (q|f , ) =
+
+{ (|q|)e
+
+kK,wV
+
+f Fk log kw;f 1q(w)1kf (f )}
+
+Z(f )
+
+(11)
+
+where Z(f ) is the normalization function given as
+
+M
+Z(f ) = (m)
+
+exp(
+
+log kw;f )
+
+m=1
+
+q:|q|=m
+
+kfw
+
+(12)
+
+3.3.3 Generative Model
+The generative model for a search query and the corresponding user intent is presented in Algorithm 1.
+
+Algorithm 1 The generative model for query (q, f )
+Require: V {Vocabulary} Require: T {Marginal polytope on the facets} Require:  {Conditional word distribution}
+Choose f  P (f |T ) as in (7) {Facet for query} Choose m with P  (·) {Query length} for i = 1 to m do
+Choose qi  P (·|f ) as in (11) {Generate word} q  [q qi] {Append word to query} end for return (q, f ) {Query and facet classification}
+
+3.4 Estimating the Model Parameters
+This section presents the procedure for computing the maximum likelihood estimation (MLE) for the model parameters {, T , T } based on the dataset. The maximum likelihood estimates are obtained as a result of the optimization in
+
+arg max
+
+log P (q(n), f (n)|T , , T )
+
+,,T
+
+(q(n),f (n))D
+
+(13)
+
+subject to the constraints in (4), (5), (6), (10); where the probability P (q(n), f (n)|T , , T ) is obtained using (3), (7)
+
+398
+
+and (11). The resulting optimization can be decoupled into separate optimization problems for (, T ) as
+
+arg max,T T s.t.
+
+f (n)
+
+(a,b)T log ab(fa(n), fb(n)) - aK log a(fa(n))da-1
+
+fa,fb ab(fa, fb) = 1; ab(fa, fb)  0 (a, b)  T
+
+fa a(fa) = 1;
+
+a(fa)  0
+
+a  K
+
+fiFi ij (fi, fj ) = j (fj )
+
+j  Fj, (i, j)  T
+
+(14)
+
+and an optimization problem for  as
+
+arg max s.t.
+
+(q(n),f (n))D - log Z(f (n)) + kK,f Fk,wV log kw;f 1 1 [wq(n)] [fk(n)=f ]
+
+iw;f  0; wV kw;f = 1
+
+w  V, k  K, f  Fk k  K, f  Fk
+
+(15)
+
+where Z(f (n)) is given as (12). Now we solve the optimiza-
+
+tion problems in (14) and (15).
+
+Notation. We introduce the function #(C) where C is a
+valid Boolean expression as the number of queries in dataset
+D which satisfy the condition C, i.e. #(C) = (q,f)D 1(C) where 1(C) is the indicator function, i.e., 1(C) = 1 if C is
+T RU E and 0 otherwise. For example, #(w  q) denotes the
+number of queries in the dataset D having query word w; #(fk = f ) denotes the number of queries for which the kth
+facet has state f ; and so on.
+
+3.4.1 Estimation of Facet Tree Parameters (, T )
+The optimization in (14) depends on the facet classifications f (n) of the queries in the dataset D, and not on the words [q1(n), . . . , qm (n)] in the query. Thus, the problem is to fit a second order product distribution to the multivariate data (facets) f (n)  D.
+Chow and Liu [6] first investigated the problem of fitting a second order product distribution to multivariate data. They showed that the problem is equivalent to minimizing the Kullback-Liebler divergence [7] between the target distribution on D and tree based distribution. Their algorithm shows that for the dataset D and a spanning tree T ; the optimal marginal polytope T is given by
+
+ij (a, b)
+
+=
+
+#(fi = a, fj = b) N
+
+a  Fi, b  Fj (16)
+
+i (a)
+
+=
+
+#(fi = a) N
+
+a  Fi
+
+(17)
+
+for edges (i, j)  T . The mutual information IiDj between facets i and j is given as
+
+IiDj
+
+=
+
+aFi
+
+bFj
+
+ij (a,
+
+b) log
+
+ij (a, b) i (a)j (b)
+
+(18)
+
+The optimal tree T  is such that the maximum possible mutual information is encapsulated by its edges.
+The algorithm proceeds in two steps, namely, computing the mutual information IiDj for each pair of facets i and j as in (18); and selecting the top (K - 1) edges with the highest mutual information by computing the maximum weight spanning tree for a weighted graph between facets, where
+
+each edge between facet i and j has weight IiDj .
+
+3.4.2 Estimation of Word-Facet Parameters ()
+A direct computation of the log Z(f (n)) is computationally prohibitive. However, using a variational approach and Jensen's inequality, we can compute an approximate estimate ^  characterized by the conditional distribution of query words conditioned on the facets specification
+
+^kw;f
+
+=
+
+#(w  q, fk = #(fk = f )
+
+f)
+
+(19)
+
+3.5 User Intent Classif cation
+This section presents a fast online procedure for the user intent classification of a test query as:
+
+f^ = arg max P (Q = q|F = f , ^ )P (F = f |T )
+f F
+
+A naive solution requires computation of O( iK Fi) product terms, each having O(L|K|) multiplications. Further,
+the computation of Z(f ) for each f requires summation over Vm terms, which is computationally infeasible.
+Instead, we perform approximate inference using standard Belief Propagation (BP) on a dynamically constructed factor graph based on the model parameters learnt in Section 3.4. The resulting factor graph is tree structured having K variable nodes and O(M K) factor nodes, and the inference procedure converges in at most K iterations.
+
+3.5.1 Dynamic Factor Graph
+The factor graph for finding the optimal facet assignment f  for a test query q consists of two classes of factors, namely,
+
+· factors which model the latent relationship between facets in (7); and
+
+· factors which model the impact of query words on facets based on (9) under the simplifying assumption that there are no latent relationships between facets.
+
+Figure 2 shows the factor graph corresponding to the facet classification. The variable nodes, F1, . . . , FK , denote the facet variables which can take possible states in F1, . . . , FK , respectively. The factors Ti, Tij model the latent relationship between facets, while the factors Wi model the impact of the th word of the test query q affecting the ith facet variable.
+The factors, T i, i  K and T ij, (i, j)  T  correspond to the latent relationships between the facets in (7). Their beliefs correspond to the parameters (, T ) based on the training data, given as
+
+PT i (Fi = f ) = i (f )(1-di) PT ij (Fi = f, Fj = f ) = ij (f, f )
+
+(20) (21)
+
+The factors Wi model the conditional distribution P^(Fk = f |w  q) under the assumption that all facets are indepen-
+dent of each other.The factors are specified by the beliefs,
+
+PWi (Fi
+
+=
+
+f)
+
+=
+
+wi ;f
+
+=
+
+#(fk = f, w  #(w  q)
+
+q)
+
+(22)
+
+399
+
+Figure 2: Factor graph for query facet classification. The variable nodes, F1, . . . , FK , denote the facets; Wi denotes the factor corresponding to the th query word affecting the ith facet variable; and Ti and Tij
+are the factors corresponding to the Chow-Liu prob-
+ability distribution on facet variables which capture
+the facet interdependencies.
+
+where wk ;f is an approximation for P^(Fk = f |w  q) obtained as
+
+wk ;f  P (w  q|Fk = f, ^ )P^1k(Fk = f ) (23)
+
+and
+
+P^1k (Fk
+
+=
+
+f)
+
+=
+
+#(fk=f ) N
+
+is
+
+the
+
+MLE
+
+of
+
+the
+
+probability
+
+distribution of the kth facet under simplifying assumption
+
+that the each facet is independent of other facets.
+
+The parameter  = {wk ;f : f  Fk, k  K, w  V} models the impact of the words in a query on the facets.
+
+Specifically, wk ;f measures the evidence that the kth facet has value f when the query contains the word w.
+
+We note that the evidence wk ;f in (22) is not defined if the word w is not part of the training vocabulary, i.e., the
+
+test query q contains a word w that is not present in the
+
+training data D. The following section presents a method for
+
+incorporating the influence of new words, i.e. words in the
+
+test query which are not present in the vocabulary using the
+
+semantic relationships between the words and the existing
+
+vocabulary.
+
+3.5.2 WordNet Integration
+Let w denote a new word not present in the vocabulary VD. Then, the corresponding wi ;f are not defined and the previous algorithm cannot be used. However, a semantically related word w might be present in the vocabulary VD; for which the corresponding wi ;f are defined. It is safe to assume that a strong semantic relationship between the words w and w will be reflected in the resulting facet classifications, reflected in wi ;f and wi ;f . Therefore, it is of interest to be able to relate new words in the query to existing words
+in vocabulary.
+We present a two-step method for integrating the capabil-
+ities of WordNet [12], a lexical database, into the facet clas-
+sification for queries containing new words. We first query WordNet for the related word candidates W  with similarity scores S = {sw : w  W } for a new query word w using Breadth First Search (BFS) till a maximum search depth L.
+The second step uses the candidates which are present in the vocabulary W  = W   VD to compute the parameter
+
+~wi ;f . Algorithm 2 presents the heuristic procedure for incorporating related words obtained from WordNet to augment
+
+results for a new word.
+
+We note that if the word has no neighbours either in Word-
+
+Net or in the existing vocabulary, the conditional distribu-
+
+tion P (Fi = ·|w  q) is a Dirichlet distribution with param-
+
+eter test
+
+[
+
+#(Fi =f1 N
+
+)
+
+,
+
+.
+
+.
+
+.
+
+,
+
+word w has no
+
+#(Fi
+
+=f|Fi N
+
+|
+
+)
+
+].
+
+semantically
+
+This means that when the related neighbours w with
+
+known statistics wk ;f , then the conditional distribution is randomly distributed such that, on average, the count statis-
+
+tics for a facet would be same as that found in the training
+
+data. However, if there exist neighbours of the word W ,
+
+that information is incorporated into the conditional distri-
+
+bution for the new word.
+
+Algorithm 2 WordNet integration ~w = FWN(w)
+
+Require: L {Maximum depth for BFS} Require:  {Parameter based on D}
+
+Ensure: w / VD {New word not present in vocabulary}
+
+Ensure:
+
+fi
+
+=
+
+#(fi=f ) N
+
+(W , S)  BF S(w, L) {Related words in WordNet}
+
+W   W   VD {Related words in vocabulary}
+
+for i = 0 to K do
+
+Initialize
+
+{µi1,
+
+.
+
+.
+
+.
+
+,
+
+µi|Fi | }
+
+
+
+Dir(fi1 ,
+
+.
+
+.
+
+.
+
+,
+
+i
+f|Fi
+
+|
+
+)
+
+for all f in Fi do
+
+~wi ;f = end for
+
+µif + wW  sw wi ;f f Fi (µif + wW  sw wi ;f )
+
+end for return ~w = {~wi ;f : i  K, f  Fi}
+
+3.5.3 The FastQ Algorithm
+
+Algorithm 3 FastQ f^ = F (q|D)
+
+Require: q {Test query} Require: , , T , V {Parameter from training data D}
+
+Initialize G(K, []) {factor graph on facet variables} for all (i, j) in T  do
+Add factor T ij s.t. PT ij (Fi = a, Fj = b) = ij (a, b) end for
+
+for all i in K do
+
+Add
+
+factor
+
+Ti
+
+s.t.
+
+PT i (Fi
+
+=
+
+a)
+
+=
+
+1 i (a)da-1
+
+end for
+
+for l = 1 to L do if q  V then for all i in K do
+
+Add factor Wi s.t. PWi (Fi = f ) = qi;f f  Fi end for
+
+else ~q = FW N (q) {Use WordNet for new query word} for all i in K do Add factor Wi s.t. PWi (Fi = f ) = ~qi;f f  Fi end for
+
+end if
+
+end for f^ = MAX-PROD(G) {Standard BP}
+
+return f^ = {f1, . . . , fK }
+
+400
+
+The overall procedure for facet classification when a new query, q = {q1, . . . , qL} is given in Algorithm 3. The algorithm constructs the dynamic factor graph by adding the factors Ti, Tij corresponding to the probability distribution on facets constructed using the Chow-Liu algorithm. Then, if a query word q is in the vocabulary V, it adds words to the corresponding word factors, and constructs the word factor Wi based on parameter , as in (22). Otherwise, if query word q is not in vocabulary V, it constructs the factors Wi based on semantically related words in vocabulary V found using WordNet as in Algorithm 2. The facet assignment f^ for the test query is computed using a standard implementation of the Max-Product Belief Propagation [18].
+Claim 1. The FastQ algorithm has the following properties
+(a) The dynamic factor graph is a tree consisting of K variable nodes and O(M K) factor nodes,
+(b) The Max-Product Belief Propagation (BP) converges in at most K iterations,
+(c) The average time for query classification is O(K + c¯Lwn) where L is the maximum search depth and c¯wn is the average number of semantically related words for a word in WordNet.
+Proof. (a) By construction.
+(b) BP converges on trees iterating in at most the number of variable nodes in the tree [18, 30].
+(c) The average time spent in WordNet search is O(c¯Lwn) and the BP algorithm takes O(K) time.
+The small size of the constructed factor graph allows an implementation with limited resources. The maximum search depth L in WordNet is a user-controlled parameter which can be reduced to speedup the classification.
+3.6 Generalizing the Query Intent Model
+This section discusses the procedure for generalizing our model in order to explicitly study some other aspect of user intent. For example, the facet Medical Sensitive might be facet of interest relevant to medical search engines such as PubMed 4.
+Our query intent model and inference procedure is generic and can be used with other multi-dimensional descriptions of user intent. The requirement is the use of training data which has been classified according to the facet description of interest. Thus, in order to add the facet Medical Sensitive, one has to provide the labels for the new facet corresponding to the queries in the training data.
+Sometimes, one can avoid the reclassification due to the nature of the data collection procedure. For example, a query having the word gene may not be Medical Sensitive if the queries are drawn from a generic search engine. However, PubMed queries having the query word gene can be assumed to be Medical Sensitive (Similar assumptions have been made in [31]). Thus, one can obtain a rough estimate for the normalized influence of words in the query by simply assuming that the queries in PubMed are Medical Sensitive, but not in a generic search engine.
+4http://www.pubmedcentral.nih.gov
+
+Dimension
+Time S. Scope Objective Authority S. Topic Task Spatial S. Genre Specificity
+
+Overall Agreement
+99.23 96.74 92.54 84.32 68.26 75.71 81.07 65.00 55.44
+
+Kappa Coefficient
+0.98 0.93 0.85 0.69 0.66 0.63 0.62 0.53 0.33
+
+Table 2: Inter-annotation Agreement and Kappa Coefficient for the dimensions of user's intent.
+Alternatively, some of the facets may be known and the remaining might be unknown. For example, if a test query is generated from PubMed, it is safe to assume that the facet Topic is Health (Similar assumptions have been made in [31]). It is easy to condition on some facets if they are known. The inference for the remaining facets is conditioned [11] over the facet Topic having state Health.
+
+4. EXPERIMENTAL SETTING
+4.1 Dataset
+The evaluation data consists of 5, 249 queries from a vertical search engine query log in a Spanish speaking country. The sampling of queries took place randomly after calculating the popularity of each query (i.e. the number of times a query was posed), to capture the Zipf's law distribution (in [2] only popular queries were considered). Hence, 15% were taken from to the set of the most popular queries, 15% from the (long) tail set, and the remaining 70% was sampled from the middle set (i.e., queries with average popularity).
+The complete collection of queries was manually classified, assigning a value for each of the dimensions described in Section 3.1. Additionally, 10% of the queries (randomly selected) were classified by two judges. In order to measure the consistency of the judges two well known metrics were applied: the Overall Agreement [13] and Kappa Coefficient [25]. The former metric express a score of how much homogeneity, or consensus, there is in the ratings given by judges; however it does not take into account the agreement that would have been expected due solely to chance. In order to overcome this problem, we used the second metric (i.e., the Kappa Coefficient), which is the proportion of agreement between judges after chance agreement is removed from consideration. Table 2 contains the overall agreement of the judges as well as the Kappa coefficient values.
+Results from the overall agreement indicate that the consistency of the manual classification is highly satisfactory. In average, the overall agreement is 80%. Eight out of the nine dimensions have reached an overall agreement higher than 65%, which is quite high if we consider the number of dimensions that were assessed, the number of possible values that each dimension can take, as well as the different criteria and the subjectivity of the judges.
+In terms of the Kappa coefficient the values obtained reflect a consistency and reliability of the manual classification. The assessment from the judges for all the dimensions is beyond chance, and more over, for three dimensions the agreement was almost perfect.
+Training and testing sets. The amount of labelled
+
+401
+
+% Tr. data Model
+author s. genre objective scope spatial s. specificity task time s. topic
+
+BASE
+33.48 30.73 81.96 23.51 45.42 75.62 68.47 21.25 11.73
+
+1% WN
+43.44 35.51 80.03 45.42 45.15 73.55 66.61 42.54 12.85
+
+FASTQ
+79.85 51.95 73.09 97.56 59.42 77.51 61.45 97.98 14.01
+
+BASE
+42.35 38.53 84.99 37.88 49.01 75.93 72.60 35.55 21.97
+
+5% WN
+55.41 43.85 82.51 60.75 49.68 74.37 69.16 59.32 20.75
+
+FASTQ
+79.76 59.76 83.35 97.51 61.62 76.98 71.02 98.60 19.39
+
+BASE
+50.07 43.18 86.03 46.69 52.82 77.24 75.21 44.61 27.57
+
+10% WN
+61.64 47.42 83.24 67.67 54.39 73.96 71.90 64.87 26.90
+
+FASTQ
+81.14 60.63 83.01 97.40 62.14 77.51 71.64 98.64 25.67
+
+BASE
+55.97 50.00 86.19 56.51 56.27 77.08 76.87 54.37 34.44
+
+50% WN
+64.82 52.47 85.62 72.79 58.32 76.41 75.78 71.38 36.00
+
+FASTQ
+81.70 65.02 85.59 97.28 67.98 78.14 76.04 98.43 32.90
+
+Table 3: This table compares the classification accuracy (in %) of the user intent dimensions for the different models. The mean accuracies for N = 10 trials are shown where fixed number (% tr data) of randomly chosen queries were used for training and the remaining data used as test queries. The highest classification accuracy obtained for each facet at given amount of training data (% tr data ) is highlighted.
+
+data available in most IR scenarios is much smaller than the corresponding test sets. In order to test the models in the low data regime, we have used 1, 5, 10, 50 % of the available queries as training data. We have repeated the experiment for N = 10 independent trials where the training samples have been randomly chosen. We report the resulting mean and variance across the trials.
+4.2 Models Tested
+The two key components of FastQ are the modeling of the latent relationships between facets and the incorporation of WordNet lexical database. In order to highlight the impact of the above two factors in the overall results and establish a baseline, we construct two variants of the FastQ algorithm described below:
+· BASE : The model ignores the latent relationships between facets and does not incorporate WordNet to compute the influence of new words in the test query. Thus, the resulting factor graph does not have the factors Ti and Tij; and only has factors Wi for the words which are already present in the vocabulary V; ignoring the test query words not present in the vocabulary.
+
+· WN : This does not model the latent relationships between facets; but does incorporate WordNet to incorporate the influence of new words in the test query in terms of their semantic neighbours in the existing vocabulary. Thus, the resulting factor graph does not have the factors Ti and Tij; but, has factors, Wi for the new words in the test query in addition to factors for known words.
+4.3 Results
+
+4.3.1 Classif cation Accuracy
+
+Table 3 presents the classification accuracy of the individ-
+
+ual facets. We note that the latent modeling of the facets in
+
+FastQ improves the accuracy compared to BASE and WN
+
+for the facets: Time Sensitivity, Scope, Spatial Sensitivity,
+
+Authority Sensitivity, Genre.
+
+We use the Hamming error to measure the overall accu-
+
+racy of the prediction, i.e., for a query q with true facet clas-
+
+sification f  and the algorithm prediction f^; the Hamming
+
+error dH (f , f^) is dH (f , f^) =
+
+1 K
+k=1 f^k =fk
+
+where
+
+1f^k =fk
+
+is
+
+1 if the kth facets are not same; else 0. A low (ideally zero)
+
+Inf NotInf Both
+
+True Pred. P R F1
+
+1382 1584 0.79 0.91 0.85
+
+645 635 0.73 0.72 0.72
+
+212
+
+20 0.89 0.08 0.15
+
+Table 4: This table shows the classification (FastQ) results for the facet Task as Informational (Inf ), Not Informational (NotInf ) and Both (Both). The table shows precision (P ), recall (R) and the F1-score (F 1) when 50% of the data is used for training and the rest as test queries.
+
+Hamming distance means few (ideally none) of the K facets have been incorrectly predicted.
+Figure 3(a)-3(c) shows the cumulative distribution of the Hamming errors (number of individually incorrect facets) in the prediction of K facets for 1%, 10% and 50% training data. For example, when 10% of the data is used for training, FastQ classifies over 60% of the test queries with at most two mis-classified facets; compared to WN (45%) and BASE (40%). The modeling of the facet inter-relationships (FastQ) improves the overall quality of classification compared to BASE and WN, especially at low amounts of training data.
+We note that FastQ performance compared to BASE is slightly inferior on the facet "Topic", which has 23 possible states. Therefore, accurately modelling the probability distribution requires more data. We note that at 90% training data5, FastQ does perform better on "Topic" (and all other facets) compared to BASE. We note that in a real world setting, the amount of available data might be greater than a few thousand queries (for example, when using ODP categories). Under such scenario, FastQ will perform better modeling compared to the results shown here.
+We attempt to learn a multi-faceted classification of user intent, which is inherently more sophisticated compared to learning the classical notion of user intent as informational, navigational or transactional. However, the closest analogue in our case is the Task dimensions whose values are informational, not information or both.
+Table 4 shows the classification results for the Task dimension when 50% of the queries was used as training data, and the remaining for testing. An average accuracy of 76% is achieved by FastQ in the classification of Task.
+5not shown here due to space restriction
+
+402
+
+100
+
+100
+
+100
+
+80
+
+80
+
+80
+
+Cumulative % Cumulative % Cumulative %
+
+60
+
+60
+
+60
+
+40
+
+40
+
+40
+
+Number of words Number of words
+
+20
+
+BASE
+
+WN
+
+FastQ 00 1 2 3 4 5 6 7 8 9
+Maximum no. of errors
+
+(a) Hamming error (1% tr. data)
+
+3000
+
+2500 2000
+
+avg = 7.94821
+
+1500
+
+1000
+
+500
+
+20
+
+BASE
+
+WN
+
+FastQ 00 1 2 3 4 5 6 7 8 9
+Maximum no. of errors
+
+(b) Hamming error (10% tr data)
+
+Experiment
+
+1400 1200
+
+1000
+
+800
+
+600
+
+400
+
+200
+
+20
+
+BASE
+
+WN
+
+FastQ 00 1 2 3 4 5 6 7 8 9
+Maximum no. of errors
+
+(c) Hamming error (50% tr. data)
+
+New Words Found in WN
+
+00
+
+20
+
+40
+
+60
+
+80
+
+100
+
+Number of neighbours
+
+(d) WordNet graph
+
+0 1 5 10
+
+30
+
+50
+
+70
+
+90
+
+% of training data
+
+(e) WordNet usage
+
+Figure 3: (a)-(c) The mean and variance of the Hamming error for the overall facet classification for the models BASE (red), WN (green) and FastQ (blue). (d) The histogram showing the number of related words obtained using WordNet for a test query word (blue); and the expected (average) number of related words for a new query word (red). (e) This figure shows the mean and variance of the number of new words found in the test data (blue); and the number of words for which related words were found in the training data using WordNet (green); with increasing amount of training data. All figures are based on results obtained from N = 10 independent trials.
+
+Method
+Topic/homepage [17] FastQ (Task ) Rule-based hierarchy [15] Query-log based [19] Manual classification [2]
+
+Size
+200 5249 1500000
+50 6042
+
+Accuracy
+91% 76% 74% 54% 50%
+
+Table 5: Comparison of existing approaches for intent classification with size of the dataset and the classification accuracy. (Results of [17] are based on TREC test collection.)
+
+Table 5 shows FastQ compares favorably to existing methods. We re-iterate the multi-dimensional nature of our work, i.e. Task is one of the nine facets which characterize user intent in our case, compared to past approaches.
+
+characteristics of the training set that only includes 15% of queries from the head of the query distribution. Thus, incorporating WordNet may allow a better modeling for a significant portion of unseen words in a practical web search scenario.
+Figure 3(d) shows the histogram of the number of related words in WordNet, experimentally observed, for a query word that is not present in training data, and its average c¯wn  8. This affects the time spent in search for related candidates of a word not present in training data.
+The experiments reported used a breadth first search till maximum depth 3 using the words falling in the synsets category. We observed that the similarity scores for the neighbours often is either very close to one, or slightly above zero.
+
+4.3.2 Impact of WordNet
+A comparison of the results in Table 3 and Figure 3(a)-3(c) show the incorporation of WordNet for computing the influence of new words in test query based on semantic neighbours in the existing vocabulary improves the quality of results in WN compared to BASE, especially at low amounts of training data (1 - 10%).
+Figure 3(e) shows that around 33% of the new words are semantically related to known words in the training data. This might be surprising, but this is explained from the
+
+4.3.3 Eff ciency and Scalability
+The average time for query classification at WordNet maximum search depth 3 was observed to be 2-3 ms on an AMD Turion64 machine with 4 GB RAM, which is considerably less than the average latency for a search query which is 200 ms [8]. This allows the incorporation of FastQ as input to the ranking algorithm of a search engine; using the user intent information to improve the user experience.
+In addition, our results show that with a small training set (a few thousand queries), we can get good predictive
+
+403
+
+performance. Hence, with training sets available for large search engines the results might be quite better.
+5. CONCLUSIONS AND FUTURE WORK
+We have presented an efficient and convergent algorithm for inferring the intent of the web search query, described in terms of multiple facets. Experimental results show that modelling the latent relationships between facets improves the accuracy of prediction. Further, the incorporation of WordNet improves intent classification using the semantic relationships in the language vocabulary.
+One possible area of improvement is the usage of multiple semantic relationships, e.g. synonyms, antonyms, hyponyms, available in WordNet, which might improve the efficacy of WordNet in intent classification.
+Our framework model can be used for fast contextualized ranking of results of a user query with or without clickthrough data. For example, it can be used for a much more refined query classification and clustering. Similarly, the intent classification can be used as input to existing search engine ranking technology [5]. Alternatively, we can use the facet classifications for sorting and displaying the search engine results in a different way creating a new user experience.
+In addition, the generality of the framework allows integration of alternative aspects of user intent making it a powerful tool for contextualizing and personalizing search.
+6. REFERENCES
+[1] A. Ashkan, C. L. Clarke, E. Agichtein, and Q. Guo. Classifying and characterizing query intent. In Proc. of ECIR, 578­586, 2009.
+[2] R. Baeza-Yates, L. Calder´on-Benavides, and C. Gonz´alez-Caro. The intention behind web queries. In Proc. of SPIRE, LNCS vol. 4209, 98­109, 2006.
+[3] A. Z. Broder. A taxonomy of web search. SIGIR Forum, 36(2):3­10, 2002.
+[4] L. Calder´on-Benavides, C. Gonz´alez-Caro, and R. Baeza-Yates. Towards a deeper understanding of the user's query intent. In Proc. of Query Representation and Understanding Workshop at SIGIR, 2010.
+[5] O. Chapelle and S. S. Keerthi. Efficient algorithms for ranking with SVMs. Inf. Retr., 13(3):201­215, 2010.
+[6] C. I. Chow, S. Member, and C. N. Liu. Approximating discrete probability distributions with dependence trees. IEEE Trans. on Inf. Theory, 14:462­467, 1968.
+[7] T. M. Cover and J. A. Thomas. Elements of Information Theory. Wiley, New York, 1991.
+[8] J. Dean. Challenges in building large-scale information retrieval systems. WSDM'09 keynote, 2009.
+[9] D. Downey, S. Dumais, and E. Horvitz. Heads and tails: Studies of web search with common and rare queries. Proc. of SIGIR, 847­848, 2007.
+[10] D. Downey, S. Dumais, D. Liebling and E. Horvitz. Understanding the relationship between searchers' queries and information goals. In Proc. of CIKM, 449­458, 2008.
+[11] F. Eaton and Z. Ghahramani. Choosing a variable to clamp: Approximate inference using conditioned belief propagation. In Proc. of AISTATS, 2009.
+[12] P.-V. Eds. EuroWordNet. A multilingual database with lexical semantic networks. Kluwer Academic, 1998.
+
+[13] G. Hripcsak and A. S. Rothschild. Agreement, the f-measure, and reliability in information retrieval. JAMIA, 12(3):296­298, May-Jun 2005.
+[14] J. Hu, G. Wang, F. Lochovsky, J. T. Sun, and Z. Chen. Understanding user's query intent with wikipedia. In Proc. of WWW, 471­480, 2009.
+[15] B. J. Jansen, D. L. Booth, and A. Spink. Determining the informational, navigational, and transactional intent of web queries. Inf. Process. Manage., 44(3):1251­1266, 2008.
+[16] B. J. Jansen, A. Spink, and I. Taksa. Handbook of Research on Web Log Analysis. Idea Group Inc., 2008.
+[17] I.-H. Kang and G. Kim. Query type classification for web document retrieval. In Proc. of SIGIR, 64­71, 2003. ACM.
+[18] F. R. Kschischang, B. J. Frey, and H.-A. Loeliger. Factor graphs and the sum-product algorithm. IEEE Trans. on Inf. Theory, 47:498­519, 1998.
+[19] U. Lee, Z. Liu, and J. Cho. Automatic identification of user goals in web search. In Proc. of WWW, 391­400, 2005.
+[20] Y. Liu, M. Zhang, L. Ru, and S. Ma. Automatic query type identification based on click through information. LNCS, 4182:593­600, 2006.
+[21] M. Meila. An accelerated chow and liu algorithm: Fitting tree distributions to high-dimensional sparse data. In Proc. of ICML, 249­257, 1999.
+[22] M. Mendoza and R. Baeza-Yates. A web search analysis considering the intention behind queries. In Proc. of LA-WEB, 66­74, 2008.
+[23] V. B. Nguyen and M.-Y. Kan. Functional faceted web query analysis. In Query Log Analysis: Social And Technological Challenges. A workshop at the WWW' 07, May 2007.
+[24] E. Pitler and K. Church. Using word-sense disambiguation methods to classify web queries by intent. In Proc. of EMNLP, Jan 2009.
+[25] J. J. Randolph. Free-marginal multirater kappa: An alternative to fleiss fixed-marginal multirater kappa. Joensuu Learning and Instruction Symposium, October 2005.
+[26] D. E. Rose and D. Levinson. Understanding user goals in web search. In Proc. of WWW, 13­19, 2004.
+[27] V. Y. F. Tan, A. Anandkumar, L. Tong, and A. S. Willsky. A large-deviation analysis for the maximum likelihood learning of tree structures. In Proc. of ISIT, 1140­1144, 2009.
+[28] J. Teevan, S. Dumais, and E. Horvitz. Potential for personalization. ACM Trans. on Computer, Jan 2010.
+[29] J. Teevan, S. Dumais, and D. Liebling. To personalize or not to personalize: modeling queries with variation in user intent. In Proc. of SIGIR, 163­170, 2008.
+[30] M. J. Wainwright and M. I. Jordan. Graphical Models, Exponential Families, and Variational Inference. Now Publishers Inc., Hanover, MA, USA, 2008.
+[31] R. White, S. Dumais, and J. Teevan. Characterizing the influence of domain expertise on web search behavior. In Proc. of WSDM, 132­141, 2009.
+[32] Web query classification. http://en.wikipedia.org/ wiki/Web_query_classification.
+
+404
+
+

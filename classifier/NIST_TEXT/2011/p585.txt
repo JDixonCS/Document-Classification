@@ -1,0 +1,1388 @@
+Incremental Diversification for Very Large Sets: a Streaming-based Approach
+
+Enrico Minack
+L3S Research Center Leibniz Universität Hannover 30167 Hannover, Germany
+minack@L3S.de
+
+Wolf Siberski
+L3S Research Center Leibniz Universität Hannover 30167 Hannover, Germany
+siberski@L3S.de
+
+Wolfgang Nejdl
+L3S Research Center Leibniz Universität Hannover 30167 Hannover, Germany
+nejdl@L3S.de
+
+ABSTRACT
+Result diversification is an effective method to reduce the risk that none of the returned results satisfies a user's query intention. It has been shown to decrease query abandonment substantially. On the other hand, computing an optimally diverse set is NP-hard for the usual objectives. Existing greedy diversification algorithms require random access to the input set, rendering them impractical in the context of large result sets or continuous data.
+To solve this issue, we present a novel diversification approach which treats the input as a stream and processes each element in an incremental fashion, maintaining a nearoptimal diverse set at any point in the stream. Our approach exhibits a linear computation and constant memory complexity with respect to input size, without significant loss of diversification quality. In an extensive evaluation on several real-world data sets, we show the applicability and efficiency of our algorithm for large result sets as well as for continuous query scenarios such as news stream subscriptions.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval
+General Terms
+ALGORITHMS,PERFORMANCE,EXPERIMENTATION
+Keywords
+Approximation, Diversification, Large sets, Streams
+1. INTRODUCTION
+A given user query often has a variety of intended meanings or associated information needs. To address this phenomenon, result diversification has been introduced as a technique to reduce the risk that none of the returned items matches the user's information need [25]. A good result set
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+balances relevance and diversity to optimize the probability of user satisfaction. While diversification is an effective means to cater for diverse query interpretations, it is also computationally expensive. To compute an optimally diverse result subset from an input set of relevant items is NP-hard [1, 12]. Therefore, existing approaches use approximation techniques and heuristics to increase the efficiency of diversification [9, 29, 24, 26, 12]. While the computational complexity of state-of-the-art approximation algorithms is usually linear to the input size, they rely on random access to items of the input set. To allow for high performance, the entire input set is hold in main memory, imposing substantial memory requirements on systems processing many user queries in parallel. Further, these algorithms cannot be applied for diversification of result streams, such as results for continuous queries in databases [6, 2], publish/subscribe systems [15, 14] or on Semantic Web data [3]. Diversification of results is impossible for systems that potentially process thousands of queries in parallel when they use algorithms with super-linear runtime and linear memory requirements.
+To solve this issue, we present our streaming-based approach which processes items incrementally, maintaining a near-optimal diverse set at any point in time. This approach has linear computation and constant memory complexity with respect to input set size, and naturally fits for streaming applications. It can be used to streamline existing diversification approaches, such as MaxMin and MaxSum [12, 9, 10]. Though we reduce memory consumption without compensating with more computation, our evaluation shows that diversification quality does not suffer, while efficiency is increased by orders of magnitude for large sets and streams.
+In particular, this work makes the following contributions:
+1. We formally define the task of stream diversification, which elegantly extends the set diversification task.
+2. We propose an incremental diversification framework suitable to diversify sets and streams.
+3. Incremental algorithms for the MaxSum and MaxMin diversification problems are provided. With input set size N and output set size k, the algorithms require O(k2) memory for floating point values, O(k) memory for items, O(N k) distance computations, and O(N k) and O(N k2) basic arithmetic operations, respectively.
+4. While substantially improving diversification efficiency, our algorithms still provide highly diversified sets comparable to state-of-the-art facility dispersion approximation algorithms [12].
+
+585
+
+The remainder of this paper is organized as follows. In the next section, we discuss existing work on set and stream diversification. In Section 3, we provide the formal foundation of diversification. Section 4 presents our main contribution, the incremental diversification framework and two incremental algorithms based on this framework, including a complexity analysis. Their quality and performance is evaluated in Section 5 and compared to state-of-the-art diversification algorithms. Section 6 concludes our work.
+2. RELATED WORK
+Diversification is studied in many different fields such as biology, ecology, psychology, linguistics, and economics [17]. In media, it manifests itself in a number of dimensions like sub-topic structure, style of writing, sentiment, and ideological perspectives [18]. In the context of Information Retrieval, these aspects should not be regarded as noise or contradictions, but rather as a rich source of information [11].
+In [28], Zhai and Lafferty model the Information Retrieval task as a statistical decision problem with the aim to minimize the risk of loss. Here, loss describes how much a result fails to satisfy a user's information need. Since this loss is always connected to the relevance of the results, the choice of a specific loss function allows to model different approaches in result set optimization. Traditional Information Retrieval approaches are modeled by a function in which the loss is independently estimated for each document. Diversification can be introduced by choosing a function where loss of one document depends on other documents in the result set.
+Several such diversification objectives have been proposed and successfully validated. The use of Maximum Marginal Relevance (MMR) was proposed by Carbonell and Goldstein [4], and also used in Zhai et al. [27]. Chen and Karger [5] introduced the k-call at n metric: it is 1 if at least k of the top n documents in a result set are deemed relevant, otherwise 0. The aim is to achieve a high average k-call over multiple queries. The choice of a small k leads to higher diversification, a higher k favors relevance. Gollapudi and Sharma [12] express their diversification objectives in terms of facility dispersion optimization problems. In this work, we use their MaxSumDispersion and MaxMinDispersion algorithms as baseline for evaluation. In contrast to [12], only the diversified set is required to be in main memory and the input items are processed incrementally. This allows us to increase the efficiency for large item sets without significant loss of quality, as we show in section 5. Our streamingbased approach is not limited to these two diversification objectives, though, and is independent of any particular relevance and distance measures.
+Document similarity is not the only possible source for a diversification objective. Another established approach is to view each document as covering a subset of all possible aspects of the query input [27, 7, 21]. The topical similarity based on the distance in taxonomies (categorical distance) is also used for diversifying product search [12] as well as for book, bookmark, and movie recommendations [29, 26]. Also click rates [23] and query reformulation [21] are valuable sources for effective diversification of Web search results.
+As search engine query logs show, there is a fair number of news-related queries [19], suggesting that blog search users have an interest in the blogosphere response to news stories as these develop. To the best of our knowledge, in the context of diversification, this need has only been addressed by
+
+Drosou and Pitoura [9]. They propose algorithms that diversify a stream of results using a jumping window approach. The authors argue that an incremental computation of a diverse set of a stream is not possible. While this is true for the optimal diverse set, we show that an incremental heuristic approximation is very well possible. Their SGC algorithm -- a heuristic variant based on a sliding window -- is the most similar one in the literature compared to our incremental approach. However, our "window" always starts at the beginning of the stream, providing a diverse set of the entire history, rather than a fixed number of recent items. This allows our algorithm to actively withdraw items from the diverse set to improve its diversity, whereas SGC simply drops diverse items as they leave the window.
+Diversification of search results is further considered in the domain of database search. A clustering and weighted sampling approach is used in [24] to obtain a diverse sub-set of results. Greedy algorithms are used in [13] in a similar way as presented here. However, the author does not focus design and evaluation on the streamline character of diversification, and does not consider input streams that are not ordered by relevance (e.g., from continuous queries).
+
+3. DIVERSIFICATION PROBLEMS
+In this section, we formally define the problem of diversification and provide the notation for the rest of this paper, mostly following [12]. We first define the classical Set Diversification problem, and then extend this notion to the problem of Stream Diversification to cover diversification of continuous data.
+
+Set Diversification.
+For a given set of results U : |U| = N (e.g., search results, news or blog articles matching a user query) we aim to find the set Sk  U : |Sk| = k that is both relevant and diverse. Relevance of a result measures the probability that the user is actually interested in that result (w : U  R+)1, whereas diversity reflects dissimilarity ((1 - similarity), also denoted distance) of one result to another (d : U × U  R+). To simplify the presentation, we assume in the following that d is a metric. Usually, relevance and diversity are conflicting objectives: when the top-k most relevant results do not constitute the maximal diverse set, diversity can only be increased by replacing a top-k result with a less relevant but more dissimilar one. This obviously reduces the overall relevance of the set. The tradeoff between the two measures is captured in a diversification objective, a function over a set of items that consolidates the relevance of results w(·) and the diversity between pairs of results d(·, ·) into a single measure:
+
+f : 2U × w × d  R
+
+(1)
+
+where 2U denotes the power set of U.
+Having the diversification objective at hand, we can de-
+fine the diversification problem as finding the k-size random subset Sk  2U that maximizes the diversification objective:
+
+Sk = arg max f (Sk, w(·), d(·, ·))
+
+(2)
+
+Sk 2U
+
+|Sk |=k
+
+1 While result set U and relevance function w depend on the user query, the explicit introduction of the query itself into this diversification model complicates the notation (cf. [12]).
+
+586
+
+This optimization is known to be NP-hard [12, 1]. As the
+
+number
+
+of
+
+candidate
+
+sets
+
+|{Sk
+
+
+
+2U
+
+:
+
+|Sk |
+
+=
+
+k}|
+
+is
+
+N! (N -k)!
+
+,
+
+an exhaustive exploration of all sets to find the optimal solu-
+
+tion is impractical even for small k  10 as soon as N > 20.
+
+Therefore, all proposed diversification approaches use greedy
+
+algorithms and/or heuristics to approximate the optimal solution Sk by a near-optimal S+k .
+
+Instances of Diversification Objectives and Problems.
+Throughout the literature of diversification, there are two popular diversification objectives: Sum2 and Min [12, 9]. As the names imply, they are based on the sum or minimum of the two measures w and d. Formally, Sum is defined as
+
+fSum = (k - 1) w(i) + 
+
+d(i, j)
+
+(3)
+
+iSk
+
+i,jSk i=j
+
+The first term in Equation 3 sums the relevance scores for
+
+each result, the second term sums the distances of all pairs
+
+(i, j)  Sk ×Sk : i = j. Since the first sum runs over k values
+
+and the second over k(k - 1), this imbalance is compensated
+
+by multiplying the first term with k - 1. In case of d(·, ·)
+
+being
+
+a
+
+metric
+
+[12,
+
+Eq.
+
+1],
+
+it
+
+suffices
+
+to
+
+sum
+
+over
+
+all
+
+k(k-1) 2
+
+unique unordered pairs and multiply the second term by 2.
+
+The parameter  allows to balance the influence of rele-
+
+vance and diversity on the objective value. A  < 1.0 in-
+
+creases the contribution of relevance, whereas  > 1.0 favors
+
+item dissimilarity. In order to consider both cases, we use
+
+ = 0.5, 1.0, 2.0 in our evaluation.
+
+The Min objective only considers minimum relevance and
+
+minimum pairwise distance:
+
+fMin = min w(i) +  min d(i, j)
+
+(4)
+
+iSk
+
+i,jSk
+
+i=j
+
+The diversification problems of maximizing the Sum and
+
+Min objectives are referred to as MaxSum and MaxMin.
+
+These problems can be cast as facility dispersion problems
+
+as shown in [12], for which approximation algorithms exist.
+
+We briefly summarize these algorithms in the following.
+
+MaxSumDispersion composes the diverse set by select-
+
+ing
+
+k 2
+
+pairs
+
+of
+
+most
+
+distant
+
+items,
+
+with
+
+distance
+
+defined
+
+as
+
+d(i, j) = w(i) + w(j) + 2d(i, j). If k is odd, the kth item
+
+is randomly added to the set. Finding the pair of most dis-
+
+tant items is of time complexity O(N 2), thus this algorithm
+
+belongs to the complexity class O(N 2k).
+
+Similarly, MaxMinDispersion initializes the diverse set
+
+with the pair of most distant items, where distance is defined
+
+iasthda(ti,mj)ax=im21i(zwes(im)+inwj(Sj)d)+(i, jd)(.i,Aj)f.teTr hke-n,
+
+it adds the item 2 iterations, the
+
+diverse set is constructed. Again, finding the pair of most
+
+distant items requires O(N 2) distance computations, while
+
+the k - 2 iterations demand O(N k) operations, summing up
+
+to O(N 2 + N k). As described in [9], the MaxMinDisper-
+
+sion algorithm can be improved: instead of selecting the
+
+initial two most distant items from the entire input set, it
+
+can selected from a uniformly random sample set of size h
+
+(h  N ). This has only a small impact on the diversification
+
+quality [8], but reduces the complexity to O(N k + h2).
+
+2The Avg objective bases on average relevance and average pairwise distance. For a fixed k, it is proportional to the Sum objective and is not separately considered in this work.
+
+Since both algorithms require random access to the input set, it is usually held in memory, yielding to memory complexity of O(N ). This makes the application of these algorithms practically infeasible for large sets. In case of data streams, the algorithms need to be executed repeatedly as new items arrive, causing an even higher computational effort. In the following Section 4, we present our incremental approach that solves these issues.
+
+Stream Diversification.
+As an extension to the set diversification problem, we consider the items of the set to be a sequence or stream S = (s1, . . . ) in the order as retrieved by the respective IR system. For a given query, a traditional document retrieval system provides documents in descending order of relevance. A news or blogs publish/subscribe system provides results matching a continuous query as they are recognized by the system, i.e., ordered by time. We define the diversification problem over a stream S at each position i in the stream as
+
+Sk,i = arg max f (Sk, w(·), d(·, ·))
+
+(5)
+
+Sk 2Si
+
+|Sk |=k
+
+where Si = {sj : j  i} is the set of the items at positions [1, i]. In other words, for each position i in S, a diversified set Sk,i is defined over the subsequence Si = (s1, s2, . . . , si). It can be seen that the set diversification problem is a special
+case of stream diversification, by viewing the input set U as
+stream S = (s1, . . . , sN ). Then,
+
+Sk U==SN Sk,N
+
+(6)
+
+In contrast to our stream diversification problem, [9, 10] consider a fixed window of recent items for the diversification task. This, for instance, poses a problem for items like news articles or blogs that are not published at a fixed rate. Then, at two different points in time the window covers different periods of time. Further, picking the window size represents an additional optimization problem.
+Diversification along a time-ordered stream of results may lead to diversified k-size sets that primarily contain "old" but relevant and highly diverse results while new, similar results are omitted. Such a behavior can be compensated by introducing a decay factor to the relevance function which lowers the item score as its age increases [9]. Function wi(sj) is the relevance of item sj at time i (i.e., when item si is observed):
+
+wi(sj ) = w(sj )  e-t(si,sj )
+
+(7)
+
+with
+
+
+
+=
+
+-
+
+log 0.5 log e
+
+t-1/12
+
+and
+
+t1/2
+
+being
+
+the
+
+half-life
+
+time
+
+of
+
+re-
+
+sults' relevances, while t(sj, si) = max(t(si) - t(sj), 0) pro-
+
+vides the time difference between result si and sj if the point
+
+in time t(si) > t(sj), or 0 otherwise.
+
+4. INCREMENTAL DIVERSIFICATION
+The following section describes our incremental diversification framework. It is composed of a generic incremental diversification algorithm that employs a general incremental objective model to optimize computation. This algorithm efficiently and effectively produces diverse k-size sets in linear time (for fixed k) and over streams in constant time (at each position) with respect to input size. Based on this framework, we develop incremental algorithms for the MaxSum and MaxMin diversification objectives.
+
+587
+
+4.1 Incremental Diversification Framework
+
+Incremental Diversification Algorithm.
+The core idea of our incremental diversification algorithm
+is to process the input as a stream of items and to con-
+tinuously maintain a diverse subset at each position of the stream. Let S+k,i-1 be a near-optimal diverse k-element subset of (s1, . . . , si-1). Then, its successor S+k,i is determined as the set with the highest objective among all candidate sets Sk,i that can be created by replacing at most one element of S+k,i-1 with si.
+Formally, this can be defined as
+
+S+k,i = arg max f (Sk,i, w(·), d(·, ·))
+
+(8)
+
+Sk,i 2S+ k,i-1{si}
+
+|Sk,i |=k
+
+To put it differently, two consecutive sets S+k,i-1 and S+k,i with i  [k + 1, N ] relate to each other as
+
+S+k,i = S+k,i-1 \ {sj }  {si} : sj  S+k,i-1  sj / S+k,i (9)
+
+if a modification took place, otherwise S+k,i = S+k,i-1. For the first k items, S+k,i is trivally defined as S+k,i = S+k,i-1  {si} : i  k with Sk,0 = .
+Algorithm 1 specifies this approach in pseudo-code. At
+the end of each iteration i over [1, N ], the algorithm provides the diverse set S+k,i. In case of streams, this algorithm can continue computation as soon as a new item arrives.
+
+Algorithm 1: Incremental Diversification Algorithm
+
+Input: Set of items {s1, . . . , sN }, size of diverse set k Output: diverse set of items S+k,N
+
+1 for i  1 to N do
+
+2 if i  k then
+
+3
+
+S+k,i  S+k,i-1  {si} ;
+
+4
+
+continue ;
+
+5 max  f (S+k,i-1, w(·), d(·, ·)) ;
+
+6
+
+S+k,i  S+k,i-1 ;
+
+7
+
+for sj  S+k,i-1 do
+
+8
+
+Sk,i  S+k,i-1 \ {sj }  {si} ;
+
+9
+
+current  f (Sk,i, w(·), d(·, ·)) ;
+
+10
+
+if current > max then
+
+11
+
+max  current ;
+
+12
+
+S+k,i  Sk,i ;
+
+13 return S+k,N ;
+
+Additionally, this algorithm can be modified in line 10 to minimize the objective value, rather than maximizing it. This allows to also use the algorithm along with all those diversification objectives that are to be minimized, for instance the MaxCov objective [22].
+An important characteristic of this algorithm is that the objective value is computed in the inner loop for k candidate sets Sk ,i that, compared to the outcome set of the previous iteration, mutually differ in only one item. In the following, we show how the objective computation can further be optimized by exploiting this fact.
+
+Incremental Objective Model.
+The objective value of a set S+k,i is computed based on the known objective value of S+k,i-1. Since both sets relate to each other as defined by Equation 9, only the relevance
+scores of item sj (removal) and si (addition), as well as the distances d(sj , sl) and d(si, sl) : sl  S+k,i-1 \ {sj } need to be considered for computation. The incremental diversification algorithm computes the objective of different S+k,i by subsequently varying sj (denoted in line 8 as Sk,i). Therefore, each distance d(si, sl) is reused k - 1 times in the inner loop
+and does not need to be recomputed.
+
+4.2 Incremental Sum Objective
+
+The core idea of the incremental Sum objective function
+
+exploits the fact that a sum s =
+
+n i=1
+
+ai
+
+can -- instead
+
+of
+
+recomputing it -- be updated when one value aj : j  [1, n]
+
+gets replaced by a as s = s + a - aj . Equivalently, fSum
+
+in Equation 3 with symmetric distance can be incrementally
+
+computed as:
+
+fSum(Sk,i) = fSum(S+k,i-1) + (k - 1)(w(si) - w(sj )) + 2 (d(si, sl) - d(sj, sl))
+
+sl S+ k,i-1 sl =sj
+
+(10)
+
+where fSum(·) is a short hand notation for fSum(·, w(·), d(·, ·)).
+
+As the incremental algorithm computes the objective of k
+
+different candidate sets Sk,i with only sj varying, the algorithm keeps all distances between the elements of S+k,i-1 in a matrix D = (dm,n) with dm,n = d(s(m), s(n)) : n, m =
+1, . . . , k. The function s(·) provides the element of the di-
+
+verse set that corresponds to the index [1, k] of this matrix
+
+and the following vectors. The symmetry of d(·) leads to a
+
+symmetric matrix D. During the construction of the initial
+
+set (line 3 of the algorithm), this matrix is built up for the
+
+first k items. From then on, it is updated after the inner
+
+loop, as we show later.
+
+The distance between the new item si and the items in
+
+the current diverse subset, d(si, s(l)) : l = 1, . . . , k, is reused k - 1 times for each s(l). Therefore we define the vector
+
+d = (d1, . . . , dk) with dl = d(si, s(l)) : l = 1, . . . , k. This
+
+vector is computed once before the inner loop. We define
+
+the sum over all these distances as k,i =
+
+k n=1
+
+dn.
+
+The vector k,i-1 = (1,i-1, . . . , k,i-1) provides the row
+
+sums of matrix D: m,i-1 =
+
+k n=1
+
+dm,n
+
+:
+
+m
+
+=
+
+1, . . . , k.
+
+Then, Equation 10 can be rewritten as
+
+fSum(Sk,i) = fSum(S+k,i-1) +(k - 1)(w(si) - w(sj )) +2(k,i - dj - j,i-1)
+(11) In case S+k,i differs from S+k,i-1 (after the inner loop), the following updates are required: Vector k,i is derived from
+k,i-1 for all l = 1, . . . , k as
+
+l,i =
+
+l,i-1 + dl - dj,l : l = j k,i - dl : l = j
+
+(12)
+
+where j refers to the index of sj as s(j) = sj. Then, matrix
+D is updated as dl,j = dj,l = dl : l = 1, . . . , k, and function s(·) is modified so that s(j) = si. With this strategy, our in-
+cremental Sum objective achieves a computation complexity of O(1), while requiring O(k2) memory.
+
+588
+
+diversification algorithm
+
+acronym
+
+MaxSumDispersion MaxSumDispersion cached MaxSumIncremental
+MaxMinDispersion MaxMinDispersion cached MaxMinDispersion cached (h=2) MaxMinIncremental
+
+MSDisp MSDisp+ MSInc
+MMDisp MMDisp+ MMDisp+h2 MMInc
+
+CPU
+
+distances
+
+basic
+
+O(N 2k) O(N 2)
+
+O(N 2k) O(N 2k)
+
+O(N k)
+
+O(N k)
+
+O(N 2 + N k) O(N 2) O(N k + h2)
+O(N k)
+
+O(N k) O(N k) O(N k) O(N k2)
+
+Memory
+
+items
+
+basic
+
+O(N ) O(1) O(N ) O(N 2)
+O(k) O(k2)
+
+O(N ) O(N ) O(N ) O(k)
+
+O(1) O(N 2) O(N k + h2)
+O(k2)
+
+Table 1: Complexity in CPU consumption (distance computation and basic operations) and memory consumption (items and basic data types) of different diversification algorithms. Basic operations are arithmetic operations or memory access, basic data types are double precision floating point values.
+
+4.3 Incremental Min Objective
+
+The Min objective defined in Equation 4 bases on the
+minimum relevance and pairwise distance. Therefore, the objective of each Sk,i can be computed with the new minimum relevance and distance values of S+k,i-1 and item si.
+Similarly to the incremental Sum objective, the pairwise distances between si and sj  S+k,i-1 are computed once before the outer loop of the incremental algorithm and are
+reused to compute the objective of the candidate sets:
+
+
+
+
+
+
+
+
+
+
+
+
+
+min
+sn Sk,i
+
+w(sn)
+
+=
+
+min
+
+min 
+
+w
+
+(sn
+
+) 
+
+  snS+ k,i-1
+
+,
+
+w(si
+
+) 
+
+
+
+sn =sj
+
+(13)
+
+
+
+
+
+
+
+min
+sn ,sm Sk,i sn =sm
+
+d(sn,
+
+sm)
+
+=
+
+min
+
+ 
+
+min dn,m
+
+ 
+
+n,m{1,...,k}\{j}
+
+n=m
+
+,
+
+min dn
+
+ 
+
+n{1,...,k}\{j}
+
+(14)
+
+With an ordered vector of all relevances of the diverse
+
+set, Equation 13 can be computed in O(1) by comparing
+
+the first element (if the respective relevance does not belong
+
+to sj) or the second element (otherwise) of the vector with
+
+w(si). Equation 14 can be evaluated by finding the smallest distance among dn,m and dl with n, m, l  [1, k] that does
+
+not belong to sj. This can be done by a two-way merge [16,
+
+Sec. 5.2.4] over the ordered vector of all dn,m, the ordered
+
+vector of all dl, and the ordered vector of dj,m. The result
+
+distance is the minimum of the former two vectors that does
+
+not appear in the latter one (thus it does not belong to
+
+sj). This operation has a worst-case complexity of O(k), occurring when the k smallest pairwise distances of S+k,i-1 belong to sj and all distances to si are larger than these. In the best case, when the smallest pairwise distance of S+k,i-1 does not belong to sj and is larger than the smallest dl, (14)
+
+has complexity O(1).
+
+4.4 Complexity Analysis
+The complexities of our incremental objectives for MaxSum and MaxMin were briefly outlined before. We now analyze the total complexity of our algorithm in detail. The complexities of all algorithms are summarized in Table 1.
+The computation and memory complexities are each considered to be compound. The computation contains distance computations and basic arithmetic operations. The former may involve several of the latter, potentially rendering distance computations to be of an order of magnitude slower.
+
+Memory consumption is considered a conjunction of memory for items (to be diversified) and memory for basic data types such as double precision floating point values. Again, the former can be orders of magnitude larger than the latter.
+As one can see from the pseudo-code, the incremental diversification algorithm has a complexity of O(N k) set modifications and objective computations. In case of MaxSumIncremental, the structures D, d, j,i-1, and k,i are constructed and updated incrementally outside of the inner loop, requiring O(k) operations for each item. As we have shown, the computation of the objective itself is O(1). Thus, the total computational complexity of MaxSumIncremental is still O(N k).
+The objective computation of MaxMinIncremental has complexity of O(k) in worst-case and O(1) in best-case. The removal and addition of an element from and to the ordered relevance and distances vectors each requires O(log k) operations. These operations are performed before and after the inner loop, leading to a total complexity of O(N k2) and O(N k log k), respectively. For both objectives, the memory requirements for maintaining the distance matrix dominates the overall memory complexity, leading to O(k2). Note that k is usually rather small, according to the "less is more" [5] motto. Thus, our algorithm is essentially linear in the number of items, with a small constant factor determined by k.
+5. EXPERIMENTAL EVALUATION
+We presented a generic incremental diversification framework, as well as two specific incremental diversification algorithms: MaxMinIncremental and MaxSumIncremental. As shown, computation and memory complexity is reduced compared to their baseline algorithms MaxMinDispersion and MaxSumDispersion, at the cost of giving up approximation guarantees. Therefore, the main goal of the experimental evaluation is to show that for real-world data, this does not lead to a decrease in diversification quality for sets and streams. In addition, we measure the performance characteristics of our algorithms and the baseline to confirm analytical results presented in Section 4.4.
+5.1 Experimental Setup
+Data Sets and Queries.
+To show the wide applicability of our algorithms, we evaluated them on three well-known data sets. We opted for data sets that provide us with large result sets and streams -- the challenge our incremental diversification algorithms tackle. We used these data sets and queries for evaluation:
+
+589
+
+MaxSum
+
+AOD 0.1
+0
+-0.1
+-0.2 5
+AOD 0.4 0.2 0 -0.2 -0.4 5
+
+AOD 0.1
+
+0
+
+-0.1
+
+10
+
+20
+
+50
+
+MSDisp+
+
+10
+
+20
+
+50
+
+MMDisp+h2
+
+-0.2
+
+k
+
+5
+
+MSInc
+
+AOD 0.4
+
+0.2
+
+0
+
+-0.2
+
+-0.4
+
+k
+
+5
+
+MMInc
+
+AOD 0.1
+
+0
+
+-0.1
+
+-0.2
+
+10
+
+20
+
+50 k
+
+5
+
+10
+
+20
+
+50 k
+
+Top
+
+Rand
+
+AOD 0.4
+
+0.2
+
+0
+
+-0.2
+
+-0.4
+
+10
+
+20
+
+50 k
+
+5
+
+10
+
+20
+
+50 k
+
+Top
+
+Rand
+
+MaxMin
+
+Figure 1: Diversification quality compared to baseline MAXSUMDISPERSION (top) and MAXMINDISPERSION (bottom) on the NYTimes, Blogs08 and DBpedia data set (left to right), with  = 1.
+
+NYTimes The New York Times Annotated Corpus3 contains over 1.8 million articles of the New York Times from 1987 until 2007. We obtained over 5,000 user queries from the AOL query log that lead users to query.nytimes.com and topics.nytimes.com. The publication timestamp renders this data set suitable to generate time-ordered result streams from queries.
+Blogs08 The TREC Blogs 2008 data set4 provides over 28 million multi-language blog entries crawled over the period of 2008. We considered a subset of 18 million entries that can be classified5 as English. As queries, we used the TREC 2008 Blog Track topics of the opinion search and polarity task 6. From these 150 topics, we took the title as a keyword query. The dates of blog retrieval allow us to generate time-ordered streams of blog entries relevant to user queries.
+
+For the DBpedia data set, we aim at generating structured queries that most likely produce long result sets suitable for our evaluation purposes and are likely to be issued. Therefore we exploit frequent structures exposed by the data. From the most frequent types (classes), links between these types, and their most frequent attributes (literal properties), we automatically generated queries containing at most five interconnected typed nodes (resources) and multiple optional unbound attributes. With that approach, we created over 800 queries.
+These three data sets are used to generate realistic result sets and streams to put our diversification algorithms under real workload. With a result set ordered by relevance we face the set diversification task, ordered by time we tackle the stream diversification task.
+
+DBpedia The DBpedia data set v3.5.1 7 is a semantic data Relevance and Distance Functions.
+
+set providing the knowledge of the Wikipedia project
+
+The diversification tasks we are focusing on require rel-
+
+as semi-structured data. We used DBpedia as com-
+
+evance and distance functions, which are to be defined for
+
+plement to the other two document-centric data sets.
+
+each data set individually.
+
+Structured result sets and streams may exhibit differ-
+
+NYTimes/Blogs08 The two document-centric data sets
+
+ent characteristics and challenge diversification algo-
+
+were indexed using the Java Lucene8 library along with the
+
+rithms differently than unstructured document collec-
+
+Snowball stemmer9. We use Lucene's normalized relevance
+
+tion. This data set contains almost 89 million facts
+
+score as relevance function. Based on the cosine similarity
+
+extracted from Wikipedia content.
+
+CosineSim(·, ·) of the term frequency vectors, the distance
+
+between items is defined as d(si, sj) = 1-CosineSim(si, sj).
+
+3The New York Times Annotated Corpus:
+
+DBpedia The semantic data set is indexed and queried
+
+http://corpus.nytimes.com/.
+
+with Java Sesame10. After querying, results referring to the
+
+4TREC
+
+Web
+
+Corpus -- BLOGS08:
+
+same things but with varying values for the attributes were
+
+http://ir.dcs.gla.ac.uk/test_collections/blogs08info.htmclo. nsolidated into a single result with multi-value attributes. 5TextCat Library: http://textcat.sourceforge.net/.
+
+6Topics for opinion search and polarity task (topics 851­950,
+
+8Apache Lucene: http://lucene.apache.org/java/.
+
+1000­1050): http://trec.nist.gov/data/blog08.html.
+
+9Snowball Stemmer: http://snowball.tartarus.org/.
+
+7DBpedia: http://dbpedia.org/.
+
+10OpenRDF Sesame: http://www.openrdf.org/.
+
+590
+
+MaxSum
+
+AOD 0.1
+0
+-0.1
+-0.2 5
+AOD 0.4 0.2 0 -0.2 -0.4 5
+
+AOD 0.1
+
+0
+
+-0.1
+
+10
+
+20
+
+50
+
+MSDisp+
+
+10
+
+20
+
+50
+
+MMDisp+h2
+
+-0.2
+
+k
+
+5
+
+MSInc
+
+AOD 0.4
+
+0.2
+
+0
+
+-0.2
+
+-0.4
+
+k
+
+5
+
+MMInc
+
+AOD 0.1
+
+0
+
+-0.1
+
+-0.2
+
+10
+
+20
+
+50 k
+
+5
+
+10
+
+20
+
+50 k
+
+Top
+
+Rand
+
+AOD 0.4
+
+0.2
+
+0
+
+-0.2
+
+-0.4
+
+10
+
+20
+
+50 k
+
+5
+
+10
+
+20
+
+50 k
+
+Top
+
+Rand
+
+MaxMin
+
+Figure 2: Diversification quality compared to baseline algorithm MAXSUMDISPERSION (top) and MAXMINDISPERSION (bottom) for the Blogs08 data set with  = 0.5, 1.0, 2.0 (left to right).
+
+Following [20], we define the distance between two results si and sj as a multi-type-multi-value distance measure:
+
+d(si, sj )
+
+=
+
+1 n
+
+n
+
+dl(si(al), sj (al))
+
+l=1
+
+(15)
+
+where the query contains the attributes a = (a1, . . . , an) and si(al) refers to the multi-value for attribute al of result si. Further, the distance dl(vi, vj) between multi-value vi and vj of result si and sj for attribute al is defined as
+
+dl(vi
+
+=
+
+si(al), vj
+
+=
+
+sj (al))
+
+=
+
+1 |vi| · |vj|
+
+tvi uvj
+
+dl(t, u)
+
+(16)
+
+which corresponds to the average pairwise distance between
+
+the values of result si and sj for attribute al. The dis-
+
+tance between empty multi-values is defined as 1. Obviously,
+
+this definition considers two sparse results with disjoint sets
+
+of non-empty attributes to be maximally distant (diverse).
+
+Consequently, the diversification would favor sets of sparse
+
+results, which is unlikely to satisfy users. Therefore, we
+
+define relevance as the fraction that reflects the number of
+
+attributes of the query that are covered by the result (non-
+
+empty). A result that provides values for all attributes ob-
+
+tains relevance 1, whereas results with only a few attribute
+
+values get assigned a relevance close to 0. The diversification
+
+objective that balances diversity and relevance also balances
+
+between sparse and non-sparse results.
+
+The result distance measure can employ different distance
+
+measures for different attributes. We use cosine similarity
+
+over term frequency vectors for textual values and the abso-
+
+lute difference between numerical values, normalized by the
+
+maximum range of the respective attribute.
+
+Evaluation approach.
+Our evaluation targets at effectiveness and efficiency of our incremental algorithms compared to baseline algorithms.
+Effectiveness Usually, when evaluating diversification approaches, the challenge is to measure result set diversity. Clearly, this measurement must be independent from the diversification objective, which is maximized. A number of established diversity-aware evaluation measures for search approaches exist, e.g., -NDCG [7], NDCG-IA [1], and Srecall [27].
+These measures require sub-topic annotations or relevance judgments which are not available for result set sizes in the order of 104 that we evaluate. Fortunately, in our case it is not necessary to directly evaluate the quality of the diversification, because our work approximates already established diversification approaches with validated objective functions [12], and focuses on gains in efficiency, not in diversification quality. Therefore, we only need to assess the approximation quality to validate the effectiveness of our algorithms. For that purpose, a direct comparison of the achieved objective scores instead of using one of the above mentioned quality measures is appropriate.
+For comparison, we run each algorithm for all queries, and measure the objective score of the diverse sets. These scores are then normalized to the interval [0, 1] by division by the maximal possible objective value. The difference of an algorithm's and its baseline's normalized objectives renders the absolute objective difference (AOD) measure. These are averaged over all queries and used to quantify the loss of quality introduced by streamlining. An AOD value of ±0.1 expresses an improvement / impairment of 10% within the normalized interval of [0, 1].
+Efficiency The algorithm efficiency was measured as follows. The queries were evaluated against the data sets and all results were fetched into memory. Then, the algorithms
+
+591
+
+MaxSum
+
+time ms
+106
+
+time ms
+106
+
+time ms
+106
+
+105
+
+105
+
+105
+
+104
+
+104
+
+104
+
+103
+
+103
+
+103
+
+102
+
+102
+
+102
+
+102
+
+103
+
+104
+
+N
+
+102
+
+103
+
+104
+
+N
+
+102
+
+103
+
+104
+
+N
+
+time ms
+106
+
+MSDisp
+time ms 106
+
+MSDisp+
+
+MSInc
+
+time ms
+106
+
+105
+
+105
+
+105
+
+104
+
+k=50
+
+k=20
+
+104
+
+k=50
+
+k=20
+
+104
+
+k=50
+
+k=20
+
+103 102
+
+k=10 k=5
+
+103
+
+102
+
+k=10
+
+103
+
+k=5
+
+102
+
+k=10 k=5
+
+102
+
+103
+
+104
+
+N
+
+102
+
+103
+
+104
+
+N
+
+102
+
+103
+
+104
+
+N
+
+MMDisp
+
+MMDisp+h2
+
+MMInc
+
+MaxMin
+
+Figure 3: Runtime for MAXSUM (top) and MAXMIN (bottom) diversification algorithms on the three data sets NYTimes, Blogs08, and DBpedia (left to right) for k = 5, 10, 20, 50.
+
+performed the diversification on these in-memory result sets. We only measured the time required for the diversification itself, not taking into account query execution and fetching of the initial result set into memory. The experiments employed the high performance computing cluster with JavaTM version 1.6.0 16, employing Intel R Xeon R (X5670, 2.93GHz) processors. Execution time is the actual CPU time consumed by the algorithms, not the "wall clock" time.
+Computing the diverse sets of the baseline algorithms is too expensive for very large result sets. Therefore, for MaxSumDispersion we only considered result sets of up to 4,000 elements, for MaxMinDispersion up to 10,000 elements.
+In the following, we evaluate effectiveness and efficiency of our incremental algorithms as well as their state-of-the-art non-incremental counterparts for large sets and streams.
+5.2 Set Diversification
+Algorithms.
+For each of the two objectives that we evaluate here, a number of approximation algorithms and variants exist. As baseline algorithms, we consider the facility dispersion based algorithms MaxSumDispersion and MaxMinDispersion [12]. In the following, we refer to these as MSDisp and MMDisp, respectively. Both can be modified to trade fewer computations against higher memory consumption by caching computed distances. We refer to these as MSDisp+ and MMDisp+, respectively. Further, the variant of MMDisp+ that initially selects the most distant pair from a h-size random subset of all N items (h < N ) is also evaluated with h = 2 as MMDisp+h2 [8].
+Our incremental algorithms are in the following referred to as MSInc and MMInc. As reference algorithms, we also show the diversity achieved by returning the top-k most relevant items (Top), as well as k-random ones (Rand).
+
+Diversification Quality.
+In Figure 1 we show the difference of the objective score achieved with respect to the baseline algorithm, i.e., the baseline algorithm's score is at 0. For the upper row with the Sum objective, the baseline algorithm is MSDisp. The lower row shows results for the Min objective with MMDisp as baseline. MSDisp+ shows the same diversification quality as the baseline, because the only difference is that it caches results and therefore produces identical diverse sets.
+For all three data collections, MSInc clearly is on par with the baseline. In some instances, the incremental results are even better. Our algorithms can be better than the baseline because both approximate the optimal solution. MSInc is sometimes better because it considers every item in the set, while MSDisp only considers items with maximal distance within the remaining item set. For instance, MSDisp would add two identical pairs of results with maximal distance to the diverse set, while the second does not increase diversity.
+We observe that Min has a higher variation of AOD values. However, also for this objective, the incremental algorithm yields similar or better results than the baseline.
+MSInc results are more stable over all data sets and configurations than MMInc. This might be because for Min the one item with the smallest relevance and distance determines the objective score of the entire set, whereas for Sum all items equally contribute to the final score.
+Though MMDisp+h2 yields reasonable results for Blogs08 and DBPedia, this approach does not work well for the NYTimes collection (Figure 1, bottom left).
+Influence of .
+To investigate the influence of different trade-offs between relevance and distance, we now vary  between 0.5 and 2.0. The results are shown in Figure 2. For the Sum objective, the approximation quality is not substantially influenced by
+
+592
+
+MaxSum
+
+AOD 0.1
+0
+-0.1
+10
+AOD 0.1 0 -0.1 -0.2 -0.3 10
+
+AOD 0.1
+
+AOD 0.1
+
+0
+
+0
+
+-0.1
+
+-0.1
+
+100
+
+1000
+
+N
+
+10
+
+100
+
+1000
+
+N
+
+10
+
+100
+
+1000
+
+N
+
+MSDispWin
+
+MSInc AOD
+
+TopRel
+
+AOD
+
+Last
+
+0.1
+
+0.1
+
+0
+
+0
+
+-0.1
+
+-0.1
+
+-0.2
+
+-0.2
+
+-0.3
+
+-0.3
+
+100
+
+1000
+
+N
+
+10
+
+100
+
+1000
+
+N
+
+10
+
+100
+
+1000
+
+N
+
+MMDispWin
+
+MMInc
+
+TopRel
+
+Last
+
+MaxMin
+
+Figure 4: Absolute objective improvements of MAXSUM (top) and MAXMIN (bottom) for the Blogs08 data set with  = 1.0 and k = 10 for streamline with no decay and decay over 100k and 1k (from left to right).
+
+the choice of . On the other hand, the respective differences for Min to the baseline algorithm are significantly affected.
+For  = 0.5, the relevance-only reference Top achieves Sum objective scores comparable to the baseline, and for Min its score is even higher. As expected, for higher  values the Top scores deteriorate soon. We also observe that our incremental algorithms are able to even diversify the top-k results for  < 1.0 and always outperform the other variants (except for one case with Min at k = 50 and  = 2.0).
+Performance Results.
+The runtime of our experiments is depicted in Figure 3. Each query is represented by a corresponding dot. In addition, we show fitted regression curves according to Table 1 for these results. Note that results are shown with log-log scales. Here, polynomial complexity classes are displayed as straight lines, with varying slopes according to the degree of complexity, i.e., O(N 2) has a steeper slope than O(N ).
+All experimental results correspond to the analytical predictions presented in Section 4.4. We see that the extracted queries yield result set sizes from 100 up to 10,000 documents. As expected, processing times of the non-incremental algorithms grow quadratic with this set size.
+Computing the distance values for our document collections NYTimes and Blogs08 is equally fast for all documents. In contrast, we observe a high variance for the DBPedia collection (Figure 3, right column). This can be explained by characteristics of the distance function used for the structured data. The performance of this function depends on the number of attributes which varies by an order of magnitude in our query set. Regardless of this variance, the fitting curve matches the analytical curves for this data set, too.
+Already for N = 1,000 and k = 10, MSDisp requires one minute to compute the diversified set. In contrast, our incremental variant needs only 100 milliseconds for this set size. MMInc has slightly higher response times than MSInc, due to the additional k factor in objective computation.
+
+5.3 Stream Diversification
+We now evaluate our algorithms against the stream diversification task. The experimental setting mimics a stream of results as retrieved from a news or blogs publish/subscribesystem, for example an RSS stream. In contrast to the setbased experiments, items are ordered by timestamp.
+Algorithms.
+With Equation 5, we define the task of stream diversification as finding at each position of the stream a diverse subset of all items that were observed until that position. As the baseline algorithm, we take all these observed results as a set and obtain the diverse set with the set-based baseline algorithms. This computation turned out to be very expensive. We were unable to process the baseline for streams larger than 10,000 documents while collecting a sufficient amount of measurement points. For that amount, the diversification with k = 10 required nearly one hour.
+Additional to this baseline, we evaluated a window-variant following the work of Drosou and Pitoura [9] on stream diversification, denoted as MSDispWin and MMDispWin, respectively. We show the results for a jumping window of 100.
+As before, we include two reference algorithms for comparison purposes. The Last reference algorithm proposes the k most recent items from a stream as the diverse set, whereas TopRel picks the k most relevant items from the stream, ignoring diversity completely.
+Optimally, we would compute the diverse set after each new item. However, this is prohibitively expensive for the baseline. Therefore, we distributed ten measuring positions logarithmically over the stream, and computed the results for all algorithms at these positions.
+Results. Figure 4 shows the diversification quality for stream data, computed on Blogs08, our largest data set. To evaluate the influence of item relevance decay, the experiments were performed without decay (left column) and with a half-life over 100k (middle) and 1k (right) items.
+
+593
+
+As expected, Last yields very low objective scores, and TopRel is only better for low  values. MSInc / MMInc and MSDispWin / MMDispWin achieve diversification comparable to the baseline, with a slight advantage for our variants.
+The baseline algorithm is unusable in practice to perform stream diversification, as mentioned above. MSDispWin and MMDispWin require on average 250 ms and 80 ms per step. MSInc and MMInc update the diverse set for each incoming item in virtually no time (< 1 ms time measure accuracy).
+We conclude that the windows-based and the incremental variants efficiently allow for stream diversification. MSInc and MMInc have the advantage that diversification is immediately available for each new incoming item; this would be substantially more expensive for MSDispWin and MMDispWin.
+6. CONCLUSIONS
+Diversification is an important strategy to improve user satisfaction in the presence of ambiguous or broad queries. Due to their linear memory complexity, current approximation algorithms cannot be used to diversify large sets of items, or a large number of sets concurrently. Our new incremental approach is linear in computational complexity and constant in memory complexity w.r.t the number of items, and therefore also very well suited for very large sets. As a framework for incremental diversification, our approach is applicable to a wide range of diversification objectives. A thorough evaluation based on three real-world data sets shows that such an incremental computation exhibits the same quality as the baseline algorithm. On the other hand, computation and thus query response time is sped up by several orders of magnitude for sets of a few thousand items and more. In addition, our streaming-based computation enables very efficient diversification of queries over continuous data sources as well, such as news streams or tweets, opening up further applications of diversification.
+7. ACKNOWLEDGMENTS
+This work was supported by the EU FP7 Integrated Project LivingKnowledge (Contract No. 231126). Experiments were conducted on the high performance computing cluster of the Regional Computing Centre for Lower Saxony (RRZN).
+8. REFERENCES
+[1] R. Agrawal, S. Gollapudi, A. Halverson, and S. Ieong. Diversifying search results. In WSDM, 2009.
+[2] S. Babu and J. Widom. Continuous queries over data streams. SIGMOD Record, 30(3):109­120, 2001.
+[3] D. F. Barbieri, D. Braga, S. Ceri, E. D. Valle, and M. Grossniklaus. C-sparql: Sparql for continuous querying. In WWW, 2009.
+[4] J. G. Carbonell and J. Goldstein. The use of MMR, diversity-based reranking for reordering documents and producing summaries. In SIGIR, 1998.
+[5] H. Chen and D. R. Karger. Less is more: probabilistic models for retrieving fewer relevant documents. In SIGIR, 2006.
+[6] J. Chen, D. J. DeWitt, F. Tian, and Y. Wang. NiagaraCQ: a scalable continuous query system for internet databases. In ACM SIGMOD, 2000.
+[7] C. L. Clarke, M. Kolla, G. V. Cormack, O. Vechtomova, A. Ashkan, S. Bu¨ttcher, and
+
+I. MacKinnon. Novelty and diversity in information retrieval evaluation. In SIGIR, 2008.
+[8] M. Drosou and E. Pitoura. Comparing diversity heuristics. Technical Report TR-2009-05, Comp. Sci. Department, University of Ioannina, Greece, 2009.
+[9] M. Drosou and E. Pitoura. Diversity over continuous data. IEEE Data Eng. Bull., 32(4):49­56, 2009.
+[10] M. Drosou, K. Stefanidis, and E. Pitoura. Preference-aware publish/subscribe delivery with diversity. In DEBS, 2009.
+[11] F. Giunchiglia. Managing Diversity in Knowledge. In IEA/AIE 2006, LNAI 4031, page 1, 2006.
+[12] S. Gollapudi and A. Sharma. An axiomatic approach for result diversification. In WWW, 2009.
+[13] J. R. Haritsa. The KNDN problem: A quest for unity in diversity. IEEE Data Eng. Bull., 32(4):15­22, 2009.
+[14] V. Hristidis, O. Valdivia, M. Vlachos, and P. S. Yu. A system for keyword search on textual streams. In SDM, 2007.
+[15] U. Irmak, S. Mihaylov, T. Suel, S. Ganguly, and R. Izmailov. Efficient query subscription processing for prospective search engines. In USENIX, 2006.
+[16] D. E. Knuth. Sorting and Searching, volume 3 of The Art of Computer Programming. Addison Wesley, 1973.
+[17] D. G. McDonald and J. Dimmick. The conceptualization and measurement of diversity. Communication Research, 30(1):60­79, 2003.
+[18] E. Minack, G. Demartini, and W. Nejdl. Current approaches to search result diversification. In LivingWeb Workshop at ISWC, 2009.
+[19] G. Mishne and M. de Rijke. A study of blog search. In ECIR, 2006.
+[20] T.-W. Ryu, , T. wan Ryu, and C. F. Eick. A unified similarity measure for attributes with set or bag of values. In RSDMGrC, 1998.
+[21] R. L. T. Santos, C. Macdonald, and I. Ounis. Exploiting query reformulations for web search result diversification. In WWW, 2010.
+[22] D. Skoutas, E. Minack, and W. Nejdl. Dealing with diversity in web search results. In WebSci10, 2010.
+[23] A. Slivkins, F. Radlinski, and S. Gollapudi. Learning optimally diverse rankings over large document collections. In ICML, 2010.
+[24] E. Vee, U. Srivastava, J. Shanmugasundaram, P. Bhat, and S. A. Yahia. Efficient computation of diverse query results. In ICDE, 2008.
+[25] J. Wang and J. Zhu. Portfolio theory of information retrieval. In SIGIR, 2009.
+[26] C. Yu, L. Lakshmanan, and S. Amer-Yahia. It takes variety to make a world: diversification in recommender systems. In EDBT, 2009.
+[27] C. Zhai, W. W. Cohen, and J. D. Lafferty. Beyond independent relevance: methods and evaluation metrics for subtopic retrieval. In SIGIR, 2003.
+[28] C. Zhai and J. D. Lafferty. A risk minimization framework for information retrieval. Inf. Process. Manage., 42(1):31­55, 2006.
+[29] C.-N. Ziegler, S. M. McNee, J. A. Konstan, and G. Lausen. Improving recommendation lists through topic diversification. In WWW, 2005.
+
+594
+
+

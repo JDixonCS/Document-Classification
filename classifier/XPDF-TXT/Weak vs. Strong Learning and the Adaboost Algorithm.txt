@@ -1,0 +1,473 @@
+CS260: Machine Learning Theory Lecture 13: Weak vs. Strong Learning and the Adaboost Algorithm
+November 7, 2011
+Lecturer: Jennifer Wortman Vaughan
+1 Weak vs. Strong Learning
+The big idea behind boosting is to construct an accurate hypothesis by combining the predictions of many individual hypotheses, each of which performs slightly better than random guessing on some particular distribution of data. This idea originally arose from attempts to prove robustness of the PAC model, in other words, attempts to prove that small changes to the model definitions don't lead to dramatically different results, such as the ability to learn different classes of functions.
+In particular, it grew out of the answer to a question posed in the late 80s by Kearns and Valiant about whether so-called "weak" learning implies "strong" learning (which is simply the usual PAC definition of learning). We therefore begin our discussion of boosting with a review of the PAC model, and a discussion of the differences between these notions of learnability. For simplicity, we'll revert to our most basic definition of PAC learning, which does not yet incorporate things like the size of the input, but all of the results we will discuss hold for our revised definition too.
+Definition 1 (Strong PAC Learnability). A concept class C is strongly PAC learnable using a hypothesis class H if there exists an algorithm A such that for any c  C, for any distribution D over the input space, for any  (0, 1/2) and   (0, 1/2), given access to a polynomial (in 1/ and 1/) number of examples drawn i.i.d. from D and labeled by c, A outputs a function h  H such that with probability at least 1 - , err(h)  .
+This definition is "strong" in the sense that it requires that err(h) can be driven arbitrarily close to 0 by choosing an appropriately small value of . In contrast, weak learnability only requires A to return a hypothesis that does better than random guessing.
+Definition 2 (Weak PAC Learnability). A concept class C is weakly PAC learnable using a hypothesis class H if there exists an algorithm A and a value  > 0 such that for any c  C, for any distribution D over the input space, for any   (0, 1/2), given access to a polynomial (in 1/) number of examples drawn i.i.d. from D and labeled by c, A outputs a function h  H such that with probability at least 1 - , err(h)  1/2 - .
+We will sometimes refer to  as the advantage of A (over random guessing). It's clear that strong learnability implies weak learnability. The question we want to answer is whether weak learnability implies strong learnability. More formally, we might ask the following: If C is weakly learnable using H, must there exist some H such that C is (strongly) learnable using H ?
+All CS260 lecture notes build on the scribes' notes written by UCLA students in the Fall 2010 offering of this course. Although they have been carefully reviewed, it is entirely possible that some of them contain errors. If you spot an error, please email Jenn.
+1
+
+We can think about this question as follows. Fix an arbitrary > 0. Suppose we are given a polynomial number (in 1/ and 1/ ) of samples drawn i.i.d. from some distribution D and labeled by a target c  C, as well as a weak learning algorithm A for C. Can we incorporate A into a new algorithm that is guaranteed to produce a new function h such that with high probability, err(h)  ?
+The first boosting algorithm was developed by Rob Schapire in order to answer this question. This paved the way for the immensely popular AdaBoost algorithm, which was developed by Freund and Schapire a couple of years later.
+
+2 AdaBoost
+The AdaBoost (for adaptive boosting) algorithm uses a weak learning algorithm A as a black box. For now, we won't care much about where this weak learning algorithm comes from, and will assume that it is given. In practice, the weak learning algorithms that are used with Adaboost are extremely simple. For example, a weak learner might output the best decision rule based on a single feature (e.g., "predict 1 if and only if the value of the ith feature is negative").
+Adaboost takes as input a set of points (x1, y1), ..., (xm, ym), with yi  {-1, 1} for all i. It runs for T rounds, calling the weak learning algorithm A on each round. In order to obtain new information from A on each round, it is necessary to continue creating new sets of input points to feed to A. Since the original set of m input points is fixed, we do this by fixing new distributions Dt over these points at each round t, and selecting a polynomial size sample from the each new distribution to give as input to A. Each round, A returns a function that performs a bit better than random guessing with respect to the particular distribution Dt.
+The algorithm is stated formally below. We use Dt(i) to denote the weight that the distribution at time t places on the ith input point.
+
+The AdaBoost Algorithm: · Initialize D1(i) = 1/m for all i  {1, · · · , m} · For each round t = 1, ..., T
+
+­ Draw a "sufficiently large" (polynomial-size) sample i.i.d. from Dt
+
+­ Run A on this sample to produce ht
+
+­ Set t =
+
+m i=1
+
+Dt(i)I(ht(xi)
+
+=
+
+yi)
+
+­
+
+Set t
+
+=
+
+1 2
+
+ln
+
+1- t
+t
+
+­ Update the distribution, setting
+
+Dt+1(i)
+
+=
+
+Dt(i)e-tyiht(xi) Zt
+
+for all i  {1, · · · , m}, where Zt is a normalizing factor
+
+· Output a function h with for all x.
+
+T
+
+h(x) = sign
+
+tht(x)
+
+t=1
+
+2
+
+Here the "sufficiently large" sample should be large enough to guarantee that A outputs a function satisfying the weak learning guarantee with high probability.
+Note that the weight updates depend on yiht(xi). If the function output by the weak learner at round t correctly predicts the label of xi, then yiht(xi) = 1; otherwise yiht(xi) = -1. These distribution updates look a lot like the weight updates made by Winnow or Randomized Weighted Majority!
+Also note that the normalizing factor Zt can be calculated as
+
+m
+
+Zt =
+
+Dt(i)e-tyiht(xi) .
+
+i=1
+
+AdaBoost is popular for a number of reasons:
+
+· It has no tricky parameters to set.
+
+· It does not require prior knowledge of the advantage  (as in Definition 2) for the weak learner A.
+
+· It is computationally tractable and not too hard to implement.
+
+· It generalizes very well and avoids overfitting.
+
+· It satisfies some nice theoretical guarantees, as we will see later in this lecture and next time.
+
+3 Bounding the Training Error
+
+We will now derive a bound on the empirical error or training error of the hypothesis output by AdaBoost as a function of the number of rounds T and the value of the advantage  of the weak learner used. We will see that the training error goes to 0 extremely fast. In the next lecture, we will see what this implies about test error and generalization.
+Let t be a measure of how much better than random guessing ht is with respect to Dt, defined as
+
+1
+
+1
+
+t = 2 - t = 2 - PrxDt(ht(x) = c(x)).
+
+We will prove the following result.
+
+Theorem 1. Let h be the function output by AdaBoost after T rounds, and let t be as defined above. Then
+
+err(h)  e-2
+
+. T
+t=1
+
+t2
+
+Thus if t   for all t (by the weak learning assumption), then err(h)  e-22T .
+
+This theorem gives a bound on the training error of the hypothesis output by AdaBoost that decreases exponentially fast as the number of rounds T grows. Since the training error is always a multiple of 1/m, and the bound on training error becomes lower than 1/m quickly as T increases, this implies that AdaBoost attains a training error of zero (i.e., consistency) in very few rounds.
+Notice that while the error bound depends on , the algorithm itself does not. Hence we get this guarantee without having to know  in advance.
+3
+
+3.1 Proof of Theorem 1
+The proof of this bound will proceed in three steps:
+
+1. Unravel the recurrence on Dt to show that
+
+e-yi
+
+T t=1
+
+t
+
+ht(xi
+
+)
+
+DT +1(i) =
+
+m
+
+T t=1
+
+Zt
+
+.
+
+2. Use Step 1 to show that
+
+T
+err(h)  Zt .
+t=1
+
+3. Show that after optimizing t, Zt = 2 t(1 - t) for all t, and plug this into Step 2 to achieve the bound.
+
+Step 1
+
+We unravel the recurrence for Dt to get
+
+DT +1(i)
+
+=
+
+DT (i)e-T yihT (xi) ZT
+
+= DT -1(i)e-T -1yihT -1(xi)e-T yihT (xi) ZT ZT -1
+
+(continue recurrence substitutions until we reach D1(i))
+
+= D1(i)
+
+T t=1
+
+e-tyiht(xi)
+
+T t=1
+
+Zt
+
+=
+
+T t=1
+
+e-tyiht(xi)
+
+m
+
+T t=1
+
+Zt
+
+e =
+
+T t=1
+
+-t
+
+yi ht
+
+(xi)
+
+m
+
+T t=1
+
+Zt
+
+e-yi
+
+T t=1
+
+tht(xi)
+
+=
+
+m
+
+T t=1
+
+Zt
+
+.
+
+Step 2
+
+Now we try to bound the empirical error err(h). To do this, we first consider the exponential term
+
+e-yi
+
+. T
+t=1
+
+t
+
+ht
+
+(xi
+
+)
+
+If the final classifier makes a mistake on the point xi, then
+
+T
+
+sign
+
+tht(xi) = yi
+
+t=1
+
+4
+
+and so and -yi
+
+T
+sign yi tht(xi)
+t=1
+
+T t=1
+
+tht(xi)
+
+
+
+0.
+
+Hence
+
+= -1
+
+e-yi
+
+T t=1
+
+tht(xi)
+
+
+
+1
+
+if
+
+h(xi) = yi.
+
+Also, since ex  0 x,
+
+e-yi
+
+T t=1
+
+tht(xi)
+
+
+
+0
+
+if
+
+h(xi) = yi.
+
+Using these facts and the result from Step 1, we get
+
+1 err(h) = m
+
+m
+
+1 I(h(xi) = yi)  m
+
+m
+
+e-yi
+
+i=1
+
+i=1
+
+1m
+
+T
+
+= m
+
+mDT +1(i) Zt
+
+i=1
+
+t=1
+
+m
+
+T
+
+= DT +1(i) Zt
+
+i=1
+
+t=1
+
+T
+
+= Zt.
+
+t=1
+
+T t=1
+
+tht(xi)
+
+This gives err(h) 
+
+T t=1
+
+Zt.
+
+Step 3
+
+Finally, we bound the values of Zt. We first take the definition of Zt and break up the sum into 2 parts: a sum over all points labeled correctly and a sum over all points labeled incorrectly.
+
+m
+
+Zt =
+
+Dt(i)e-tyiht(xi)
+
+i=1
+
+=
+
+Dt(i)e-t +
+
+Dt(i)et
+
+i: yi=ht(xi)
+
+i: yi=ht(xi)
+
+= e-t
+
+Dt(i) + et
+
+Dt(i)
+
+i: yi=ht(xi)
+= (1 - t)e-t + tet
+
+i: yi=ht(xi)
+
+As a brief aside, we can verify at this point why the particular choice of t used in the algorithm is good. We know from Step 2 that our bound will be minimized when we make each Zt as small as possible. We can solve for the value of t that minimizes Zt for each t. Setting the derivative of Zt equal to 0, we obtain
+
+0 = dZt = -(1 - dt
+
+t)e-t +
+
+tet .
+
+5
+
+Solving for t gives us the optimal values of the parameters,
+
+1 t = 2 ln
+
+1- t
+t
+
+.
+
+Note that it's ok to let t depend on t because t can be calculated from ht alone and the data at the time when we need it.
+Plugging this value of t into the expression for Zt above, we get
+
+Zt = (1 - t)e-t + tet = 2 (1 - t) t.
+
+Putting It All Together
+
+Now combining Steps 2 and 3, we get
+
+T
+
+T
+
+err(h)  Zt = 2 (1 - t) t
+
+t=1
+
+t=1
+
+1 (using t = 2 - t)
+
+T
+=2
+t=1
+
+1 2 - t
+
+1 2 + t
+
+T
+
+=
+
+1 - 4t2
+
+t=1
+
+(using 1 + x  ex)
+
+T
+
+
+T
+
+e-4t2 =
+
+e-2t2 = e-2
+
+t=1
+
+t=1
+
+T t=1
+
+t2
+
+
+
+e-2T 2 .
+
+This completes the proof. We will discuss the generalization error of AdaBoost in the next lecture.
+
+6
+
+

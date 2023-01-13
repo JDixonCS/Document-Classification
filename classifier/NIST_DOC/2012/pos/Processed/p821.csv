@@ -1,0 +1,556 @@
+,sentence,label,data
+0,Mixture Model with Multiple Centralized Retrieval Algorithms for Result Merging in Federated Search,null,null
+1,Dzung Hong,null,null
+2,Department of Computer Science Purdue University,null,null
+3,"250 N. University Street West Lafayette, IN 47907, USA",null,null
+4,dthong@cs.purdue.edu,null,null
+5,ABSTRACT,null,null
+6,"Result merging is an important research problem in federated search for merging documents retrieved from multiple ranked lists of selected information sources into a single list. The state-of-the-art result merging algorithms such as Semi-Supervised Learning (SSL) and Sample-Agglomerate Fitting Estimate (SAFE) try to map document scores retrieved from different sources to comparable scores according to a single centralized retrieval algorithm for ranking those documents. Both SSL and SAFE arbitrarily select a single centralized retrieval algorithm for generating comparable document scores, which is problematic in a heterogeneous federated search environment, since a single centralized algorithm is often suboptimal for different information sources.",null,null
+7,"Based on this observation, this paper proposes a novel approach for result merging by utilizing multiple centralized retrieval algorithms. One simple approach is to learn a set of combination weights for multiple centralized retrieval algorithms (e.g., logistic regression) to compute comparable document scores. The paper shows that this simple approach generates suboptimal results as it is not flexible enough to deal with heterogeneous information sources. A mixture probabilistic model is thus proposed to learn more appropriate combination weights with respect to different types of information sources with some training data. An extensive set of experiments on three datasets have proven the effectiveness of the proposed new approach.",null,null
+8,Categories and Subject Descriptors,null,null
+9,H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval,null,null
+10,General Terms,null,null
+11,"Algorithms, Design, Performance",null,null
+12,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'12, August 12­16, 2012, Portland, Oregon, USA. Copyright 2012 ACM 978-1-4503-1472-5/12/08 ...$15.00.",null,null
+13,Luo Si,null,null
+14,Department of Computer Science Purdue University,null,null
+15,"250 N. University Street West Lafayette, IN 47907, USA",null,null
+16,lsi@cs.purdue.edu,null,null
+17,Keywords,null,null
+18,"Federated Search, Result Merging, Mixture Model",null,null
+19,1. INTRODUCTION,null,null
+20,"Federated search (also known as distributed information retrieval) [17, 23, 29] is an important research area of information retrieval. Unlike traditional information search systems such as Google or Bing, which index webpages or documents that can be crawled and collected, federated search targets on information distributed in independent information providers. Many contents in this environment may not be arbitrarily crawled and searched by traditional search engines, due to various reasons such as copyright, security and data protection. Only the owners of those documents can provide a full searching service to their set of documents. We refer to a collection of documents with its own and customized search engine as an information source. The size of this type of information (i.e., hidden Web contents) has been estimated to be many times larger than Web contents searchable by traditional search engines [3].",null,null
+21,"Federated search offers a solution for searching hidden Web contents by building a bridge between users, who have little knowledge about which kind of information sources she is looking for, and the information sources that reveal limited information about their documents through sourcespecific search engines. To achieve this goal, federated search includes three main research problems: resource representation, resource selection and result merging. Resource representation learns important information about the sources such as their contents and their sizes. Resource selection selects a subset of information sources which are most useful for users' queries. Result merging combines documents retrieved from selected sources into a single ranked list before presenting the list to the end users.",null,null
+22,"Among the above main problems, result merging substantially suffers from the heterogeneity of information sources. Each information source may adopt a different, customized retrieval model. A query can also be processed in many ways. Even if different sources use similar retrieval algorithms, they may have different source statistics (e.g., different values of inverse document frequencies). All of those make it difficult to compare documents of different sources. A simple solution that downloads all document contents and ranks them with a single method for each user query may yield good results, but it is also costly in an online setting.",null,null
+23,821,null,null
+24,"Other solutions such as downloading parts of the documents [6] or incorporating scores from the resource selection component into source-specific document scores (e.g., CORI [4]) also suffer when information sources do not provide enough information or vary greatly in their scales of document ranking scores.",null,null
+25,"The state-of-the-art result merging algorithms merge documents by learning how to map document scores in ranked lists of multiple information sources to comparable document scores. The basic idea is to utilize a centralized sample database created with all sample documents obtained in resource representation. For each query, these algorithms rank documents in the centralized sample database with a single retrieval algorithm, and then build a mapping function between source-specific document scores (or ranks) and comparable document scores. By mapping document scores/ranks returned from all selected sources to a common scale, it is possible to construct the final ranked list. Algorithms of this class such as SSL [27], SAFE [24] and WCF [12] have shown promising results. However, despite using various learning algorithms, those methods still do not fully address the heterogeneity of retrieval algorithms in different information sources. The problem lies in the fact that all these existing methods arbitrarily select a single fixed centralized retrieval algorithm for learning the mapping, which is problematic in a heterogeneous federated search environment, as a single algorithm is often suboptimal for learning comparable scores for different sources.",null,null
+26,"In this paper, we propose a novel result merging algorithm that utilizes multiple centralized retrieval algorithms. This method can generate more accurate results in result merging due to the flexibility of using multiple types of centralized retrieval algorithms for estimating comparable document scores. In particular, the paper shows that it is not desirable to learn a fixed set of weights (e.g., with a logistic regression approach) for different centralized retrieval algorithms in estimating comparable document scores. A mixture probabilistic model is proposed to automatically learn the appropriate weights for different types of information sources with some training data. The mixture model approach is more flexible in calculating comparable document scores for a heterogeneous set of information sources. Empirical studies have been conducted with three federated search datasets to show the advantages of the proposed result merging algorithm. In particular, one new dataset is created from the Wikipedia collection of ClueWeb data.",null,null
+27,The rest of the paper is organized as follows. Section 2 discusses some research work generally related with the work in this paper. Section 3 discusses two specific state-ofthe-art results merging algorithms (SSL and SAFE) as they are directly related with the proposed research. Section 4 proposes the novel result merging algorithm with multiple centralized retrieval algorithms. Section 5 introduces experimental methodology. Section 6 presents the detailed experimental results and provides some discussions. Section 7 concludes and points out some future research directions.,null,null
+28,2. RELATED WORK,null,null
+29,"Federated search includes three main research problems: resource representation, resource selection and result merg-",null,null
+30,ing. There is a large volume of previous research work in all of those research problems. This section first briefly introduces most related prior research in resource representation and resource selection. Then it will provide more details about the literature of result merging.,null,null
+31,"Resource representation is to collect information about each information source. Such information usually includes sources' sizes, document frequencies, term frequencies, and other statistics. The START protocol [9] is one of the first attempt to standardize the communication between information sources and a broker (or centralized agent) in order to collect, search and merge documents from individual sources. However, this approach can only work in cooperative environments. In an uncooperative environment, it is more practical to collect source statistics with sampling algorithms. The query-based sampling method [4] is a popular algorithm for sampling documents from a set of information sources. In principal, query-based sampling sends randomly generated terms as queries to a source, and downloads the top documents as sample documents for each query. When this process is done, the set of all sample documents can be collected in a centralized sample database to build a single index. The centralized sample database is often a good representative of the (imaginary) complete database of all documents in a federated search environment.",null,null
+32,"Resource selection is to select a subset of information sources most relevant to the user's query. Resource selection has been studied intensively during the last two decades. Many algorithms have been developed, such as GlOSS [10], CORI [4], ReDDE [26], CRCS [22], topic models [2], the classification-based model [1] and many others. The Relevant Document Distribution Estimation (ReDDE) resource selection algorithm and its variants have been shown to generate good and robust resource selection results in different types of federated search environments. ReDDE selects relevant sources by first ranking sample documents in the centralized sample database. Then, each document among the top of the list can contribute a score to its containing source. The magnitude of the score depends on both document's rank and the source's size. Finally, the relevance of a source is measured by the combined score of all of its sample documents.",null,null
+33,"Result merging is to collect the ranked list of documents from each selected source and combine them into a single ranked list to present to users. Result merging in federated search is similar to data fusion [32, 25], or merging process in multilingual information retrieval [30]. In data fusion, different retrieval models are applied to a single information source, and the problem is to get the best combination of retrieval algorithms. Whereas, in federated search, there are multiple information sources with different (often unknown) retrieval models. Similar to information fusion, multilingual information retrieval also assumes that the whole collection index is available to the merger during the process, which is not always the case in federated search.",null,null
+34,"One scenario is that the broker can download all returned documents from selected sources, and apply a centralized retrieval algorithm to produce the final ranked list. However, in practice, this method is rarely used since the high cost of communication and time may impair user experience. In another simple case, when all sources implement",null,null
+35,822,null,null
+36,"the same retrieval model, documents' scores (or ranks) returned by the source may be comparable with each other. Thus, merging their scores (or ranks) directly (also known as Raw Score Merging), or in a round-robin fashion may give good results with low cost. However, it is noticed that even if all sources share the same model, some statistics such as document frequency of a term are still different across different sources. It is generally not practical to assume that all independent sources share such a same set of collection statistics.",null,null
+37,"Some other algorithms in the early generation of federated search also relied on term statistics for making decision. Craswell et al. suggested that by partially downloading a part of the top returned documents, we can approximate term statistics to build the final rank list [6]. Xu and Croft requested that document statistics of query terms should be provided to the broker, in such a way that they can calculate the global inverse document frequencies [34]. However, these algorithms again require some type of collaboration from the independent sources, which is often unavailable.",null,null
+38,"CORI result merging algorithm [4] is a relatively simple, yet effective algorithm. The intuition is that comparable document scores should depend on two factors: (i) how good a document is compared to other documents from the same source; and (ii) how good the source containing a particular document is compared to other sources. CORI makes a linear combination of those two factors and gets the final score of a document as:",null,null
+39,"D + 0.4 × D × C D,",null,null
+40,1.4,null,null
+41,"where D is the global score, D is the original score within the source, and C is the normalized source score from the resource selection step.",null,null
+42,"The merging algorithm proposed by Rasolofo et al. [19] also explores the combination between document scores and source weights. Unlike CORI, their source weights are not directly related with the sources' relevance scores. Rather, the weight of a source depends on the total number of documents that it returns. The algorithm assumes that a source containing more relevant documents may return a longer ranked list, which is not always the case for information sources using different types of ranking algorithms.",null,null
+43,"The intuition of combining document and resource scores can also be seen in a variant of the PageRank algorithm in distributed environments [31]. In this work, Wang and DeWitt employed the source's ServerRank and the document's LocalRank to derive the global PageRank values.",null,null
+44,Semi-Supervised Learning (SSL) [27] and the Sample Agglomerate Fitting Estimate (SAFE) [24] result merging algorithms offer a better trade-off in efficiency and effectiveness. Both methods try to map source-specific document ranks into comparable document scores generated by a single centralized retrieval algorithm. We will provide more detailed information about SSL and SAFE in the following section as they are directly related with the new research in this paper.,null,null
+45,3. RESULT MERGING BY SEMI-SUPERVISED LEARNING & SAMPLE-AGGLOMERATE FITTING ESTIMATE,null,null
+46,3.1 Semi-Supervised Learning Merging,null,null
+47,"Semi-Supervised Learning Merging (SSL) [27] uses curve fitting model to calculate comparable document scores from different sources for result merging. Specifically, given a user's query, SSL sends the query to the centralized sample database and retrieves the sample ranked list with relevance score of each document. Upon receiving documents from a selected information source, SSL checks for overlapping documents exist in the sample database. Those overlapping documents are characterized by two features: the relevance scores in the central sample database, and the relevance ranks in the specific source. The task is to estimate the relevance scores of all non-overlapping documents in the centralized complete database (the imaginary dataset of all documents of all sources). Assume that there is a linear mapping between centralized relevance scores and sourcespecific document ranks, then that mapping can be inferred by using a regression method on the overlapping documents. Having said that, let Rij be the source-specific rank of document di in source Cj, and Sij be the relevance score of document di in the centralized sample database, we can build a linear relationship.",null,null
+48,"Sij , aj × Rij + bj",null,null
+49,"where aj, bj are two parameters depending on each pair of an information source and a query.",null,null
+50,"With enough overlapping documents for a source and a query, we can train a regression matrix",null,null
+51,R1j,null,null
+52,R2j,null,null
+53,·,null,null
+54,·,null,null
+55,·,null,null
+56,Rnj,null,null
+57,1,null,null
+58,S1j ,null,null
+59,1 1,null,null
+60,×,null,null
+61,aj bj,null,null
+62,",",null,null
+63,S2j,null,null
+64,·,null,null
+65,·,null,null
+66,·,null,null
+67,1,null,null
+68,Snj,null,null
+69,"In the above equation, let us denote the first matrix by X, the second matrix by W , and the third matrix by Y . By minimizing the square loss error, we can derive the solution to the parameters W as",null,null
+70,"W , (XT X)-1XT Y",null,null
+71,"One main problem of SSL is that if there is not enough overlapping documents (three requested in the original SSL work) for building a linear mapping, the model will back off to the CORI result merging formula, which is often much less effective.",null,null
+72,3.2 Sample-Agglomerate Fitting Estimate Merging,null,null
+73,"Sample-Agglomerate Fitting Estimate (SAFE) [24] overcomes the SSL's problem of not having enough overlapping documents by estimating the ranks of unoverlapping documents in the centralized sample database. If we assume that the sampling process is uniform, then each sample document will represent the same number of unseen documents in the selected information source. Therefore, a sample document ranked at position i-th in the source-specific sample ranked",null,null
+74,823,null,null
+75,Table 1: Transformation Functions,null,null
+76,Name LIN SQRT LOG POW,null,null
+77,"f (x) f (x) ,x f (x) , x f (x) , log x f (x) , 1/x",null,null
+78,Model,null,null
+79,"S , a ×R + b S ,a × R+b",null,null
+80,"S , a × log R + b",null,null
+81,"S,a",null,null
+82,×,null,null
+83,1 R,null,null
+84,+,null,null
+85,b,null,null
+86,"ple database to learn the comparable document scores by curve-fitting. However, unlike SSL and SAFE, MoRM employs multiple retrieval algorithms for the centralized sample database. Therefore it is more flexible to address the heterogeneity of information sources in federated search environments for improving the accuracy of result merging.",null,null
+87,4.1 MoRM's Framework,null,null
+88,list,null,null
+89,will,null,null
+90,have,null,null
+91,an,null,null
+92,approximate,null,null
+93,rank,null,null
+94,i×,null,null
+95,|C| |Cs |,null,null
+96,in,null,null
+97,the,null,null
+98,source-,null,null
+99,"specific full rank, where |C| is the source's estimated size,",null,null
+100,and |Cs| is the source's sample size. By using the estimated,null,null
+101,source-specific ranks together with true centralized ranks (of,null,null
+102,"overlapping documents), SAFE could apply regression with",null,null
+103,more information than SSL. A problem may occur when,null,null
+104,there are not enough sample documents of a selected infor-,null,null
+105,"mation source in the centralized sample database. However,",null,null
+106,"this is rarely the case, if ReDDE (or its variants) is used",null,null
+107,"for selecting information sources, since this method usually",null,null
+108,selects a source if it has a significant number of documents,null,null
+109,in the centralized ranked list with respect to the query.,null,null
+110,"Another contribution of SAFE to SSL is that, instead of using the raw rank information of documents, SAFE applies different transformation functions to the rank, in order to find the best regression. More specifically, there are four different transformations as in Table 1. Each transformation function is applied to the source-specific ranked list to learn the set of parameters (aij, bij). Then, SAFE selects the best transformation by comparing the goodness of curve-fitting of all models based on their coefficient of determination R2 values [11]. Specifically, for a linear regression equation X × w ,"" Y , the coefficient of determination is calculated as follows.""",null,null
+111,R2,null,null
+112,",",null,null
+113,||Y^ ||2 ||Y ||2,null,null
+114,",",null,null
+115,Y TPY Y TY,null,null
+116,"where P , X(XT X)-1XT",null,null
+117,4. MIXTURE OF RETRIEVAL MODELS FOR RESULT MERGING,null,null
+118,"SSL and SAFE are state-of-the-art algorithms for result merging in federated search. However, because of their choosing of a single centralized retrieval algorithm for calculating comparable document scores, these algorithms still do not fully address the heterogeneity of different information sources in federated search environments . A single centralized retrieval algorithm may have good curve-fittings for some information sources, but may also be less fit for some others. This paper proposes to use multiple centralized retrieval algorithms to retrieve a set of ranking scores for each document. Moreover, rather than assigning a fixed set of weights to combine the above scores, our model learns a more appropriate combination of weights with respect to different types of information sources. We assume that there is an underlying distribution (i.e., latent groups) of sources according to their adopted retrieval models. Learning the proposed model thus becomes learning the distribution of groups and the combination weights associated with each group. This model is called the Mixture of Retrieval Models (MoRM) for result merging. MoRM is related with SSL and SAFE in the way that it uses the centralized sam-",null,null
+119,"In this section, we describe the general framework of MoRM for document merging. The following steps are applied when a query comes:",null,null
+120,· A resource selection algorithm such as ReDDE [26] selects a subset of information sources that are most relevant to the user's query.,null,null
+121,· The query is then forwarded to the selected information sources. Each source will return a ranked list of documents. Scores of the returned documents will help the model's performance but are not required. Document ranks are usually sufficient for the next step.,null,null
+122,"· MoRM also issues the query to the centralized sample database and retrieves documents using a set of predetermined algorithms. At the end of this step, it obtains a set of ranked lists of sample documents.",null,null
+123,"· For each ranked list, MoRM tries to learn a mapping between source-specific document ranks and the centralized document scores. Ranks of sample documents that are not in the source-specific ranked list are estimated in a similar way as in the SAFE algorithm. All transformation functions as listed in Table 1 are tested in order to find the best curve fitting parameters. The best transformation function is applied to predict the comparable scores of all returned documents.",null,null
+124,· All comparable scores of a document are combined using a set of combination weights learned from a training dataset. These final scores are used to rank documents.,null,null
+125,"In the following sections, we will propose a simple logistic regression model (for learning a single set of combination weights) and then propose the mixture of retrieval models (for learning multiple sets of combination weights) for the task of estimating documents' comparable scores.",null,null
+126,4.2 Logistic Regression for Learning Comparable Scores,null,null
+127,"A learning algorithm such as logistic regression may address the problem of combining different document scores seamlessly. We chose logistic regression to demonstrate the approach of learning a single set of combination weights for ranking documents. Logistic regression is a discriminative model that models the probability that a binary event happens by a sigmoid function. In this case, our predictive functions are:",null,null
+128,P (ycqd,null,null
+129,",",null,null
+130,"1|w, xqcd)",null,null
+131,",",null,null
+132,1+,null,null
+133,1 exp (-w,null,null
+134,·,null,null
+135,xqcd),null,null
+136,",",null,null
+137,(w,null,null
+138,·,null,null
+139,xqcd),null,null
+140,(1),null,null
+141,and,null,null
+142,"P (ycqd ,"" -1|w, xqcd) "", 1 - P (ycqd , 1) , (-w · xqcd) (2)",null,null
+143,824,null,null
+144,where our notations for this model are as follows: let the,null,null
+145,"superscript q refer to the query q, and the subscript cd refer",null,null
+146,to the d-th document of source c (such a document is called Dcd). We also use xqcd to denote the feature vector of document Dcd (the set of comparable scores of Dcd according to,null,null
+147,"different centralized retrieval algorithms), and w for the set of weights associated with xqcd. Our target is to predict ycqd, which is the relevance of document Dcd with respect to the query q. The possible values of ycqd are:",null,null
+148,"ycqd ,",null,null
+149,1 -1,null,null
+150,if document Dcd is relevant to query q otherwise,null,null
+151,"Finally, in the equations (1) and (2) above, we also use (z) to indicate the sigmoid function",null,null
+152,"1 (z) ,",null,null
+153,1 + exp(-z),null,null
+154,"and apply this property: (-x) , 1 - (x).",null,null
+155,"Given C, the number of sources; Q, the number of queries, and all the returned documents Dcd with respect to the training queries, we can write the likelihood function of the model as",null,null
+156,|Q| C Dc,null,null
+157,|Q| C Dc,null,null
+158,"L(w) ,",null,null
+159,"P (ycqd|w, xqcd) ,",null,null
+160,(ycqdw · xqcd),null,null
+161,"q,1 c,1d,1",null,null
+162,"q,1 c,1d,1",null,null
+163,where we have combined equations (1) and (2) above. Learning the combination weight w can be done by maximizing the log-likelihood function using the iterative re-weighted least squares method [8].,null,null
+164,4.3 Mixture of Retrieval Models for Learning Comparable Document Scores,null,null
+165,"We now describe the mixture model of retrieval algorithms (MoRM) for result merging. MoRM offers more prediction capability by automatically learning multiple sets of combination weights, each of them is associated with a ""soft"" information source cluster. The word ""soft"" means that we use probability to assign a source to its cluster, rather than fixing a hard assignment. Specifically, assuming that there are K of such clusters, and let ck be the probability that the source c belongs to group k, then the following constraints must be hold:",null,null
+166,"K k,1",null,null
+167,ck,null,null
+168,",",null,null
+169,1,null,null
+170,"for c ,"" 1, 2, · · · , C""",null,null
+171,"To make our formulations simpler, in this section, we will first derive the formulations for only one query, and drop the superscript q of ycd and xcd. At the end of this section, we will extend the formulations for the set of training queries. Furthermore, we will denote cdk for P (ycd|wk, xcd) (the probability that the document Dcd has relevance ycd to the query in question, given that the collection c belongs to cluster k. In short, cdk , (ycdwk · xcd)).",null,null
+172,"Let w , {wk|k ,"" 1, · · · , K}, and  "", {ck|c ,"" 1, · · · , C;""",null,null
+173,"k ,"" 1, · · · , K}. Given a query q, let  "","" {w, } denote the set of parameters, in which each combination weight wk is associated with the k-th cluster. MoRM assumes the same combination weight for all sources of a cluster for building robust combination model with a limited amount of training data, hence we will set k "", ck ,"" c k for all sources c, c .""",null,null
+174,The probability that a document Dcd has relevance ycd given all parameters is calculated as follows.,null,null
+175,K,null,null
+176,K,null,null
+177,"P (ycd|, xcd) ,"" kP (ycd|wk, xcd) "", kcdk (3)",null,null
+178,"k,1",null,null
+179,"k,1",null,null
+180,"The component k acts as the prior of the clusters' distribution, which adjusts the belief of relevance according to each cluster. This equation is also known as the mixture of logistic regression. Given that model, the likelihood function for the training dataset with respect to one query is as follows.",null,null
+181,C Dc K,null,null
+182,"L() ,",null,null
+183,k cdk,null,null
+184,(4),null,null
+185,"c,1 d,1 k",null,null
+186,where Dc is the number of documents returned by the source c.,null,null
+187,"It is difficult to optimize the above function directly, since taking its logarithm still presents the summation inside the log. Therefore, we will utilize the Expectation Maximization (EM) algorithm [7] to learn the parameters. The derivation of EM algorithm is discussed in the following section.",null,null
+188,4.4 Learning MoRM using EM Algorithm,null,null
+189,"Let zc be a K-dimensional latent variable associated with source c. zc has only one element which equals to 1 and the all other elements equal 0 (i.e., a 1-of-K representation). Therefore, zc must satisfy the following constraints.",null,null
+190,"K k,1",null,null
+191,zck,null,null
+192,",",null,null
+193,1,null,null
+194,"for c ,"" 1, 2, · · · , C""",null,null
+195,where zck is the k-th element of zc.,null,null
+196,"We then use zc as the indicator of the membership of source c. If c belongs to cluster k, then zck ,"" 1, and the other elements of zc equal 0. Given that k is the prior distribution of cluster k as above, and note that ck "","" k for all c, we can write the prior distribution of zck as follows.""",null,null
+197,"P (zck , 1) , k",null,null
+198,(5),null,null
+199,Then the prior distribution of the whole vector zc can be written as,null,null
+200,K,null,null
+201,"P (zc) , kzck",null,null
+202,(6),null,null
+203,"k,1",null,null
+204,"Define another random variable Z , {zc|c ,"" 1, · · · , C} associated with all sources. Since each source is independent of each other, the prior of Z is just the multiplication over all sources.""",null,null
+205,CK,null,null
+206,"P (Z) ,",null,null
+207,k zck,null,null
+208,(7),null,null
+209,"c,1k,1",null,null
+210,"Similarly, if we know that the source c has the member-",null,null
+211,"ship vector zc, then the probability that the document Dcd",null,null
+212,of that source has relevance ycd is,null,null
+213,"K k,1",null,null
+214,cdk,null,null
+215,zck,null,null
+216,",",null,null
+217,since,null,null
+218,cdk,null,null
+219,is,null,null
+220,the conditional probability with respect to cluster k. There-,null,null
+221,"fore, the likelihood function of the model is obtained by",null,null
+222,multiplying the above term over all sources and documents.,null,null
+223,C Dc K,null,null
+224,"P (X, Y |Z, ) ,",null,null
+225,cdk zck,null,null
+226,(8),null,null
+227,"c,1d,1 k,1",null,null
+228,825,null,null
+229,"where X denotes all document feature vectors, and Y denotes the relevance vector of all documents. Multiplying the equations (7) and (8) above, one can calculate the complete likelihood function",null,null
+230,CK,null,null
+231,Dc,null,null
+232,"P (X, Y , Z|) ,",null,null
+233,k zck,null,null
+234,cdk zck,null,null
+235,(9),null,null
+236,"c,1k,1",null,null
+237,"d,1",null,null
+238,Taking the logarithm of the above function yields the complete log-likelihood as follows.,null,null
+239,CK,null,null
+240,Dc,null,null
+241,"log P (X, Y , Z|) ,",null,null
+242,zck{log k + log cdk} (10),null,null
+243,"c,1k,1",null,null
+244,"d,1",null,null
+245,"The EM algorithm involves two steps. For the E-step, we need to calculate the posterior probability P (Z|X, Y , ). Using (9), we can derive the following relation.",null,null
+246,"P (X, Y , Z|) C K",null,null
+247,Dc,null,null
+248,zck,null,null
+249,"P (Z|X, Y , ) ,",null,null
+250,k cdk,null,null
+251,"P (X, Y |)",null,null
+252,"c,1k,1",null,null
+253,"d,1",null,null
+254,(11),null,null
+255,where we can use the proportional sign  because the de-,null,null
+256,"nominator P (X, Y |) does not depend on Z.",null,null
+257,"We wish to calculate the expectation of the variable Z under the above posterior distribution, since that term will be useful in the following M step. Given that all zc are independent, and the right-hand side of equation (11) can be factorized over c, we can derive the expectation of each variable zck as",null,null
+258,"E[zck] , ,",null,null
+259,"{zck{0,1}} zck k {zcj ,1jK} zcj j",null,null
+260, Dc,null,null
+261,zck,null,null
+262,"d,1 cdk",null,null
+263, Dc,null,null
+264,zcj,null,null
+265,"d,1 cdj",null,null
+266,k,null,null
+267,"Dc d,1",null,null
+268,cdk,null,null
+269,"K j,1",null,null
+270,j,null,null
+271,"Dc d,1",null,null
+272,cdj,null,null
+273,", (zck)",null,null
+274,(12),null,null
+275,where we have defined a new variable (zck).,null,null
+276,"In the M-step, the updated parameters new are calculated according to the following formula",null,null
+277,"new ,"" arg max Q(, old)""",null,null
+278,(13),null,null
+279,where,null,null
+280,"Q(, old) ,"" E log P (X, Y , Z|) | P (Z|X, Y , )""",null,null
+281,"Taking the expectation of log P (X, Y , Z|) (as derived in equation (10)) with respect to the posterior distribution gives us the following objective function for the M-step.",null,null
+282,CK,null,null
+283,Dc,null,null
+284,"{new, wnew} , arg max",null,null
+285,(zck)(log k + log cdk),null,null
+286,",w c,1k,1",null,null
+287,"d,1",null,null
+288,"To find the new value of k, we only need to maximize the first part of the above function",null,null
+289,CK,null,null
+290,"new , arg max",null,null
+291,(zck) log k,null,null
+292,"c,1k,1",null,null
+293,subject to the constraint,null,null
+294,"K k,1",null,null
+295,k,null,null
+296,",",null,null
+297,1,null,null
+298,"Using Lagrange multiplier and setting the gradient to 0, one can solve the optimal values of k as",null,null
+299,"knew ,",null,null
+300,"C c,1",null,null
+301,(zck,null,null
+302,),null,null
+303,"K k,1",null,null
+304,"Cc,1  (zck )",null,null
+305,(14),null,null
+306,"Searching for the value of wknew is a bit trickier, since we have to solve the following optimization problem.",null,null
+307,C Dc K,null,null
+308,"wnew , arg max",null,null
+309,(zck) log cdk,null,null
+310,w,null,null
+311,"c,1 d,1k,1",null,null
+312,(15),null,null
+313,"In fact, the gradient of the above objective function with respect to wk is equal to:",null,null
+314,C Dc,null,null
+315,(zck)(1 - cdk)ycdxcd,null,null
+316,"c,1 d,1",null,null
+317,"Therefore, one can apply a gradient descent algorithm to find the optimal value of wk.",null,null
+318,"In the implementation of the algorithm discussed so far,",null,null
+319,"there is an issue about (zck). As equation (12) has shown,",null,null
+320,computing (zck) involves calculating the product,null,null
+321,"Dc d,1",null,null
+322,cdk,null,null
+323,.,null,null
+324,This could lead to numerical underflow since cdk is a proba-,null,null
+325,"bility smaller than 1. Therefore, we need to calculate (zck)",null,null
+326,under the log space. Let,null,null
+327,Dc,null,null
+328,"(zck)  k cdk , (zck)",null,null
+329,"d,1",null,null
+330,"and max , maxK k,1 (zck). Therefore",null,null
+331,"(zck) ,",null,null
+332,"(zck ) K j,1(zcj )",null,null
+333,",",null,null
+334,exp{log (zck) - log max},null,null
+335,"K j,1",null,null
+336,exp{log,null,null
+337,(zck,null,null
+338,),null,null
+339,-,null,null
+340,log,null,null
+341,max,null,null
+342,},null,null
+343,"Since each log (zck) is computable under the log space, the above equation will avoid the underflow problem. Finally, we extend our formulations to the set of training queries. In this case, the E-step becomes:",null,null
+344,"(zck) ,",null,null
+345,k,null,null
+346,"|Q| q,1",null,null
+347,"Dc d,1",null,null
+348,cqdk,null,null
+349,"K j,1",null,null
+350,j,null,null
+351,"|Q| q,1",null,null
+352,"Dc d,1",null,null
+353,cqdj,null,null
+354,"In the M-step, the update formula of k remains the same (equation (14)), while the optimization function in equation (15) becomes",null,null
+355,C |Q| Dc K,null,null
+356,"wnew , arg max",null,null
+357,(zck) log cqdk,null,null
+358,w,null,null
+359,"c,1 q,1 d,1k,1",null,null
+360,and the objective gradient with respect to wk is,null,null
+361,C |Q| Dc,null,null
+362,(zck)(1 - cqdk)ycqdxqcd,null,null
+363,"c,1 q,1 d,1",null,null
+364,5. EXPERIMENTAL METHODOLOGY,null,null
+365,"In this section, we will describe the methodology and datasets of this work. The experiments were conducted on three datasets: two standard TREC datasets, and one Wikipedia dataset for federated search based on the ClueWeb.",null,null
+366,826,null,null
+367,Table 2: Statistics of Three Testbeds,null,null
+368,Size # of # of documents (x1000) # of # of relevant docs/query,null,null
+369,Testbed,null,null
+370,(GB) inf. sources Min Avg,null,null
+371,Max,null,null
+372,queries Min Avg,null,null
+373,Max,null,null
+374,TREC123,null,null
+375,3.2,null,null
+376,100,null,null
+377,0.7 10.8,null,null
+378,39.7,null,null
+379,"100 37 483.7 1,994",null,null
+380,TREC4-Kmeans 2.0,null,null
+381,100,null,null
+382,0.3 5.7,null,null
+383,82.7,null,null
+384,50 0 127.2,null,null
+385,416,null,null
+386,ClueWeb-Wiki 252,null,null
+387,100,null,null
+388,4.4 58.6 434.5,null,null
+389,106 1 20.1,null,null
+390,93,null,null
+391,25,null,null
+392,20,null,null
+393,Number of sources,null,null
+394,15,null,null
+395,10,null,null
+396,5,null,null
+397,0,null,null
+398,0,null,null
+399,0.5,null,null
+400,1,null,null
+401,1.5,null,null
+402,2,null,null
+403,2.5,null,null
+404,3,null,null
+405,3.5,null,null
+406,4,null,null
+407,4.5,null,null
+408,Number of Documents,null,null
+409,x 105,null,null
+410,"Figure 1: Histograms of the Number of Documents per Information Source in ClueWeb-Wiki. The number of bins is 30, the number of documents ranges from 4,400 to 434,525.",null,null
+411,"· TREC123-100col-bysource (TREC123): 100 collections (information sources) were created from TREC CDs 1,2 and 3 [4]. They are organized by publication source and publication date. This testbed comes with 100 queries (TREC topics 51-150) with judgments.",null,null
+412,· TREC4-100col-Kmeans (TREC4-Kmeans): 100 collections were created from the TREC 4 data. A twopass K-means clustering algorithm is used to organize the dataset by topic [33]. This testbed comes with 50 queries (TREC topics 201-250) with judgments.,null,null
+413,"· Wikipedia-100col-Kmeans (ClueWeb-Wiki): 100 collections were created from the Wikipedia dataset of the ClueWeb [13]. Similar to TREC4-Kmeans, we applied clustering algorithm [33] to divide the dataset into 100 collections. This testbed comes with 106 queries with judgments1.",null,null
+414,5.1 ClueWeb Wikipedia Dataset for Federated Search,null,null
+415,"Table 2 provides more statistics of the three datasets, including sizes, number of information sources; the max, min and average of the number of documents of each source. We also provide the query statistics of each dataset, including",null,null
+416,1The partition assignments are available at http://www.cs.purdue.edu/homes/dthong/clueweb,null,null
+417,"the number of queries; the max, min and average of the number of relevant documents per query.",null,null
+418,"The ClueWeb 09 is a large-scale collection of web documents that was collected in January and February 2009. The entire dataset consists of about one billion web pages in ten languages. For its tremendous size, the ClueWeb has been used in several tracks of the Text REtrieval Conference (TREC), most notably in the Web track. For distributed environment (in a different problem setting), ClueWeb has been used in [15]. It is desired to construct a new dataset based on ClueWeb for experiments in federated search.",null,null
+419,"Three Web tracks of TREC (from 2009 to 2011) have been using the ClueWeb so far. Each track has provided 50 queries based on which we build the new testbed. Within the full ClueWeb dataset, Wikipedia is the main contributor of relevant documents for Web track queries. The total size of Wikipedia is about 6 million documents, which is reasonable for creating a separate testbed. We extract all Wiki documents, and apply the same K-means algorithm that was used for creating the TREC4-Kmeans. We also select only 106 queries which contain at least one relevant Wikipedia document (out of the 150 provided queries) for training and testing. In the end, we constructed 100 information sources for the testbed ClueWeb-Wiki, with statistics provided in Table 2. The distribution of source sizes is also shown in",null,null
+420,827,null,null
+421,"Figure 1. Most of the sources have less 70,000 documents, and there are 12 sources of more than 100,000 documents.",null,null
+422,5.2 Experiment Configuration,null,null
+423,"Given a set of information sources, we assign each source a retrieval algorithm chosen from a set of: vector space TF.IDF with ""ltc"" weighting [21], a unigram statistical language model with linear smoothing (with smooth parameter as 0.5) [16] and Okapi [20] in a round robin manner. This choice is based on the fact that those models are commonly and widely used in information retrieval. Each information source is set to return at most 200 documents for each query. At the centralized sample database, we utilize five models: the three above models, the Inquery [5] and the Indri [28] algorithm. All retrieval algorithm implementations use the Lemur Toolkit [14]. We randomly select a set of queries for training, and used the other set for testing. For the TREC123, there are 50 training queries out of 100; those numbers of TREC4-Kmeans and ClueWeb-Wiki are 25 out of 50 and 50 out of 106.",null,null
+424,"We choose K, the number of latent groups, to be 3 in our main results. Some experimental results with different K values are also presented. For each information source, we sample at most 300 documents for creating the centralized sample database. For each query, we use ReDDE to select the top 5 sources for TREC123, TREC4-Kmeans and ClueWeb-Wiki.",null,null
+425,"Our metrics for the performance is the high-precision at document level, which is the percentage of the number of relevant documents in the final merged ranked list. Given that list, we measure the precision at top 5, 10, 15, 20 and 30 respectively. In next section, we will present our experimental results of all datasets.",null,null
+426,6. EXPERIMENTAL RESULTS,null,null
+427,6.1 High-precision Results,null,null
+428,"We now present the high-precision results on the above three testbeds. Tables 3-5 show the high-precision results on TREC123, TREC4-Kmeans and ClueWeb-Wiki respectively. The first column is our baseline using SAFE algorithm with Indri [18] as the single centralized retrieval algorithm. SAFE has been demonstrated to generate accurate and robust results compared with SSL and other results merging algorithms. We denote this method as SFI. The LR column presents the results using the logistic regression model to learn the combination weights of all centralized retrieval methods. The last column MoRM presents the results using the proposed mixture of retrieval algorithms. All precision results of LR and MoRM are compared with the baseline SFI using paired t-tests at level p < 0.05.",null,null
+429,"For TREC123, the performance of MoRM is significantly better than that of SFI. MoRM is also consistently better than the performance of logistics regression model. In general, both learning methods show improvements over the baseline method of one single feature. For TREC4-Kmeans, MoRM also outperforms SFI, although the differences are not significant as in TREC123. This can be explained as in TREC4-Kmeans, we only train on 25 queries, whereas in TREC123, we trained on 50 queries. These above results",null,null
+430,Table 3: High-precision result on TREC123 with 300 sample documents and top 5 information sources selected for each query. A * denotes a significant difference at level p < 0.05 compared to the original SAFE algorithm using Indri as the only centralized retrieval algorithm.,null,null
+431,Doc,null,null
+432,TREC123,null,null
+433,Rank SFI,null,null
+434,LR,null,null
+435,MoRM,null,null
+436,@5 0.268 0.332 (+ 23.88 %) 0.344 (+ 28.36 %) *,null,null
+437,@10 0.246 0.272 (+ 10.57 %) 0.304 (+ 23.58 %) *,null,null
+438,@15 0.229 0.267 (+ 16.31 %) 0.279 (+ 21.54 %) *,null,null
+439,@20 0.208 0.251 (+ 20.67 %) * 0.261 (+ 25.48 %) *,null,null
+440,@30 0.208 0.229 (+ 9.95 %) 0.232 (+ 11.54 %),null,null
+441,Table 4: High-precision result on TREC4-Kmeans with 300 sample documents and top 5 information sources selected for each query. A * denotes a significant difference at level p < 0.05 compared to the original SAFE algorithm using Indri as the only centralized retrieval algorithm.,null,null
+442,Doc Rank,null,null
+443,@5 @10 @15 @20 @30,null,null
+444,SFI 0.272 0.244 0.211 0.192 0.177,null,null
+445,0.280 0.252 0.227 0.212 0.193,null,null
+446,TREC4-Kmeans,null,null
+447,LR,null,null
+448,MoRM,null,null
+449,(+ 2.94 %) 0.296 (+ 8.82 %),null,null
+450,(+ 3.28 %) 0.256 (+ 4.92 %),null,null
+451,(+ 7.59 %) 0.227 (+ 7.59 %),null,null
+452,(+ 10.42 %) 0.216 (+ 12.50 %),null,null
+453,(+ 9.02 %) 0.192 (+ 8.29 %),null,null
+454,Table 5: High-precision result on ClueWeb-Wiki with 300 sample documents and top 5 information sources selected for each query. A * denotes a significant difference at level p < 0.05 compared to the original SAFE algorithm using Indri as the only centralized retrieval algorithm.,null,null
+455,Doc,null,null
+456,ClueWeb-Wiki,null,null
+457,Rank SFI,null,null
+458,LR,null,null
+459,MoRM,null,null
+460,@5 0.168 0.182 (+ 8.46 %) 0.204 (+ 21.26 %),null,null
+461,@10 0.146 0.163 (+ 11.00 %) 0.173 (+ 18.31 %),null,null
+462,@15 0.139 0.164 (+ 17.95 %) 0.168 (+ 20.53 %),null,null
+463,@20 0.132 0.150 (+ 13.55 %) 0.153 (+ 15.59 %),null,null
+464,@30 0.111 0.121 (+ 9.67 %) 0.123 (+ 10.75 %),null,null
+465,"have shown the advantage of using multiple centralized retrieval algorithms for learning comparable document scores, over the previous model that uses only one single centralized retrieval algorithm. It also demonstrates the advantage of using the mixture model of multiple sets of weights over the logistic regression model that uses only one single set of combination weights.",null,null
+466,"For the Wikipedia dataset based on ClueWeb, the proposed model also consistently outperforms SFI and LR. The differences however are not significant. Such a significance may be harder to achieve, since on average, this dataset contains less relevant documents per query than the other datasets, as shown in Table 2.",null,null
+467,6.2 Experiments with Different Number of Latent Variables,null,null
+468,"In this section, we discuss the experimental results when the number of latent variable K changes. We only report",null,null
+469,828,null,null
+470,Precision Value Precision Value,null,null
+471,0.36,null,null
+472,0.21,null,null
+473,"K,1",null,null
+474,"K,1",null,null
+475,"K,3",null,null
+476,0.2,null,null
+477,"K,3",null,null
+478,0.34,null,null
+479,"K,5",null,null
+480,"K,5",null,null
+481,"K,10 0.19",null,null
+482,"K,10",null,null
+483,0.32 0.18,null,null
+484,0.3,null,null
+485,0.17,null,null
+486,0.28,null,null
+487,0.16,null,null
+488,0.15 0.26,null,null
+489,0.14,null,null
+490,0.24 0.13,null,null
+491,0.22,null,null
+492,0.12,null,null
+493,5,null,null
+494,10,null,null
+495,15,null,null
+496,20,null,null
+497,25,null,null
+498,30,null,null
+499,5,null,null
+500,10,null,null
+501,15,null,null
+502,20,null,null
+503,30,null,null
+504,Document Rank,null,null
+505,Document Rank,null,null
+506,(a) TREC123,null,null
+507,(b) ClueWeb-Wiki,null,null
+508,Figure 2: High-precision Results of TREC123 and ClueWeb-Wiki with Different Number of Latent Variables,null,null
+509,"TREC123 and ClueWeb-Wiki for these experiments, and try different configuration of K ,"" {1, 3, 5, 10}. Similar pattern can be observed on the TREC4-Kmeans. K "","" 1 is actually equivalent to the logistic regression model. Figure 2 shows the results of this experiment. It can be seen that the mixture of retrieval algorithms model is quite consistent with a small range of K values. For ClueWeb-Wiki, the performance of the mixture model with K > 1 is at least equal or higher than that of the logistic regression. For TREC123, the performances with different values of K are also stable for most of the test levels.""",null,null
+510,7. CONCLUSION & FUTURE WORK,null,null
+511,"This paper proposes a novel method of mixture model with multiple centralized retrieval algorithms for result merging in federated search. Existing result merging algorithms do not fully address the issue of heterogeneity of information sources in federated search. Their arbitrary choices of a single centralized retrieval algorithm suffer from the fact that information sources are inherently different in source statistics, query processing techniques, and/or document retrieval algorithms. The proposed model attempts to combine various evidence from multiple centralized retrieval algorithms in a mixture model framework, in order to map source-specific document ranks to comparable scores for result merging. We have shown that a single set of combination weights of the evidence do not offer enough flexibility in dealing with such a heterogeneous environment. A mixture model that learns multiple sets of combination weights according to the clusters of sources proves to be a better choice. A set of experiments has been conducted with two traditional TREC datasets and a new dataset based on the ClueWeb. The empirical results in three datasets have demonstrated the effectiveness of the proposed mixture model with multiple centralized retrieval algorithms.",null,null
+512,"This model could be extended in many ways. For instance, we could add more flexibility to the model by cus-",null,null
+513,"tomizing the prior distribution k independently for each source, which means a source will be associated with a set of combination weights independent of the others. However, this model could require a larger training dataset to learn the parameters. A hybrid model where a cluster of similar sources independently uses multiple sets of weights is more feasible. The similarity between sources will play an important factor in creating those clusters. Another direction is to build a mixture model based on cluster of queries instead of cluster of sources, in which each query will trigger a different set of combination weights of all features. Furthermore, we can combine both of the above methods. It is also interesting to explore other types of evidence, such as the links between documents from different sources and incorporate them into the learning model.",null,null
+514,8. ACKNOWLEDGMENTS,null,null
+515,"This work is partially supported by NSF research grants IIS-0746830, CNS- 1012208 and IIS-1017837. This work also partially supported by the Center for Science of Information (CSoI), an NSF Science and Technology Center, under grant agreement CCF-0939370.",null,null
+516,9. REFERENCES,null,null
+517,"[1] J. Arguello, J. Callan, and F. Diaz. Classification-based resource selection. Proceeding of the 18th ACM conference on Information and knowledge management, pages 1277­1286, 2009.",null,null
+518,"[2] M. Baillie and M. Carman. A multi-collection latent topic model for federated search. Information Retrieval, 14(4):390­412, Aug. 2011.",null,null
+519,"[3] M. Bergman. The deep web: surfacing the hidden value. Technical report, 2001.",null,null
+520,"[4] J. Callan. Distributed information retrieval. Advances in Information Retrieval, pages 127­150, 2000.",null,null
+521,"[5] J. Callan, W. B. Croft, and S. M. Harding. The inquery retrieval system. In Proceedings of the Third",null,null
+522,829,null,null
+523,"International Conference on Database and Expert Systems Applications, 1992.",null,null
+524,"[6] N. Craswell, D. Hawking, and P. Thistlewaite. Merging results from isolated search engines. In Proceedings of the 10th Austrlasian Database Conference, 1999.",null,null
+525,"[7] A. P. Dempster, N. M. Laird, and D. Rubin. Maximum likelihood from incomplete data via the em algorithm. Journal of the Royal Statistical Society, 39(B):1­38, 1977.",null,null
+526,"[8] R. Fletcher. Practical methods of optimization, volume 1. Wiley, 1987.",null,null
+527,"[9] L. Gravano, C.-C. K. Chang, H. Garcia-Molina, and A. Paepcke. Starts: Stanford proposal for internet meta-searching. In Proceedings of the ACM-SIGMOD International Conference on Management of Data (SIGMOD). ACM ACM ACM ACM, 1997.",null,null
+528,"[10] L. Gravano, H. Garcia-Molina, and A. Tomasic. Gloss: text-source discovery over the internet. ACM Transactions on Database Systems (TODS), 24(2):229­264, 1999.",null,null
+529,"[11] J. Gross. Linear regression, volume 175. Springer Verlag, 2003.",null,null
+530,"[12] C. He, D. Hong, and L. Si. A weighted curve fitting method for result merging in federated search. In Proceedings of the 34th international ACM SIGIR conference on Research and development in Information Retrieval, SIGIR '11, pages 1177­1178, New York, NY, USA, 2011. ACM.",null,null
+531,[13] http://lemurproject.org/clueweb09/. The clueweb09 dataset.,null,null
+532,[14] http://www.lemurproject.org/. The lemur toolkit.,null,null
+533,"[15] A. Kulkarni and J. Callan. Document allocation policies for selective searching of distributed indexes. Proceedings of the 19th ACM international conference on Information and knowledge management, pages 449­458, 2010.",null,null
+534,"[16] J. Lafferty and C. Zhai. Document language models, query models, and risk minimization for information retrieval. Proceedings of the 24th annual international ACM SIGIR conference on Research and development in information retrieval, pages 111­119, 2001.",null,null
+535,"[17] W. Meng and C. Yu. Advanced metasearch engine technology. Synthesis Lectures on Data Management, 2(1):1­129, 2010.",null,null
+536,"[18] D. Metzler and W. B. Croft. Combining the language model and inference network approaches to retrieval. Information Processing and Management, 40(5):735­750, 2004.",null,null
+537,"[19] Y. Rasolofo, F. Abbaci, and J. Savoy. Approaches to collection selection and results merging for distributed information retrieval. Proceedings of the tenth international conference on Information and knowledge management, pages 191­198, 2001.",null,null
+538,"[20] S. Robertson, S. Walker, S. Jones, M. Hancock-Beaulieu, and M. Gatford. Okapi at trec-3. NIST SPECIAL PUBLICATION SP, pages 109­109, 1995.",null,null
+539,"[21] G. Salton, E. Fox, and H. Wu. Extended boolean information retrieval. Communications of the ACM, 26(11):1022­1036, 1983.",null,null
+540,"[22] M. Shokouhi. Central-rank-based collection selection in uncooperative distributed information retrieval. Advances in Information Retrieval, 2007.",null,null
+541,[23] M. Shokouhi and L. Si. Federated search. 2011.,null,null
+542,"[24] M. Shokouhi and J. Zobel. Robust result merging using sample-based score estimates. ACM Transactions on Information Systems (TOIS), 27(3):1­29, 2009.",null,null
+543,"[25] X. M. Shou and M. Sanderson. Experiments on data fusion using headline information. In Proceedings of the 25th annual international ACM SIGIR conference on Research and development in information retrieval, SIGIR '02, pages 413­414, New York, NY, USA, 2002. ACM.",null,null
+544,"[26] L. Si and J. Callan. Relevant document distribution estimation method for resource selection. Proceedings of the 26th annual international ACM SIGIR conference on Research and development in informaion retrieval, pages 298­305, 2003.",null,null
+545,"[27] L. Si and J. Callan. A semisupervised learning method to merge search engine results. ACM Transactions on Information Systems (TOIS), 21(4):457­491, 2003.",null,null
+546,"[28] T. Strohman, D. Metzler, H. Turtle, and C. W. B. Indri: A language model-based search engine for complex queries. In Proceedings of the International Conference on Intelligence Analysis, 2004.",null,null
+547,"[29] P. Thomas. Server selection in distributed information retrieval: a survey. To appear in: Journal of Information Retrieval, 2012.",null,null
+548,"[30] M. Tsai, H. Chen, and Y. Wang. Learning a merge model for multilingual information retrieval. Information Processing & Management, 47(5):635­646, 2011.",null,null
+549,"[31] Y. Wang and D. J. DeWitt. Computing pagerank in a distributed internet search system. In VLDB '04: Proceedings of the Thirtieth international conference on Very large data bases, pages 420­431. VLDB Endowment, 2004.",null,null
+550,"[32] S. Wu, Y. Bi, and X. Zeng. The linear combination data fusion method in information retrieval. In Database and Expert Systems Applications, pages 219­233. Springer, 2011.",null,null
+551,"[33] J. Xu and J. Callan. Effective retrieval with distributed collections. Proceedings of the 21st annual international ACM SIGIR conference on Research and development in information retrieval, pages 112­120, 1998.",null,null
+552,"[34] J. Xu and W. B. Croft. Cluster-based language models for distributed retrieval. Proceedings of the 22nd annual international ACM SIGIR conference on Research and development in information retrieval, pages 254­261, 1999.",null,null
+553,830,null,null
+554,,null,null

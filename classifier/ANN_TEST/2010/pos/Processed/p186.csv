@@ -1,0 +1,936 @@
+,sentence,label,data,regex
+0,On the Existence of Obstinate Results in Vector Space Models,0,,False
+1,Milos Radovanovic´,1,ad,True
+2,Department of Mathematics and Informatics,0,,False
+3,University of Novi Sad Serbia,1,ad,True
+4,radacha@dmi.uns.ac.rs,1,ad,True
+5,Alexandros Nanopoulos,0,,False
+6,Institute of Computer Science University of Hildesheim,0,,False
+7,Germany,0,,False
+8,nanopoulos@ismll.de,0,,False
+9,Mirjana Ivanovic´,0,,False
+10,Department of Mathematics and Informatics,0,,False
+11,University of Novi Sad Serbia,1,ad,True
+12,mira@dmi.uns.ac.rs,0,,False
+13,ABSTRACT,0,,False
+14,"The vector space model (VSM) is a popular and widely applied model in information retrieval (IR). VSM creates vector spaces whose dimensionality is usually high (e.g., tens of thousands of terms). This may cause various problems, such as susceptibility to noise and difficulty in capturing the underlying semantic structure, which are commonly recognized as different aspects of the ""curse of dimensionality."" In this paper, we investigate a novel aspect of the dimensionality curse, which is referred to as hubness and manifested by the tendency of some documents (called hubs) to be included in unexpectedly many search result lists. Hubness may impact VSM considerably since hubs can become obstinate results, irrelevant to a large number of queries, thus harming the performance of an IR system and the experience of its users. We analyze the origins of hubness, showing it is primarily a consequence of high (intrinsic) dimensionality of data, and not a result of other factors such as sparsity and skewness of the distribution of term frequencies. We describe the mechanisms through which hubness emerges by exploring the behavior of similarity measures in high-dimensional vector spaces. Our consideration begins with the classical VSM (tf-idf term weighting and cosine similarity), but the conclusions generalize to more advanced variations, such as Okapi BM25. Moreover, we explain why hubness may not be easily mitigated by dimensionality reduction, and propose a similarity adjustment scheme that takes into account the existence of hubs. Experimental results over real data indicate that significant improvement can be obtained through consideration of hubness.",1,ad,True
+15,Categories and Subject Descriptors,0,,False
+16,H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval,0,,False
+17,General Terms,0,,False
+18,"Experimentation, Measurement, Performance, Theory",0,,False
+19,Keywords,0,,False
+20,"Text retrieval, vector space model, nearest neighbors, curse of dimensionality, hubs, similarity concentration, cosine similarity",0,,False
+21,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'10, July 19­23, 2010, Geneva, Switzerland. Copyright 2010 ACM 978-1-60558-896-4/10/07 ...$10.00.",1,ad,True
+22,1. INTRODUCTION,1,DUC,True
+23,"The vector space model (VSM) [13] is a popular and widely applied information retrieval (IR) model that represents each document as a vector of weighted term counts. A similarity measure is used to retrieve a list of documents relevant to a query document. VSM allows for many variations in the choice of term weights and similarity measure used, with prominent representatives including tf-idf weighting and cosine similarity, as well as more recently proposed schemes Okapi BM25 [12] and pivoted cosine [14].",0,,False
+24,"Typically, the number of terms used in VSM is large, producing a high-dimensional vector space (with, e.g., tens of thousands of dimensions). This high dimensionality has been identified as the source of several problems, such as susceptibility to noise and difficulty in capturing the underlying semantic structure. Such problems are commonly recognized as different aspects of the ""curse of dimensionality,"" and their amelioration has attracted significant research effort, mainly based on dimensionality reduction.",0,,False
+25,1.1 Related Work and Motivation,0,,False
+26,"In this paper we investigate a novel aspect of the dimensionality curse, called hubness, which refers to the tendency of some vectors (the hubs) to be included in unexpectedly many k-nearest neighbor lists of other vectors in a high-dimensional data set, according to commonly used similarity/distance measures. Hubness has previously been observed in various application fields, such as audio retrieval [1, 2] and fingerprint identification [9], where it is described as a problematic situation. Nevertheless, none of the existing studies provide full explanations of the mechanisms underpinning it. On the other hand, we have explored the hubness phenomenon for general vector-space data, mostly with Euclidean distance in the context of machine learning [11], and also conducted a preliminary examination of the phenomenon for cosine and cosine-like similarity measures with respect to collaborative filtering applications [10]. To our knowledge, hubness has not been thoroughly examined in connection to VSM and IR.",0,,False
+27,"Hubness is worth studying in the context of IR, because it considerably impacts VSM by causing hub documents to become obstinate results, i.e., documents included in the search results of a large number of queries to which they are possibly irrelevant. This problem affects the performance of an IR system and the experience of its users, who may consistently observe the appearance of the same irrelevant results even for very different queries.",0,,False
+28,1.2 Contributions and Layout,0,,False
+29,"We commence our investigation by demonstrating the emergence of hubness in the context of IR (Section 2). We continue with one of our main contributions, which is the explanation of the origins of the phenomenon (Section 3), describing that it is mainly a con-",0,,False
+30,186,0,,False
+31,"sequence of high intrinsic dimensionality of vector-space data and not of other factors, such as sparsity and skewness of the distribution of term frequencies (caused, e.g., by differences in document lengths [14]). We link hubness with the behavior of similarity/distance measures in high-dimensional vector spaces and their concentration, i.e., the tendency of all pair-wise similarity/distance values to become almost equal. Although the study of concentration has attracted significant research effort for lp norms (e.g., Euclidean distance) [7], we analytically prove the emergence of concentration for the cosine similarity measure used in IR, and express the differences compared to lp norms. To ease the presentation of hubness, our discussion first considers the classical VSM based on tf-idf term weighting and cosine similarity, and then continues by demonstrating its generality on the more advanced variation Okapi BM25 [12], since hubness is an inherent characteristic of high-dimensional vector spaces that form the basis of various IR models. Moreover, it is explained why hubness is not easily mitigated by dimensionality reduction techniques.",1,ad,True
+32,"We next proceed to examine how hubness affects IR applications (Section 4) by causing hubs to become frequently occurring but possibly irrelevant results to a large number of queries. For this purpose, we investigate the interaction between hubness and the notion of the cluster hypothesis [15], and propose a similarity adjustment scheme that takes into account the existence of hubs. The experimental evaluation (Section 4.2) of the proposed scheme over real data indicates that significant performance improvements can be obtained through consideration of hubness. Finally, we provide the conclusions and directions for future work (Section 5).",1,ad,True
+33,2. THE HUBNESS PHENOMENON,0,,False
+34,"This section will demonstrate the existence of the hubness phenomenon, initially on synthetic data (Section 2.1), and then on real text data (Section 2.2), focusing on the classical tf-idf weighting scheme and cosine similarity. A more advanced document representation, Okapi BM25, is discussed in Section 4.3.",1,ad,True
+35,2.1 An Illustrative Example,0,,False
+36,"To measure the existence of hubness, let D denote a set of vectors in a multidimensional vector space, and Nk(x) the number of k-occurrences of each vector x  D, i.e., the number of times x occurs among the k nearest neighbors of all other vectors in D, with respect to some similarity measure. Nk(x) can also be viewed as the in-degree of node x in the k-nearest neighbor directed graph of vectors from D.",0,,False
+37,"We begin by considering an illustrative example, the purpose of which is to demonstrate the existence of hubness in vector-space data, and its dependence on dimensionality. Let us consider a random data set of 2,000 d-dimensional vectors (i.e., points) drawn uniformly from the unit hypercube [0, 1]d, and standard cosine similarity between them (Eq. 1 in Section 3.4). Figure 1(a­c) shows the observed distribution of Nk (k , 10) with increasing dimensionality. For d ,"" 3, the distribution of Nk in Figure 1(a) is consistent with the binomial distribution. Such behavior of Nk would also be expected if the graph was generated following a directed version of the Erdos-Rényi (ER) random graph model [5], where neighbors are randomly chosen instead of coordinates.""",1,ad,True
+38,"With increasing dimensionality, however, Figures 1(b) and (c) illustrate that the distribution of Nk departs from the random graph model and becomes skewed to the right, producing vectors (called hubs) with Nk values much higher than the expected value k. The same behavior can be observed with other values of k and data distributions. This simple example with dense and uniformly distributed data is helpful to illustrate the connection between high dimensionality and hubness, since uniformity may not be intuitively",0,,False
+39,"expected to generate hubness for reasons other than high dimensionality. To illustrate hubness in a setting more reminiscent of text data that have sparsity and skewed distribution of term frequencies, we randomly generate 2,000 vectors with the number of nonzero values for each coordinate (""term"") being drawn from Lognormal(5; 1) distribution (rounded to the nearest integer), and random numbers (drawn uniformly from [0, 1]) spread accordingly throughout the data matrix. Figures 1(d­f) demonstrate the increase of hubness with increasing dimensionality in this setting.",1,ad,True
+40,"A commonly applied practice in IR research is to reduce the influence of long documents (having many nonzero term frequencies and/or high values of term frequencies), by using various normalization schemes [14] to prevent them from being similar to many other documents. However, as observed above and as will be analyzed in Section 3, the high dimensionality that is an inherent characteristic of VSM is the main cause of hubness, as opposed to other data characteristics, since it emerges even when such normalization (cosine) is applied to sparse-skewed data, and also in the case of dense-uniform data where ""long documents"" are not expected.",0,,False
+41,2.2 Hubness in Real Text Data,0,,False
+42,"Before elaborating on the mechanisms through which hubs form, we verify the existence of the phenomenon on real text data sets. Figure 2 shows the distribution of Nk (k ,"" 10) for tf-idf term weighting and cosine similarity on three text data sets selected with the criterion of having large difference in their dimensionality. Similarly to the synthetic data sets, it can be seen that hubness tends to become stronger as dimensionality increases, as observed in the longer """"tails"""" of these distributions.""",0,,False
+43,"Table 1 summarizes the text data sets examined in this study. Besides basic statistics, such as the number of points (n), dimensionality (d) and number of classes, the table also includes a column measuring the skewness of the distribution of N10 (SN10 ), as its standardized third moment:",0,,False
+44,"SNk ,"" E(Nk - Nk )3/N3 k ,""",0,,False
+45,"where Nk and Nk are the mean and standard deviation of Nk, respectively.1 The SN10 values in Table 1 indicate a high degree of hubness in all data sets. (The remaining columns will be explained in the sequel.)",0,,False
+46,3. THE ORIGINS OF HUBNESS,0,,False
+47,3.1 The Mechanism of Hub Formation,0,,False
+48,"To describe the mechanisms through which hubness emerges, we begin the discussion by considering again the random data introduced in Section 2, i.e., the dense data matrix with iid uniform coordinates, and the sparse data set that simulates skewed term frequencies. For the same data sets and dimensionalities, Fig. 3 shows the scatter plots of N10 against the similarity of each vector to the data set mean, i.e., its center. In the chart titles, we also give the corresponding Spearman correlations. It can be seen that, as dimensionality increases, this correlation becomes significantly stronger, to the point of almost perfect correlation of hubness to the proximity to the data center.",0,,False
+49,"The existence of the described correlation provides the main reason for the formation of hubs: owing to the well-known property of vector spaces, vectors closer to the center tend to be closer, on average, to all other vectors. However, this tendency becomes amplified as dimensionality increases, making vectors in the proximity to the data center become closer, in relative terms, to all other vectors, thus substantially raising their chances of being included in nearest-neighbor lists of other vectors.",0,,False
+50,"1If SNk ,"" 0 there is no skew, positive (negative) values signify right (left) skew.""",0,,False
+51,187,0,,False
+52,p(N ),0,,False
+53,10,0,,False
+54,p(N ),0,,False
+55,10,0,,False
+56,0.4 0.3 0.2 0.1,0,,False
+57,0 0,0,,False
+58,(a),0,,False
+59,0.4 0.3 0.2 0.1,0,,False
+60,0 0,0,,False
+61,(d),0,,False
+62,"uniform, d , 3",0,,False
+63,5,0,,False
+64,10,0,,False
+65,15,0,,False
+66,20,0,,False
+67,N,0,,False
+68,10,0,,False
+69,"sparse, d , 50",0,,False
+70,10,0,,False
+71,20,0,,False
+72,30,0,,False
+73,40,0,,False
+74,50,0,,False
+75,N,0,,False
+76,10,0,,False
+77,(b) (e),0,,False
+78,p(N ),0,,False
+79,10,0,,False
+80,p(N ),0,,False
+81,10,0,,False
+82,"uniform, d , 20 0.25",0,,False
+83,0.2,0,,False
+84,0.15,0,,False
+85,0.1,0,,False
+86,0.05,0,,False
+87,0 0 10 20 30 40 50 60 70 N 10,0,,False
+88,"sparse, d , 200 0.4",0,,False
+89,0.3,0,,False
+90,0.2,0,,False
+91,0.1,0,,False
+92,0,0,,False
+93,0,0,,False
+94,20,0,,False
+95,40,0,,False
+96,60,0,,False
+97,80,0,,False
+98,N,0,,False
+99,10,0,,False
+100,log (p(N )),0,,False
+101,10 10,0,,False
+102,log (p(N )),0,,False
+103,0 -1 -2 -3 -4,0,,False
+104,0,0,,False
+105,(c),0,,False
+106,0 -1 -2 -3 -4,0,,False
+107,0,0,,False
+108,(f),0,,False
+109,10,0,,False
+110,10,0,,False
+111,"uniform, d , 100",0,,False
+112,50,0,,False
+113,100,0,,False
+114,N,0,,False
+115,10,0,,False
+116,"sparse, d , 2000",0,,False
+117,50,0,,False
+118,100,0,,False
+119,150,0,,False
+120,N,0,,False
+121,10,0,,False
+122,Figure 1: Distribution of N10 for cosine similarity on (a­c) iid uniform and (d­f) skewed sparse random data with varying dimensionality (in c and f the vertical axis is in log scale).,0,,False
+123,"oh15, tf-idf, d , 3182 0.4",0,,False
+124,0.3,0,,False
+125,p(N ),0,,False
+126,10,0,,False
+127,0.2,0,,False
+128,0.1,0,,False
+129,0 0 10 20 30 40 50 60,0,,False
+130,(a),0,,False
+131,N,0,,False
+132,10,0,,False
+133,(b),0,,False
+134,p(N ),0,,False
+135,10,0,,False
+136,"wap, tf-idf, d , 8460 0.4",0,,False
+137,0.3,0,,False
+138,0.2,0,,False
+139,0.1,0,,False
+140,0 0 10 20 30 40 50 60 N 10,0,,False
+141,"ohscal, tf-idf, d , 11465 0",0,,False
+142,-1,0,,False
+143,10,0,,False
+144,log (p(N )),0,,False
+145,-2,0,,False
+146,10,0,,False
+147,-3,0,,False
+148,-4,0,,False
+149,-5 0 20 40 60 80 100 120,0,,False
+150,(c),0,,False
+151,N,0,,False
+152,10,0,,False
+153,Figure 2: Distribution of N10 for cosine similarity on text data sets with increasing dimensionality (c has log-scale vertical axis).,0,,False
+154,"Table 1: Text data sets. The top 19 data sets, used in form released by Forman [6], include documents from TREC collections, the OHSUMED collection, Reuters and Los Angeles Times news stories, etc. The dmoz data set consists of a selection of short Web-page descriptions from 11 toplevel categories from the dmoz Open Directory. The remaining reuters-transcribed and newsgroup data sets are available, e.g., from the UCI machine learning repository (for feasibility of analyzing pairwise distances, we split the 20-newsgroups data set into two parts). For all data sets, stop words were removed, and stemming was performed using the Porter stemmer.",1,TREC,True
+155,Data set,0,,False
+156,n,0,,False
+157,d,0,,False
+158,Cls. SN10 SNS 10 CdNm10 CcNm10,0,,False
+159,ClNen110,0,,False
+160,ClNen1w0 BgN 10 CAV,0,,False
+161,fbis,0,,False
+162,2463 2000 17 1.884 2.391 0.083 0.440 0.188 0.219 0.323 0.400,0,,False
+163,oh0,0,,False
+164,1003 3182 10 1.933 2.243 0.468 0.626 0.210 0.212 0.295 0.322,0,,False
+165,oh10,0,,False
+166,1050 3238 10 1.485 1.868 0.515 0.650 0.185 0.124 0.415 0.552,0,,False
+167,oh15,0,,False
+168,913 3100 10 1.337 2.337 0.477 0.624 0.180 0.146 0.410 0.588,0,,False
+169,oh5,0,,False
+170,918 3012 10 1.683 2.458 0.473 0.662 0.154 0.124 0.345 0.587,0,,False
+171,re0,0,,False
+172,1504 2886 13 1.421 2.048 0.310 0.493 -0.016 -0.021 0.332 0.512,0,,False
+173,re1,0,,False
+174,1657 3758 25 1.334 1.940 0.339 0.587 0.075 0.071 0.305 0.385,0,,False
+175,tr11,0,,False
+176,414 6429 9 2.957 0.593 0.348 0.658 0.193 0.157 0.257 0.199,0,,False
+177,tr12,0,,False
+178,313 5804 8 2.577 0.841 0.364 0.620 0.199 0.180 0.323 0.326,0,,False
+179,tr21,0,,False
+180,336 7902 6 5.016 2.852 0.213 0.572 0.369 0.352 0.172 0.176,0,,False
+181,tr23,0,,False
+182,204 5832 6 1.184 0.392 0.052 0.503 -0.057 -0.034 0.239 0.281,0,,False
+183,tr31,0,,False
+184,927 10128 7 1.843 2.988 0.218 0.448 0.118 0.109 0.132 0.117,0,,False
+185,tr41,0,,False
+186,878 7454 10 1.257 1.413 0.377 0.586 0.110 0.092 0.133 0.288,0,,False
+187,tr45,0,,False
+188,690 8261 10 1.490 1.060 0.304 0.638 0.077 0.089 0.175 0.203,0,,False
+189,wap,0,,False
+190,1560 8460 20 1.998 1.753 0.479 0.598 0.209 0.203 0.364 0.304,0,,False
+191,la1s,0,,False
+192,3204 13195 6 1.837 2.277 0.398 0.498 0.161 0.165 0.296 0.570,0,,False
+193,la2s,0,,False
+194,3075 12432 6 1.462 1.876 0.419 0.496 0.203 0.207 0.268 0.531,0,,False
+195,ohscal,0,,False
+196,11162 11465 10 3.016 5.150 0.223 0.315 0.052 0.077 0.521 0.793,0,,False
+197,new3s,0,,False
+198,9558 26832 44 2.795 2.920 0.146 0.424 0.120 0.129 0.338 0.640,0,,False
+199,reuters-transcribed 201 3029 11 1.165 1.187 0.671 0.537 0.185 0.140 0.642 0.627,0,,False
+200,dmoz,0,,False
+201,3918 10690 11 2.212 2.853 0.443 0.433 -0.100 -0.249 0.613 0.866,0,,False
+202,mini-newsgroups 1999 7827 20 1.980 1.243 0.388 0.603 0.168 0.152 0.524 0.832,0,,False
+203,20-newsgroups1,0,,False
+204,9996 19718 20 2.930 3.571 0.187 0.411 0.125 0.133 0.378 0.850,0,,False
+205,20-newsgroups2,0,,False
+206,9995 19644 20 2.716 3.424 0.204 0.405 0.127 0.133 0.375 0.868,0,,False
+207,188,0,,False
+208,"uniform, d ,"" 3, CdNm10 "", 0.032 20",0,,False
+209,"uniform, d ,"" 20, CdNm10 "", 0.918 80",0,,False
+210,"uniform, d ,"" 100, CdNm10 "", 0.930 150",0,,False
+211,N,0,,False
+212,10,0,,False
+213,15,0,,False
+214,60,0,,False
+215,100,0,,False
+216,N,0,,False
+217,10,0,,False
+218,N,0,,False
+219,10,0,,False
+220,10,0,,False
+221,40,0,,False
+222,50,0,,False
+223,5,0,,False
+224,20,0,,False
+225,0,0,,False
+226,0.6,0,,False
+227,0.7,0,,False
+228,0.8,0,,False
+229,0.9,0,,False
+230,1,0,,False
+231,(a),0,,False
+232,Similarity with data set mean,0,,False
+233,0,0,,False
+234,0.7,0,,False
+235,0.8,0,,False
+236,0.9,0,,False
+237,1,0,,False
+238,(b),0,,False
+239,Similarity with data set mean,0,,False
+240,0,0,,False
+241,0.75,0,,False
+242,0.8,0,,False
+243,0.85,0,,False
+244,0.9,0,,False
+245,0.95,0,,False
+246,(c),0,,False
+247,Similarity with data set mean,0,,False
+248,"sparse, d ,"" 50, CdNm10 "", 0.266 50 40 30 20 10",0,,False
+249,N,0,,False
+250,10,0,,False
+251,"sparse, d ,"" 200, CdNm10 "", 0.775 80",0,,False
+252,60,0,,False
+253,40,0,,False
+254,20,0,,False
+255,N,0,,False
+256,10,0,,False
+257,"sparse, d ,"" 2000, CdNm10 "", 0.927 150 100 50",0,,False
+258,N,0,,False
+259,10,0,,False
+260,0,0,,False
+261,0,0,,False
+262,0.2,0,,False
+263,0.4,0,,False
+264,0.6,0,,False
+265,0.8,0,,False
+266,(d),0,,False
+267,Similarity with data set mean,0,,False
+268,0,0,,False
+269,0,0,,False
+270,0.2,0,,False
+271,0.4,0,,False
+272,0.6,0,,False
+273,0.8,0,,False
+274,(e),0,,False
+275,Similarity with data set mean,0,,False
+276,0,0,,False
+277,0.35,0,,False
+278,0.4,0,,False
+279,0.45,0,,False
+280,0.5,0,,False
+281,0.55,0,,False
+282,(f),0,,False
+283,Similarity with data set mean,0,,False
+284,Figure 3: Scatter plots of N10(x) (and its Spearman correlation denoted in the chart titles as CdNm10) against the cosine similarity of each vector to the data set center for (a­c) iid uniform and (d­f) sparse random data and various dimensionalities (denoted as d in chart titles).,0,,False
+285,"To examine further the amplification caused by dimensionality, we compute separately for each of the two examined random data settings (dense-uniform and sparse-random) the distribution, S, of similarities between all vectors in the data set to the center of the data set. From each data set we select two vectors: x0 is selected to have similarity value to the data set center exactly equal to the expected value E(S) of the computed distribution S (i.e., at 0 standard deviations from E(S)), whereas x2 is selected to have higher similarity to the data set center, being equal to 2 standard deviations added to E(S) (we were able to select such vectors with negligible error compared to the similarities sought). Next, we compute the distributions of similarities of x0 and x2 to all other vectors, and the denote the means of these distributions x0 and x2 , respectively. Figure 4 plots, separately for the two examined cases of random data sets, the difference between the two similarity means, normalized (as explained in next paragraph) by dividing with the standard deviation, denoted all, of all pairwise similarities, i.e.: (x2 - x0 )/all. These figures show that, with increasing dimensionality, x2, which is more similar to the data center than x0, becomes progressively more similar (in relative terms) to all other vectors, a fact that demonstrates the aforementioned amplification.",1,ad,True
+286,"One question that remains is: in high-dimensional spaces, why is it expected to have some vectors closer to the center and thus become hubs? In Section 3.4 we will analyze the property of the cosine similarity measure, referred to as concentration [7], which in this case states that, as dimensionality tends to infinity, the expectation of pairwise similarities between all vectors tends to become constant, whereas their standard deviation (denoted above as all) shrinks to zero. This means that the majority of vectors become about equally similar to each other, thus to the data center as well. However, high but finite dimensionalities, typical in IR, will result in a small but non-negligible standard deviation, which causes the existence of some vectors, i.e., the hubs, that are closer to the center than other vectors. These facts also clarify the aforementioned normalization by all, which comprises a way to account for concentration (shrinkage of all) and meaningfully compare x0 and x2 across dimensionalities.",0,,False
+287,"Finally, we need to examine the relation between hubness and additional characteristics of text data sets, such as sparsity and the skewed distribution of term frequencies in ""long"" documents (see Section 2.1). Since Figures 1 and 3 demonstrate hubness for both dense and sparse random data sets, sparsity on its own should",1,ad,True
+288,Norm. diff. between means,0,,False
+289,Norm. diff. between means,0,,False
+290,uniform,0,,False
+291,0.9,0,,False
+292,0.8,0,,False
+293,0.7,0,,False
+294,0.6,0,,False
+295,sparse,0,,False
+296,0.75 0.7,0,,False
+297,0.65,0,,False
+298,0.5,0,,False
+299,0,0,,False
+300,20,0,,False
+301,40,0,,False
+302,60,0,,False
+303,80 100,0,,False
+304,d,0,,False
+305,0,0,,False
+306,500,0,,False
+307,1000 1500 2000,0,,False
+308,d,0,,False
+309,"Figure 4: Difference between the normalized means of two distributions of similarity with a point which has: (1) the expected similarity with the data center, and (2) similarity two standard deviations greater; for uniform (left) and sparse random data (right).",0,,False
+310,"not be considered as a key factor. Regarding the skewness in the distribution of term frequencies, we can consider two cases [14]: (a) more (in number) distinct terms, and (b) higher (in value) term frequencies. For the sparse data set with d ,"" 2, 000 dimensions (Fig. 3(f)) we measured the correlations of N10 with the number of nonzero simulated """"terms"""" of a vector and with the total sum of term weights of a vector, and found both to be weak, 0.142 for case (a) and 0.19 for case (b), in comparison with correlation 0.927 (see title of Fig. 3(f)) between N10 and the similarity with the data set mean, which has been described as the main factor behind hubness. The weak correlations in cases (a) and (b), which will also be verified with real data (Section 3.2), are expected because normalization schemes (cosine in this example) are able to reduce the impact of long documents. What is, thus, important to note is that, even if the correlations of cases (a) and (b) are completely eliminated with another normalization scheme, the hubness phenomenon will still be present, since it is primarily caused by the inherent properties of high-dimensional vector space.""",0,,False
+311,3.2 Hub Formation in Real Data,0,,False
+312,"In the previous discussion we have used synthetic data that allow the control of important parameters. To verify the findings with real text data, we need to take into account two additional factors: (1) real data sets usually contain dependent attributes, and (2) real data sets are usually clustered, that is, documents are organized into groups produced by a mixture of distributions instead of originating from one single distribution.",1,ad,True
+313,"To examine the first factor (dependent attributes), we adopt the approach from [7] used in the context of lp-norm concentration. For each data set we randomly permute the elements within every",1,ad,True
+314,189,0,,False
+315,"attribute. This way, attributes preserve their individual distributions, but the dependencies between them are lost and the intrinsic dimensionality of data sets increases [7]. In Table 1 we give the skewness, denoted SNS10 , of the modified data. In most cases SNS10 is considerably higher than SN10 , implying that hubness depends on the intrinsic rather than embedding (full) dimensionality.",0,,False
+316,"To examine the second factor (many groups), for every data set we measured: (i) Spearman correlation, denoted by CdNm10 , of Nk and the similarity with the data set center, and (ii) correlation, denoted by CcNm10 , of Nk and the similarity with the closest group center. Groups are determined using K-means clustering, where the number of clusters was set to the number of document categories of the data set.2 In most cases, CcNm10 is much stronger than CdNm10 . Thus, generalizing the conclusion of Section 3.1 to the case of real data, hubs are more similar, compared with other vectors, to their respective cluster centers.",0,,False
+317,"Regarding long documents (see Section 3.1), for each data set we computed the correlation between Nk and the number of nonzero term weights for a document, denoted by ClNen110 , and also the correlation of Nk with the sum of term weights of a document, denoted by ClNen1w0 . The corresponding columns of Table 1 signify that these correlations are weaker or nonexistent (on occasion even negative) compared to the correlation with the proximity to the closest cluster mean (CcNm10 ). The above observations are in accordance with the conclusions from the end of Section 3.1.",0,,False
+318,3.3 Effect of Dimensionality Reduction,0,,False
+319,The attribute shuffling experiment in Section 3.2 suggested that hubness is actually related more to the intrinsic dimensionality of data. We elaborate further on the interplay of skewness and intrinsic dimensionality by considering dimensionality reduction (DR) techniques. The main question is whether DR can alleviate the issue of hubness altogether.,0,,False
+320,"We examined the singular value decomposition (SVD) dimensionality reduction method, which is widely used in IR through latent semantic indexing. Figure 5 depicts for several real data sets from Table 1 the relationship between the percentage of features (dimensions) maintained by SVD, and the skewness SNk (k ,"" 10). All cases exhibit the same behavior: SNk stays relatively constant until a small percentage of features is left, after which it suddenly drops. This is the point where the intrinsic dimensionality is reached, and further reduction may incur loss of information. This observation indicates that, when the number of maintained features is above the intrinsic dimensionality, dimensionality reduction cannot significantly alleviate the skewness of k-occurrences, and thus hubness. This result is useful in most practical cases, because moving bellow the intrinsic dimensionality may cause loss of valuable information from the data.""",0,,False
+321,3.4 Concentration of Cosine Similarity,0,,False
+322,"Distance concentration, which has been examined mainly for lp norms [7], refers to the tendency of the ratio between some notion of spread (e.g., standard deviation) and some notion of magnitude (e.g., the mean) of the distribution of all pairwise distances (or, equivalently, the norms) within a data set to converge to 0 as dimensionality increases.",1,ad,True
+323,"Hereby, we examine concentration in the context of cosine similarity that is widely used in IR. We will prove the concentration of cosine similarity by considering two random d-dimensional vectors p and q with iid components. Let cos(p, q) denote the cosine simi-",0,,False
+324,"2We report averages of CcNm10 over 10 runs of K-means clustering with different random seeding, in order to reduce the effects of chance.",0,,False
+325,SVD 2,0,,False
+326,1.5,0,,False
+327,S,0,,False
+328,N,0,,False
+329,1 0,0,,False
+330,1,0,,False
+331,tr31,0,,False
+332,oh5,0,,False
+333,tr45,0,,False
+334,0.5,0,,False
+335,re0,0,,False
+336,oh15,0,,False
+337,0 10 20 30 40 50 60 70 80 90 100 Features (%),0,,False
+338,Figure 5: Skewness of N10 at the percentage of features kept by SVD.,0,,False
+339,"larity between p and q, defined in Eq. 1.3 Note that our examination",0,,False
+340,does not differentiate between sparse and dense data (concentration,0,,False
+341,occurs in both cases).,0,,False
+342,"cos(p, q) , pT q",0,,False
+343,(1),0,,False
+344,pq,0,,False
+345,From the extension of Pythagoras' theorem we have Eq. 2 that,0,,False
+346,"relates cos(p, q) with the Euclidean distance between p and q.",0,,False
+347,"cos(p, q) ,",0,,False
+348,p 2+ q 2- p-q 2 2p q,0,,False
+349,(2),0,,False
+350,"Define the following random variables: X ,"" p , Y "","" q ,""",0,,False
+351,"and Z ,"" p - q . Since p and q have iid components, we assume""",0,,False
+352,"that X and Y are independent of each other, but not of Z. Let C",0,,False
+353,"be the random variable that denotes the value of cos(p, q). From",0,,False
+354,"Eq. 2, with simple algebraic manipulations and substitution of the",0,,False
+355,norms,0,,False
+356,with,0,,False
+357,the,0,,False
+358,"corrCes,""pon21di,,ngXYra+ndoXYm-varXZiaY2ble«s,""",0,,False
+359,we,0,,False
+360,obtain,0,,False
+361,Eq.,0,,False
+362,3. (3),0,,False
+363,"Let E(C) and V(C) denote the expectation and variance of C, respectively. An established way [7] to demonstratp e concentration is by examining the asymptotic relation between V(C) and E(C) when dimensionality d tends to infinity. To express this asymptotic relation, we first need to express the asymptotic behavior of E(C) and V(C) with regards to d. Since, from Eq. 3, C is related to functions of X, Y , and Z, we start by studying the expectations and variances of these random variables.",0,,False
+364,"THEO`REM 1 (FR´ANÇOIS ET AL. [7], ADAPTED). limd E(X)/ d ,"" const , and limd V(X) "", const . The same holds for random variable Y .",1,AP,True
+365,"CORO`LLARY 1. ´ limd E(Z)/ d ,"" const , and limd V(Z) "", const .",0,,False
+366,"PROOF. Follows directly from Theorem 1 and the fact that, since vectors p and q have iid components, vector p-q also has iid components.",0,,False
+367,"COROLLARY 2. limd(E(X2)/d) ,"" const , and limd(V(X2)/d) "", const . The same holds for random variables Y 2 and Z2.",0,,False
+368,"PROOF. From Theorem 1 and the equation E(X2) , V(X)+E(X)2 it follows that limd(E(X2)/d) ,"" const . The same holds for E(Y 2) and, taking into account Corollary 1, for E(Z2). By using the delta method to approximate the moments of a function of a random variable with Taylor expansions [3], we have V(X2)  (2E(X))2 V(X). From Theorem 1 it now follows that limd(V(X2)/d) "", const . Analogous derivations hold for V(Y 2) and V(Z2).",0,,False
+369,"3Henceforth, · denotes the Euclidean (l2) norm.",0,,False
+370,190,0,,False
+371,uniform,0,,False
+372,1,0,,False
+373,sparse,0,,False
+374,1,0,,False
+375,Cosine similarity Cosine similarity,0,,False
+376,0.8,0,,False
+377,0.8,0,,False
+378,0.6,0,,False
+379,0.6,0,,False
+380,0.4,0,,False
+381,0.4,0,,False
+382,0.2,0,,False
+383,0.2,0,,False
+384,0,0,,False
+385,0,0,,False
+386,20,0,,False
+387,40,0,,False
+388,60,0,,False
+389,80 100,0,,False
+390,d,0,,False
+391,0,0,,False
+392,0,0,,False
+393,500,0,,False
+394,1000,0,,False
+395,1500,0,,False
+396,2000,0,,False
+397,d,0,,False
+398,Figure 6: Concentration of cosine similarity for uniform (left) and sparse random data (right).,0,,False
+399,"pBased on the above results, the following two theorems show that V(C) reduces asymptotically to 0, while E(C) asymptotically",0,,False
+400,"remains constant (proofpsketches are given in the Appendix). THEOREM 2. lim V(C) , 0.",0,,False
+401,d,0,,False
+402,"THEOREM 3. lim E(C) , const . d",0,,False
+403,"Figure 6 illustrates these findings for the uniform and sparse random data used in previous sections. With respect to the distribution of all pairwise similarities, the plots include, from top to bottom: maximal observed value, mean value plus one standard deviation, the mean value, mean value minus one standard deviation, and minimal observed value. The figures illustrate that, with increasing dimensionality, expectation becomes constant and variance shrinks.",0,,False
+404,"It is worth noting that the concentration of cosine similarity results from different reasons than the concentration of Euclidean (l2) distance. For the latter, its standard deviation converges to a constant [7], whereas its expectation asymptotically increases with d. Nevertheless, in both cases the relative relationship between the standard deviation and the expectation is similar.",0,,False
+405,4. IMPACT OF HUBNESS ON IR,0,,False
+406,4.1 Hubness and the Cluster Hypothesis,0,,False
+407,"This section examines the ways that hubness affects VSM towards the main objective of IR, which is to return relevant results for a query document. We consider the commonly examined case of documents that belong to categories (e.g., news categories, like sport or finance). However, a similar approach can be followed for other sources of information about documents, such as indication of their relevance to a set of predefined queries. In the presence of information about documents as in the form of categories, k-occurrences can be distinguished based on whether category labels of neighbors match. We define the number of ""bad"" k-occurrences of document vector x  D, denoted BN k(x), as the number of vectors from D for which x is among the first k nearest neighbors and the labels of x and the vectors in question do not match. Conversely, GN k(x), the number of ""good"" k-occurrences of x, is the number of such vectors where labels do match. Naturally, for every x  D, Nk(x) , BN k(x) + GN k(x).",1,ad,True
+408,"We define BgN k as the sum of allP""bad"" k-occurrences of a data set normalized by dividing it with x Nk(x) ,"" kn. The motivation behind the measure is to express the total amount of """"bad"""" k-occurrences within a data set. Table 1 includes BgN 10. """"Bad"""" hubs, i.e., documents with high BN k, are of particular interest to IR, since they affect the precision of retrieval more severely than other documents by being among the k nearest neighbors (i.e., in the result list) of many other documents with mismatching categories. To understand the origins of """"bad"""" hubs in real data, we rely on the notion of the cluster hypothesis [15]. This hypothesis will be approximated by the cluster assumption from semi-supervised learning [4], which roughly states that most pairs of vectors in a high density region (cluster) should belong to the same category.""",1,ad,True
+409,"To measure the degree to which the cluster assumption is violated in a particular data set, we define a simple cluster assumption violation (CAV) coefficient as follows. Let a be the number of pairs of documents which are in different category but in the same cluster, and b the number of pairs of documents which are in the same category and cluster. Define CAV ,"" a/(a + b), which gives a number in range [0, 1], higher if there is more violation. To reduce the sensitivity of CAV to the number of clusters (too low and it will be overly pessimistic, too high and it will be overly optimistic), we choose the number of clusters to be 3 times the number of categories of a data set. As in Section 3.2, we use K-means clustering.""",0,,False
+410,"For all examined text data sets, we computed the Spearman correlation between BgN 10 and CAV, and found it strong (0.844). In contrast, BgN 10 is not correlated with d nor with the skewness of N10 (measured correlations are -0.03 and 0.109, respectively). The latter indicates that high intrinsic dimensionality and hubness are not sufficient to induce ""bad"" hubs. Instead, we can argue that there are two, mostly independent, factors at work: violation of the cluster assumption on one hand, and hubness induced by high intrinsic dimensionality on the other. ""Bad"" hubs originate from putting the two together; i.e., the consequences of violating the cluster assumption can be more severe in high dimensions than in low dimensions, not in terms of the total amount of ""bad"" koccurrences, but in terms of their distribution, since strong hubs are now more prone to ""pick up"" bad k-occurrences than non-hubs.",1,ad,True
+411,4.2 A Similarity Adjustment Scheme,0,,False
+412,"Based on the aforementioned conclusions about ""bad"" hubness, in this section we propose and evaluate a similarity adjustment scheme with the objective to show how its consideration can be used successfully for improving the precision of a VSM-based IR system. Our main goal is not to compete with the state-of-the art methods for improving the precision and relevance of results obtained using baseline methods, but rather to demonstrate the practical significance of our findings in IR applications, and the need to account for hubness. Thus, the elaborate examination of more sophisticated methods is addressed as a point of future work.",1,ad,True
+413,"Let D denote a set of documents, and Q a set of queries independent of D. We will also refer to D as the ""training"" set, and to Q as the ""test"" set, and by default compute Nk, BN k and GN k on D. We adjust the similarity measure used to compare document vector x  D with query vector q  Q by increasing the similarity in proportion with the ""goodness"" of x (GN k(x)), and reducing it in proportion with the ""badness"" of x (BN k(x)), both relative to the total hubness of x (Nk(x)), for a given k:",1,ad,True
+414,"sima(x, q) ,"" sim(x, q)+sim(x, q)(GN k(x)-BN k(x))/Nk(x) .""",0,,False
+415,"The net effect of the adjustment is that strong ""bad"" hub documents",1,ad,True
+416,"become less similar to queries, reducing the chances of the docu-",0,,False
+417,ment to be included in a list of retrieved results. To prevent doc-,0,,False
+418,"uments from being excluded from retrieval too rigorously, the ad-",1,ad,True
+419,"justment scheme also considers their ""good"" side and awards the",0,,False
+420,"presence of ""good"" k-occurrences in an analogous manner.",0,,False
+421,We experimentally evaluated the improvement gained by the pro-,0,,False
+422,posed scheme compared to the standard tf-idf representation and,0,,False
+423,"cosine similarity (all computations involving hubness use k ,"" 10),""",0,,False
+424,"through 10-fold cross-validation on data sets from Table 1. First,",0,,False
+425,"we focus on the impact of the adjustment scheme on the error introduced to the retrieval system by the strongest ""bad"" hubs. Let W p%",1,ad,True
+426,"be the set of the top p% of documents with highest BN k, as de-",0,,False
+427,termined,0,,False
+428,from,0,,False
+429,the,0,,False
+430,training,0,,False
+431,"set,",0,,False
+432,and,0,,False
+433,let,0,,False
+434,BN,0,,False
+435,test k,0,,False
+436,(x),0,,False
+437,and,0,,False
+438,Nktest (x),0,,False
+439,"be the (""bad"") k-occurrences of document x from the training set,",1,ad,True
+440,as determined from similarities with documents from the test set.,0,,False
+441,191,0,,False
+442,Precision@m (%) Precision@m (%) Precision@m (%) Precision@m (%),0,,False
+443,"oh10, tf-idf + cosine",0,,False
+444,66,0,,False
+445,With sim. adj.,1,ad,True
+446,No sim. adj.,1,ad,True
+447,64,0,,False
+448,62,0,,False
+449,60,0,,False
+450,58 1 2 3 4 5 6 7 8 9 10 m,0,,False
+451,"re0, tf-idf + cosine 80",0,,False
+452,With sim. adj. No sim. adj. 75,1,ad,True
+453,70,0,,False
+454,65 1 2 3 4 5 6 7 8 9 10 m,0,,False
+455,"tr41, tf-idf + cosine",0,,False
+456,93,0,,False
+457,92,0,,False
+458,With sim. adj.,1,ad,True
+459,No sim. adj.,1,ad,True
+460,91,0,,False
+461,90,0,,False
+462,89,0,,False
+463,88,0,,False
+464,87,0,,False
+465,86 1 2 3 4 5 6 7 8 9 10 m,0,,False
+466,"la1s, tf-idf + cosine",0,,False
+467,82,0,,False
+468,80,0,,False
+469,With sim. adj. No sim. adj.,1,ad,True
+470,78,0,,False
+471,76,0,,False
+472,74,0,,False
+473,72,0,,False
+474,70,0,,False
+475,1 2 3 4 5 6 7 8 9 10 m,0,,False
+476,"Figure 7: Precision at the number of retrieved results m, measured by 10-fold cross-validation.",0,,False
+477,"Table 2: Retrieval ""badness"" of 5% of the strongest ""bad"" hubs (B5%) and precision at 10 (P@10), with (columns labeled by suffix a) and without similarity adjustment (in %).",1,ad,True
+478,Data set,0,,False
+479,fbis oh0 oh10 oh15 oh5 re0 re1 tr11 tr12 tr21 tr23 tr31 tr41 tr45 wap la1s la2s ohscal new3s reuters-transcribed dmoz mini-newsgroups 20-newsgroups1 20-newsgroups2,0,,False
+480,B5a%,0,,False
+481,47.73 49.47 64.17 56.21 51.63 54.77 59.47 44.86 65.60 23.89 45.03 44.36 35.34 37.40 54.57 49.01 52.17 66.17 50.54 68.10 69.92 66.22 55.18 57.48,0,,False
+482,B5%,0,,False
+483,68.58 55.93 70.58 68.71 56.68 67.78 69.37 43.38 64.15 27.65 52.50 55.50 49.04 52.05 60.44 57.86 61.67 72.38 65.77 72.34 75.37 70.86 63.59 65.09,0,,False
+484,P@10a,0,,False
+485,72.10 71.85 61.97 62.96 67.85 69.58 72.04 74.70 69.23 83.70 75.94 88.43 87.81 84.08 65.18 72.94 75.54 51.01 69.00 38.55 40.68 49.39 63.89 64.22,0,,False
+486,P@10,0,,False
+487,67.59 70.03 58.58 59.19 64.84 66.41 68.98 74.06 67.11 82.90 75.60 86.33 86.31 81.88 63.42 69.89 72.69 47.80 65.66 36.81 38.24 47.16 61.27 61.50,0,,False
+488,"We define as Bp% ,",0,,False
+489,`thPe total,0,,False
+490,xW,0,,False
+491,"p""%baBdNnetksess""t (oxf)´th/e`sPtroxngWespt%pN%kteosft",0,,False
+492,"ba´d hubs (x) , where",0,,False
+493,"normalization with Nktest is done to keep the measure in the [0, 1]",0,,False
+494,"range. The Bp% measure focuses on the contribution of ""bad"" hubs",1,ad,True
+495,"to erroneous retrieval of false positives. Table 2 shows Bp% on the same p ,"" 5% of """"bad"""" hubs before""",1,ad,True
+496,and after applying similarity adjustment. It can be seen that for the,1,ad,True
+497,"majority of data sets, the adjustment scheme greatly reduces the",1,ad,True
+498,"amount of erroneous retrieval caused by ""bad"" hubs.",1,ad,True
+499,To illustrate the improving effect of the adjustment scheme on,1,ad,True
+500,"the precision of retrieval, Fig. 7 plots, for several data sets from Ta-",0,,False
+501,"ble 1, the precision of 10-fold cross-validation against the varying",0,,False
+502,number (m) of documents retrieved as results.,0,,False
+503,"Moreover, Table 2 also shows 10-fold cross-validation precision",0,,False
+504,"at 10 retrieved results, demonstrating the improvement of precision introduced by similarity adjustment on all data sets.4",1,ad,True
+505,4.3 Advanced Representations,0,,False
+506,"The issues examined in previous sections relate to characteristics of VSM that are existing in most of its variations, particularly the high dimensionality. To examine the generality of our findings, we",0,,False
+507,"4We verified the statistical significance of improvement of precision using the t-test at 0.05 significance level on all data sets (except tr11 and tr23). The motivation for selecting m , 10 results to report precision is the common use of this number by retrieval systems. We obtained analogous results for various other values of m.",0,,False
+508,"consider the Okapi BM25 weighting scheme [12], which consists",0,,False
+509,of separate weightings for terms in documents and terms in queries.,0,,False
+510,The comparison between document and query can then be viewed,0,,False
+511,as taking the (unnormalized) dot-product of the two vectors. We,0,,False
+512,"examine the following basic variant of the BM25 weighting. Providing that n is the total number of documents in the collection,",0,,False
+513,"df the term's document frequency, tf the term frequency, dl the",0,,False
+514,"document length (the total number of terms), and avdl the average",0,,False
+515,"document length, term weights of documents are given by",0,,False
+516,log,0,,False
+517,n,0,,False
+518,- df df +,0,,False
+519,+ 0.5 0.5,0,,False
+520,·,0,,False
+521,(k1 + 1)tf,0,,False
+522,k1,0,,False
+523,((1,0,,False
+524,-,0,,False
+525,b),0,,False
+526,+,0,,False
+527,b,0,,False
+528,dl avdl,0,,False
+529,),0,,False
+530,+,0,,False
+531,tf,0,,False
+532,",",0,,False
+533,"while the term weights of queries are (k3 + 1)tf /(k3 + tf ), where k1, b, and k3 are parameters for which we take the default values k1 ,"" 1.2, b "","" 0.75, and k3 "", 7 [12].",0,,False
+534,"The existence of hubness within the BM25 scheme is illustrated in Figure 8, which plots the distribution of Nk (k , 10) for several real text data sets from Table 1 represented with BM25. Figure 9",0,,False
+535,demonstrates the improvement of precision obtained through the,0,,False
+536,"similarity adjustment scheme described in Section 4.2, when BM25",1,ad,True
+537,representation is considered.,0,,False
+538,5. CONCLUSION,0,,False
+539,"We have described the tendency, called hubness, of VSM-based models to produce some documents that are retrieved surprisingly more often than other documents in a collection. We have shown that the major factor for hubness is the high (intrinsic) dimensionality of vector spaces used by such models. We described the mechanisms from which the phenomenon originates, investigated its interaction with dimensionality reduction, and demonstrated its impact on IR by exploring its relationship with the cluster hypothesis.",0,,False
+540,"In order to simplify analysis by allowing quantification of the degree of violation of the cluster hypothesis, in this research we focused on data containing category labels. In future work we plan to extend our evaluation to larger data collections where relevance judgements are provided in a non-categorical fashion. Also, we will consider in more detail advanced models like BM25 [12] and pivoted cosine [14]. Finally, the similarity adjustment scheme described in this paper was proposed primarily with the intent of demonstrating that hubness should be considered for the purposes of IR. In future research we intend to explore other strategies for assessing and mitigating the influence of (""bad"") hubness in IR.",1,ad,True
+541,Acknowledgments. The second author acknowledges the partial co-funding of his work through European Commission FP7 project MyMedia under grant agreement no. 215006.,0,,False
+542,6. REFERENCES,0,,False
+543,"[1] J.-J. Aucouturier and F. Pachet. A scale-free distribution of false positives for a large class of audio similarity measures. Pattern Recogn., 41(1):272­284, 2007.",0,,False
+544,"[2] A. Berenzweig. Anchors and Hubs in Audio-based Music Similarity. PhD thesis, Columbia University, New York, NY, USA, 2007.",0,,False
+545,"[3] G. Casella and R. L. Berger. Statistical Inference. Duxbury, second edition, 2002.",0,,False
+546,192,0,,False
+547,p(N ),0,,False
+548,10,0,,False
+549,"oh10, BM25 0.3",0,,False
+550,0.2,0,,False
+551,0.1,0,,False
+552,p(N ),0,,False
+553,10,0,,False
+554,"re0, BM25 0.3",0,,False
+555,0.2,0,,False
+556,0.1,0,,False
+557,log (p(N )),0,,False
+558,10 10,0,,False
+559,"tr41, BM25 0",0,,False
+560,-1,0,,False
+561,-2,0,,False
+562,log (p(N )),0,,False
+563,10 10,0,,False
+564,"la1s, BM25 0",0,,False
+565,-1,0,,False
+566,-2,0,,False
+567,-3,0,,False
+568,0,0,,False
+569,0,0,,False
+570,20,0,,False
+571,40,0,,False
+572,60,0,,False
+573,N,0,,False
+574,10,0,,False
+575,0 0 10 20 30 40 50 60 N 10,0,,False
+576,-3,0,,False
+577,-4,0,,False
+578,0,0,,False
+579,50,0,,False
+580,100,0,,False
+581,150,0,,False
+582,200,0,,False
+583,0,0,,False
+584,N,0,,False
+585,10,0,,False
+586,100,0,,False
+587,200,0,,False
+588,300,0,,False
+589,N,0,,False
+590,10,0,,False
+591,Figure 8: Distribution of N10 for real text data sets in the BM25 representation.,0,,False
+592,"oh10, BM25",0,,False
+593,76,0,,False
+594,With sim. adj.,1,ad,True
+595,74,0,,False
+596,No sim. adj.,1,ad,True
+597,72,0,,False
+598,70,0,,False
+599,68,0,,False
+600,66,0,,False
+601,64 1 2 3 4 5 6 7 8 9 10 m,0,,False
+602,Precision@m (%),0,,False
+603,"re0, BM25",0,,False
+604,80,0,,False
+605,With sim. adj.,1,ad,True
+606,78,0,,False
+607,No sim. adj.,1,ad,True
+608,76,0,,False
+609,74,0,,False
+610,72,0,,False
+611,70,0,,False
+612,1 2 3 4 5 6 7 8 9 10 m,0,,False
+613,Precision@m (%),0,,False
+614,"tr41, BM25",0,,False
+615,95,0,,False
+616,With sim. adj.,1,ad,True
+617,93,0,,False
+618,No sim. adj.,1,ad,True
+619,91,0,,False
+620,89,0,,False
+621,87,0,,False
+622,85 1 2 3 4 5 6 7 8 9 10 m,0,,False
+623,Precision@m (%),0,,False
+624,"la1s, BM25",0,,False
+625,82,0,,False
+626,With sim. adj.,1,ad,True
+627,No sim. adj. 80,1,ad,True
+628,78,0,,False
+629,76,0,,False
+630,74,0,,False
+631,1 2 3 4 5 6 7 8 9 10 m,0,,False
+632,"Figure 9: Precision at the number of retrieved results m, measured by 10-fold cross-validation, for the BM25 representation.",0,,False
+633,Precision@m (%),0,,False
+634,"[4] O. Chapelle, B. Schölkopf, and A. Zien, editors. Semi-Supervised Learning. The MIT Press, 2006.",0,,False
+635,"[5] P. Erdos and A. Rényi. On random graphs. Publ. Math-Debrecen, 6:290­297, 1959.",0,,False
+636,"[6] G. Forman. BNS feature scaling: An improved representation over TF-IDF for SVM text classification. In Proc. ACM Conf. on Inform. and Knowledge Management (CIKM), pages 263­270, 2008.",0,,False
+637,"[7] D. François, V. Wertz, and M. Verleysen. The concentration of fractional distances. IEEE T. Knowl. Data En., 19(7):873­886, 2007.",0,,False
+638,"[8] L. A. Goodman. On the exact variance of products. J. Am. Stat. Assoc., 55(292):708­713, 1960.",0,,False
+639,"[9] A. Hicklin, C. Watson, and B. Ulery. The myth of goats: How many people have fingerprints that are hard to match? Technical Report 7271, National Institute of Standards and Technology, USA, 2005.",0,,False
+640,"[10] A. Nanopoulos, M. Radovanovic´, and M. Ivanovic´. How does high dimensionality affect collaborative filtering? In Proc. ACM Conf. on Recommender Systems (RecSys), pages 293­296, 2009.",1,ad,True
+641,"[11] M. Radovanovic´, A. Nanopoulos, and M. Ivanovic´. Nearest neighbors in high-dimensional data: The emergence and influence of hubs. In Proc. Int. Conf. on Machine Learning (ICML), pages 865­872, 2009.",1,ad,True
+642,"[12] S. Robertson. Threshold setting and performance optimization in adaptive filtering. Inform. Retrieval, 5(2­3):239­256, 2002.",1,ad,True
+643,"[13] G. Salton, A. Wong, and C. S. Yang. A vector space model for automatic indexing. Commun. ACM, 18(11):613­620, 1975.",0,,False
+644,"[14] A. Singhal. Term Weighting Revisited. PhD thesis, Cornell University, Ithaca, NY, USA, 1997.",0,,False
+645,"[15] C. J. van Rijsbergen. Information Retrieval. Butterworths, second edition, 1979.",0,,False
+646,APPENDIX,1,AP,True
+647,Proof sketch for Theorem 2. From Equation 3 we get:,0,,False
+648,X,0,,False
+649,Y,0,,False
+650,Z2,0,,False
+651,"4V(C) , V( ) + V( ) + V( ) +",0,,False
+652,(4),0,,False
+653,Y,0,,False
+654,X,0,,False
+655,XY,0,,False
+656,XY,0,,False
+657,X Z2,0,,False
+658,Y Z2,0,,False
+659,"2Cov( , ) - 2Cov( , ) - 2Cov( , ).",0,,False
+660,YX,0,,False
+661,Y XY,0,,False
+662,X XY,0,,False
+663,"For the first term, using the delta method [3] and the fact that X and Y are independent:",0,,False
+664,V(,0,,False
+665,X Y,0,,False
+666,),0,,False
+667,V(X) E2 (Y ),0,,False
+668,+,0,,False
+669,E2 (X ) E4(Y ),0,,False
+670,V(Y,0,,False
+671,"),",0,,False
+672,from,0,,False
+673,which,0,,False
+674,it,0,,False
+675,"follows,",0,,False
+676,based,0,,False
+677,on,0,,False
+678,Theorem,0,,False
+679,"1,",0,,False
+680,that,0,,False
+681,V(,0,,False
+682,X Y,0,,False
+683,),0,,False
+684,is,0,,False
+685,O(1/d),0,,False
+686,(for,0,,False
+687,"brevity,",0,,False
+688,we,0,,False
+689,resort,0,,False
+690,to,0,,False
+691,oh,0,,False
+692,notation,0,,False
+693,in,0,,False
+694,this,0,,False
+695,proof,0,,False
+696,sketch).,0,,False
+697,In,0,,False
+698,the,0,,False
+699,same,0,,False
+700,"way,",0,,False
+701,V(,0,,False
+702,Y X,0,,False
+703,),0,,False
+704,is,0,,False
+705,also,0,,False
+706,O(1/d).,0,,False
+707,"For the third term of Equation 3, again from the delta method:",0,,False
+708,Z2,0,,False
+709,V(Z2),0,,False
+710,V( ) XY,0,,False
+711,E2(X)E2(Y ) -,0,,False
+712,(5),0,,False
+713,2E(Z 2 ) E3 (X )E3 (Y,0,,False
+714,"Cov(Z2, XY )",0,,False
+715,),0,,False
+716,+,0,,False
+717,E2 (Z 2 ) E4 (X )E4 (Y,0,,False
+718,) V(XY,0,,False
+719,).,0,,False
+720,"In Equation 5, based on Theorem 1 and Corollary 2, the first term is O(1/d). Since V(XY ) ,"" E2(X)V(Y ) + E2(Y )V(X) + V(X)V(Y ) [8], it follows that V(XY ) is O(d), thus the third term is O(1/d), too. Cov(Z2, XY ) is O(d), because from the definition of the correlation coefficient we have |Cov(Z2, XY )|  max(V(Z2), V(XY )). Thus, the second term of Equation 5 is O(1/d). Since all""",0,,False
+721,its,0,,False
+722,terms,0,,False
+723,are,0,,False
+724,"O(1/d),",0,,False
+725,V(,0,,False
+726,Z2 XY,0,,False
+727,),0,,False
+728,is,0,,False
+729,O(1/d).,0,,False
+730,"Returning to Equation 4 and its fourth term, from the definition of the corre-",0,,False
+731,lation,0,,False
+732,coefficient,0,,False
+733,it,0,,False
+734,follows,0,,False
+735,that,0,,False
+736,|Cov(,0,,False
+737,X Y,0,,False
+738,",",0,,False
+739,Y X,0,,False
+740,)|,0,,False
+741,max(V(,0,,False
+742,X Y,0,,False
+743,"),",0,,False
+744,V(,0,,False
+745,Y X,0,,False
+746,")),",0,,False
+747,thus,0,,False
+748,Cov(,0,,False
+749,X Y,0,,False
+750,",",0,,False
+751,Y X,0,,False
+752,),0,,False
+753,is,0,,False
+754,O(1/d).,0,,False
+755,For,0,,False
+756,the,0,,False
+757,fifth,0,,False
+758,"term,",0,,False
+759,again,0,,False
+760,from,0,,False
+761,the,0,,False
+762,definition,0,,False
+763,of,0,,False
+764,the,0,,False
+765,correla-,0,,False
+766,tion,0,,False
+767,coefficient,0,,False
+768,we,0,,False
+769,have,0,,False
+770,|Cov(,0,,False
+771,X Y,0,,False
+772,",",0,,False
+773,Z2 XY,0,,False
+774,)|,0,,False
+775,max(V(,0,,False
+776,X Y,0,,False
+777,"),",0,,False
+778,V(,0,,False
+779,Z2 XY,0,,False
+780,)).,0,,False
+781,Based,0,,False
+782,on,0,,False
+783,the,0,,False
+784,previously,0,,False
+785,expressed,0,,False
+786,V(,0,,False
+787,X Y,0,,False
+788,),0,,False
+789,and,0,,False
+790,V(,0,,False
+791,Z2 XY,0,,False
+792,"),",0,,False
+793,we,0,,False
+794,get,0,,False
+795,that,0,,False
+796,Cov(,0,,False
+797,X Y,0,,False
+798,",",0,,False
+799,Z2 XY,0,,False
+800,),0,,False
+801,is,0,,False
+802,O(1/d).,0,,False
+803,"Similarly,",0,,False
+804,the,0,,False
+805,sixth,0,,False
+806,"term,",0,,False
+807,Cov(,0,,False
+808,Y X,0,,False
+809,",",0,,False
+810,Z2 XY,0,,False
+811,"),",0,,False
+812,is,0,,False
+813,O(1/d).,0,,False
+814,Hqaving determined,0,,False
+815,all,0,,False
+816,"6 terms,",0,,False
+817,"4V(C), thus V(C), is O(1/d). It follows that lim V(C) , 0. 2",0,,False
+818,d,0,,False
+819,Proof sketch for Theorem 3. From Equation 3 we get:,0,,False
+820,X,0,,False
+821,Y,0,,False
+822,Z2,0,,False
+823,"2E(C) , E( ) + E( ) - E( ).",0,,False
+824,(6),0,,False
+825,Y,0,,False
+826,X,0,,False
+827,XY,0,,False
+828,For the,0,,False
+829,E(,0,,False
+830,X Y,0,,False
+831,),0,,False
+832,"first term,",0,,False
+833,E(X) E(Y ),0,,False
+834,using (1 +,0,,False
+835,the delta V(Y )).,0,,False
+836,method [3] and the fact Based on the limits for,0,,False
+837,"that X and Y E(X)/ d,",0,,False
+838,"are independent: E(Y )/ d, and",0,,False
+839,V(Y,0,,False
+840,),0,,False
+841,in,0,,False
+842,Theorem,0,,False
+843,"1,",0,,False
+844,it,0,,False
+845,follows,0,,False
+846,that,0,,False
+847,limd,0,,False
+848,E(,0,,False
+849,X Y,0,,False
+850,),0,,False
+851,",",0,,False
+852,const .,0,,False
+853,For,0,,False
+854,the,0,,False
+855,second,0,,False
+856,"term,",0,,False
+857,in,0,,False
+858,the,0,,False
+859,same,0,,False
+860,"way,",0,,False
+861,limd,0,,False
+862,E(,0,,False
+863,Y X,0,,False
+864,),0,,False
+865,",",0,,False
+866,const .,0,,False
+867,"For the third term in Equation 6, again from the delta method:",0,,False
+868,Z2,0,,False
+869,E(Z2),0,,False
+870,"Cov(Z2, XY )",0,,False
+871,E(Z 2 ),0,,False
+872,E( XY,0,,False
+873,),0,,False
+874,E(X)E(Y ),0,,False
+875,-,0,,False
+876,E2(X)E2(Y ),0,,False
+877,+,0,,False
+878,E3(X)E3(Y ) V(XY ).,0,,False
+879,(7),0,,False
+880,"In Equation 7, based on the limits derived in Theorem 1 and Corollary 2, it fol-",0,,False
+881,"lows that the limit of the first term, limd",0,,False
+882,E(Z2 ) E(X)E(Y ),0,,False
+883,",",0,,False
+884,const. The limit of the,0,,False
+885,second term in ting limd,0,,False
+886,"ECqouva(tZido22n,X7 Yca)n,,beliemxpdres sedEb2y(Xmd)u2Elt2ip(lYyi)n«g - an1d.",0,,False
+887,"dividing by d2, getFrom the definition",0,,False
+888,of the correlation coefficient we have:,0,,False
+889,dl im,0,,False
+890,"Cov(Z 2 , d2",0,,False
+891,X,0,,False
+892,Y,0,,False
+893,),0,,False
+894,s  lim,0,,False
+895,d,0,,False
+896,s,0,,False
+897,V(Z2),0,,False
+898,d2,0,,False
+899,lim,0,,False
+900,d,0,,False
+901,V(XY ) d2,0,,False
+902,.,0,,False
+903,"From V(XY ) ,"" E2(X)V(Y ) + E2(Y )V(X) + V(X)V(Y ) [8], based on""",0,,False
+904,"Theorem 1 and Corollary 2, we find that both limits on the right side are equal to 0,",0,,False
+905,implying,0,,False
+906,that,0,,False
+907,limd,0,,False
+908,"Cov(Z2 ,XY ) d2",0,,False
+909,",",0,,False
+910,0.,0,,False
+911,"On the other hand, from Theorem 1",0,,False
+912,we,0,,False
+913,have,0,,False
+914,limd,0,,False
+915,E2 (X)E2 (Y ) d2,0,,False
+916,", const .",0,,False
+917,The preceding two limits provide us,0,,False
+918,with the limit for the second term of Equation 7:,0,,False
+919,limd,0,,False
+920,"Cov(Z2 ,XY ) E2 (X)E2 (Y )",0,,False
+921,",",0,,False
+922,0.,0,,False
+923,"Finally, for the third term of Equation 7, again based on the limits given in Theo-",0,,False
+924,"rem 1 and Corollary 2 and the previously derived limit for V(XY )/d2, we obtain",0,,False
+925,limd,0,,False
+926,E(Z2 ) E3 (X)E3 (Y,0,,False
+927,),0,,False
+928,V(X Y,0,,False
+929,),0,,False
+930,",",0,,False
+931,0.,0,,False
+932,"Summing up all partial limits, it follows that limd 2E(C) ,"" const , thus limd E(C) "", const . 2",0,,False
+933,193,0,,False
+934,,0,,False

@@ -1,0 +1,2527 @@
+Work in Progress.
+
+arXiv:1908.03265v1 [cs.LG] 8 Aug 2019
+
+ON THE VARIANCE OF THE ADAPTIVE LEARNING RATE AND BEYOND
+
+Liyuan Liu  University of Illinois, Urbana-Champaign
+ll2@illinois
+
+Haoming Jiang  Georgia Tech
+jianghm@gatech.edu
+
+Pengcheng He, Weizhu Chen Microsoft Dynamics 365 AI
+{penhe,wzchen}@microsoft.com
+
+Xiaodong Liu, Jianfeng Gao Microsoft Research
+{xiaodl,jfgao}@microsoft.com
+
+Jiawei Han University of Illinois, Urbana-Champaign
+hanj@illinois
+
+ABSTRACT
+The learning rate warmup heuristic achieves remarkable success in stabilizing training, accelerating convergence and improving generalization for adaptive stochastic optimization algorithms like RMSprop and Adam. Here, we study its mechanism in details. Pursuing the theory behind warmup, we identify a problem of the adaptive learning rate (i.e., it has problematically large variance in the early stage), suggest warmup works as a variance reduction technique, and provide both empirical and theoretical evidence to verify our hypothesis. We further propose RAdam, a new variant of Adam, by introducing a term to rectify the variance of the adaptive learning rate. Extensive experimental results on image classification, language modeling, and neural machine translation verify our intuition and demonstrate the effectiveness and robustness of our proposed method. 1
+1 INTRODUCTION
+Fast and stable optimization algorithms are what generations of researchers have been pursuing (Cauchy, 1847). Remarkably, stochastic gradient-based optimization, such as stochastic gradient descent (SGD), has witnessed tremendous success in many fields of science and engineering despite its simplicity. Recently, many new methods have been proposed to accelerate optimization by applying adaptive learning rate. In particular, Adagrad (Duchi et al., 2011) and its variants, e.g., RMSprop (Tieleman & Hinton, 2012), Adam (Kingma & Ba, 2014), Adadelta (Zeiler, 2012) and Nadam (Dozat, 2016), have been widely used due to their fast convergence.
+However, it has been observed that in many cases, these optimization methods converge to bad/suspicious local optima, and have to resort to a warmup heuristic ­ using a small learning rate in the first few epochs of training ­ to mitigate the convergence problem (Vaswani et al., 2017; Popel & Bojar, 2018). For example, on the De-En IWSLT'14 dataset, removing warmup increases the training perplexity of a Transformer language model from 10 to over 500, as shown in Figure 1. Similar phenomena are observed in other scenarios like BERT pre-training (Devlin et al., 2018).
+Since the theoretical underpinnings of the warmup heuristic are lacking, there is neither guarantee that it always works in various machine learning settings nor guidance on how we should conduct warmup. Thus, researchers typically use different settings in different applications and have to take a trial-and-error approach, which can be tedious and time-consuming.
+In this paper, we conduct both theoretical and empirical analysis of the convergence issue to identify its origin. Specifically, we show that its root cause is that the adaptive learning rate has undesirably large variance in the early stage of model training due to the limited amount of training samples being used. Thus, to reduce such variance, it is better to use smaller learning rates in the first few epochs of training, which justifies the warmup heuristic.
+Work was done during an internship at Microsoft. Work was done during an internship at Microsoft. 1All implementations are available at: https://github.com/LiyuanLucasLiu/RAdam.
+1
+
+Work in Progress.
+
+Moreover, we propose a new variant of Adam, called Rectified Adam (RAdam), which explicitly rectifies the variance of the adaptive learning rate based on derivations. We conduct extensive experiments on language modeling, image classification, and neural machine translation. RAdam brings consistent improvement over the vanilla Adam, which verifies the variance issue generally exists on various tasks across different network architectures.
+Our main contributions are two-fold:
+· We identify the variance issue of the adaptive learning rate and present a theoretical justification for the warmup heuristic. We show that the convergence issue is due to the undesirably big variance of the adaptive learning rate in the early stage of model training.
+· We propose a new variant of Adam (i.e., RAdam), which not only explicitly rectifies the variance and is theoretical sound, but also compares favorably with the heuristic warmup.
+
+2 PRELIMINARIES AND MOTIVATIONS
+
+Generic adaptive methods. Algorithm 1 is a generic framework (all operations are element-wise) that describes many popular adaptive gradient descent methods algorithms (Reddi et al., 2019). Specifically, different optimization algorithms can be specified by different choices of (.) and (.). For example, in the Adam algorithm, these two functions are set to:
+
+(g1, · · ·
+
+, gt)
+
+=
+
+(1
+
+-
+
+1) 1
+
+t i=1
+- 1t
+
+1t-igt
+
+and
+
+(g1, · · · , gt) =
+
+(1
+
+-
+
+1 2)
+
+- 2t
+t i=1
+
+2t-igi2
+
+.
+
+(1)
+
+
+
+For numerical stability, (.) is usually calculated as (g1, · · · , gt) =
+
+
+
+1-2t
+
+, where
+
++ (1-2)
+
+t i=1
+
+2t-i gi2
+
+is set to a relatively small value (e.g., 1 × 10-8).
+
+Algorithm 1: Generic adaptive optimization method setup. All operations are element-wise.
+Input: {t}Tt=1: step size, {t, t}Tt=1: function to calculate momentum and adaptive rate, 0: initial parameter, f (): stochastic objective function.
+Output: T : resulting parameters 1 while t = 1 to T do 2 gt  ft(t-1) (Calculate gradients w.r.t. stochastic objective at timestep t) 3 mt  t(g1, · · · , gt) (Calculate momentum) 4 vt  t(g1, · · · , gt) (Calculate adaptive learning rate) 5 t  t-1 - tmtvt (Update parameters)
+6 return T
+
+Learning rate warmup. Instead of setting the learning rate t as a constant or in decreasing order, a learning rate warmup strategy sets t as some small values in the first few steps. For example, linear warmup sets t = t 0 when t < Tw. Warmup has been demonstrated to be beneficial in many deep learning applications. For example, in the NMT experiments in Figure 1, the perplexity convergences around 500 when warmup is not applied (Adam-vanilla), and it surprisingly decreases to below 10 after applying warmup (Adam-warmup).
+To further analyze this phenomenon, we visualize the histogram of the absolute value of gradients on a log scale in Figure 2. We observe that, without applying warmup, the gradient distribution is distorted to have a mass center in relatively small values within 10 updates. Such gradient distortion means that the vanilla Adam is trapped in bad/suspicious local optima after the first few updates. Warmup essentially reduces the impact of these problematic updates to avoid the convergence problem. In the following sections, we focus our analysis on learning rate warmup for the Adam algorithm, while it can be applied to other algorithms that use similar adaptive learning rate ((.)) designs, e.g., RMSprop (Tieleman & Hinton, 2012) and Nadam (Dozat, 2016).
+2
+
+Work in Progress.
+
+Training perplexity
+
+550 500 450 400 350 300 250 200 150 100
+50 0 0 10k
+Adam-eps
+
+20k 30k 40k Adam-2k
+
+50k 60k 70k Adam-vanilla
+
+Iteration
+
+The distribution is distorted within 10 updates.
+4.08 × 106
+
+Iteration
+
+1 5
+
+1
+
+10
+
+25
+
+50
+
+40K
+
+75
+
+9.38 × 106
+
+Training loss
+
+9
+
+8
+
+7
+
+6
+
+5
+
+4
+
+3
+
+2
+
+Overlapped
+
+1
+
+0 0 10k 20k 30k 40k 50k 60k 70k
+
+CAdam
+Adam-eps
+
+Adam-2k
+
+Adam-warmup
+Adam-vanilla
+
+RAdam
+
+Adam-warmup
+
+Iteration
+
+100 < -20
+1 5 10 25 50 75
+
+-16
+
+-12
+
+4.08 × 106
+
+Iteration
+
+70k
+
+-8
+
+< -20 -16
+
+-12
+
+-8
+
+-4
+
+Adam without warmup
+
+6.76 × 106
+
+1 40K
+
+100
+
+70k
+
+Figure 1: Training of Transformers
+
+< -20
+
+-16
+
+-12
+
+-8
+
+< -20
+
+-16
+
+-12
+
+-8
+
+Adam with warmup
+
+on the De-En IWSLT'14 dataset.
+
+Up: Training perplexity w.r.t. gra- Figure 2: The absolute gradient histogram of the Transformers
+
+dient update iterations; Bottom: on the De-En IWSLT' 14 dataset. X-axis is absolute value in the
+
+Training loss w.r.t. gradient update log scale and the height is the frequency. Without warmup, the
+
+iterations.
+
+gradient distribution is distorted in the first 10 steps.
+
+3 VARIANCE OF ADAPTIVE RATE
+
+In this section, we first introduce empirical evidence, then analyze the variance of the adaptive learning rate to support our hypothesis ­ Due to the lack of samples in the early stage, the adaptive learning rate has an undesirably large variance, which leads to suspicious/bad local optima.
+
+To begin with, we first analyze a special case. When t = 1, we have (g1) =
+
+1 g12
+
+.
+
+We view
+
+{g1, · · ·
+
+, gt}
+
+as
+
+i.i.d.
+
+random
+
+variables
+
+drawn
+
+from
+
+a
+
+Normal
+
+distribution
+
+N (0, 2)2.
+
+Therefore,
+
+1 g12
+
+is
+
+subject
+
+to
+
+the
+
+scaled
+
+inverse
+
+chi-squared
+
+distribution,
+
+Scale-inv-X 2(1,
+
+1 2
+
+).
+
+Noted
+
+Var[
+
+1 g12
+
+]
+
+
+
+ 0
+
+x-1e-xdx
+
+and
+
+it
+
+is
+
+divergent.
+
+It
+
+means
+
+that
+
+the
+
+adaptive
+
+ratio
+
+can
+
+be
+
+undesirably
+
+large
+
+in
+
+the
+
+first
+
+stage of learning. Meanwhile, setting a small learning rate at the early stage can reduce the variance
+
+(Var[x] = 2 Var[x]), thus alleviate this problem. Therefore, we suggest it is the unbounded
+
+variance of the adaptive learning rate in the early stage that causes the problematic updates.
+
+3.1 WARMUP AS VARIANCE REDUCTION
+In this section, we design a set of controlled experiments to verify our hypothesis. Particularly, we design two variants of Adam: Adam-2k and Adam-eps, and compare them to Adam with warmup and the vanilla Adam (without warmup) on the IWSLT'14 German to English dataset (Cettolo et al.). In the first two thousand iterations of Adam-2k, only the adaptive learning rate ((.)) is updated, while the momentum ((.)) and parameters () are fixed3; other than this, it follows the original Adam algorithm. To comparison with other methods, its iterations are indexed from -1999 instead of 1. As in Figure 1, we observe that, after getting these additional two thousand samples for estimating the adaptive learning rate, Adam-2k avoids the convergence problem of the vanilla-Adam. Also, comparing Figure 2 and Figure 3, getting large enough samples prevents the gradient distribution from being distorted. These observations verify our hypothesis that the lack of sufficient data samples in the early stage is the root cause of the convergence issue.
+2The mean zero normal assumption is valid at the beginning of the training, since weights are sampled from normal distributions with mean zero (Balduzzi et al., 2017), further analysis is conducted in Section 5.3.
+3Different from Gotmare et al. (2019), all parameters and first moments are frozen in the first 2000 iterations.
+
+3
+
+Work in Progress.
+
+5.72 × 106
+
+6.82 × 106
+
+5.42 × 106
+
+1
+
+1
+
+1
+
+Iteration Iteration Iteration
+
+40K
+
+40K
+
+40K
+
+70k < 10--2020
+
+-16
+
+-12
+
+-8
+
+Adam-2k
+
+70k
+
+< -20
+
+-16
+
+-12
+
+-8
+
+RAdam
+
+70k
+
+< -20
+
+-16
+
+-12
+
+-8
+
+Adam-eps
+
+Figure 3: The histogram of the absolute value of gradients (on a log scale) during the training of Transformers on the De-En IWSLT' 14 dataset.
+
+We further demonstrate that the convergence problem can be avoided by reducing the variance of
+
+the adaptive learning rate. A straightforward way to reduce the variance is to increase the value
+
+of
+
+in (g1, · · · , gt) =
+
+ . 1-2t
+
++ (1-2)
+
+t i=1
+
+2t-i gi2
+
+Actually, if we assume (.) is subject to the
+
+uniform
+
+distribution,
+
+its
+
+variance
+
+equals
+
+to
+
+1 12
+
+2
+
+.
+
+Therefore,
+
+we
+
+design
+
+Adam-eps,
+
+which
+
+sets
+
+from
+
+a negligible value (1 × 10-8) to a non-negligible value (1 × 10-4). Its performance is summarized
+
+in Figure 1. We observe that it does not suffer from the serious convergence problem of vanilla-
+
+Adam. This demonstrates that the convergence problem can be alleviated by reducing the variance
+
+of the adaptive learning rate, and also explains why tuning is important in practice (Liu et al.,
+
+2019). Besides, similar to Adam-2k, it prevents the gradient distribution from being distorted (as
+
+shown in Figure 3). However, as in Figure 1, it produces a much worse performance comparing to
+
+Adam-2k and Adam-warmup. We conjecture that this is because large induces a large bias into the
+
+adaptive learning rate and slows down the optimization process. Thus, we need a more principled
+
+and rigorous way to control the variance of the adaptive learning rate. In the next subsection, we
+
+will present a theoretical analysis of the variance of the adaptive learning rate.
+
+3.2 ANALYSIS OF ADAPTIVE LEARNING RATE VARIANCE
+
+As mentioned before, Adam uses the exponential moving average to calculate the adaptive learning rate. For gradients {g1, · · · , gt}, their exponential moving average has a larger variance than their
+simple average. Also, in the early stage (t is small), the difference of the exponential weights of {g1, · · · , gt} is relatively small (up to 1 - 2t-1). Therefore, for ease of analysis, we approximate the distribution of the exponential moving average as the distribution of the simple average (Nau,
+
+2014), i.e., p((.)) = p(
+
+)  p( 1-2t
+
+(1-2 )
+
+t i=1
+
+2t-i gi2
+
+). t
+
+t i=1
+
+gi2
+
+Since gi
+
+
+
+N (0, 2), we have
+
+t
+
+t i=1
+
+gi2
+
+
+
+Scale-inv-X
+
+2(t,
+
+1 2
+
+).
+
+Therefore, we assume
+
+1-2t
+
+(1-2 )
+
+t i=1
+
+2t-i gi2
+
+also subjects to a scaled
+
+inverse chi-square distribution with  degrees of freedom (further analysis on this approximation is
+
+conducted in Section 5.3). Based on this assumption, we have Var[2(.)] and the PDF of 2(.).
+
+Now, we proceed to the analysis of its square root variance, i.e., Var[(.)].
+
+Theorem 1.
+
+If
+
+2(.)
+
+
+
+Scale-inv-X
+
+2(,
+
+1 2
+
+),
+
+Var[(.)]
+
+monotonically
+
+decreases
+
+as
+
+
+
+increases.
+
+Proof.
+
+For ease of notation, we refer 2(.) as x and
+
+1 2
+
+as  2.
+
+Thus, x  Scale-inv-X 2(,  2) and:
+
+p(x)
+
+=
+
+( 2/2)/2
+
+exp[
+
+- 2x
+
+2
+
+]
+
+(/2) x1+/2
+
+and
+
+E[x]
+
+=
+
+ ( - 2)2
+
+( 
+
+>
+
+2)
+
+(2)
+
+where (.) is the gamma function. Therefore, we have:
+
+ E[ x] =
+
+
+
+ x p(x) dx
+
+=
+
+  (/2
+
+-
+
+1)
+
+( 
+
+>
+
+4).
+
+(3)
+
+0
+
+2 (/2)
+
+Based on Equation 2 and 3, for   > 4, we have:
+
+Var[(.)]
+
+=
+
+ Var[ x]
+
+=
+
+E[x]
+
+-
+
+E[x]2
+
+=
+
+ 2( 
+
+ -
+
+2
+
+-
+
+ 22-5 
+
+B( 
+
+- 2
+
+1 ,
+
+
+
+- 2
+
+1 )2)
+
+(4)
+
+4
+
+Work in Progress.
+
+where B(.) is the Beta function. By analyzing the derivative of Var[(.)], we know it monotonically decreases as  increases. The detailed derivation is elaborated in the Appendix A.
+Theorem 1 gives a qualitative analysis of the variance of the adaptive learning rate. It shows that, due to the lack of training samples in the early stage, Var[(.)] is larger than the late stage (Figure 8). To rigorously constraint the variance, we perform a quantified analysis on Var[(.)] by estimating the degree of freedoms .
+
+4 RECTIFIED ADAPTIVE LEARNING RATE
+
+In the previous section, Equation 4 gives the analytic form of Var[(.)], where  is the degree of
+freedoms. Here, we first give an estimation of  based on t to conduct a quantified analysis for Var[(g1, · · · , gt)], then we describe the design of the learning rate rectification, and compare it to the heuristic warmup strategies.
+
+4.1 ESTIMATION OF 
+
+As the exponential moving average (EMA) is widely used in economics, it is usually interpreted as an approximation to the simple moving average (SMA) (Nau, 2014), i.e.,
+
+p(
+
+(1
+
+-
+
+2) 1
+
+t i=1
+- 2t
+
+2t-igi2
+
+)
+
+
+
+p(
+
+f (t,2) i=1
+
+gt2+1-i
+
+).
+
+f (t, 2)
+
+(5)
+
+where f (t, 2) is the length of the SMA which allows the SMA has the same "center of mass" with the EMA. In other words, f (t, 2) satisfies:
+
+(1 - 2)
+
+t i=1
+
+2t-i(t
+
+1 - 2t
+
++1-
+
+i)
+
+=
+
+f (t,2 i=1
+
+)
+
+(t
+
++
+
+1
+
+-
+
+i)
+
+.
+
+f (t, 2)
+
+By solving this equation, we have: f (t, 2) =
+
+2 1-2
+
+-1-
+
+. 2t2t
+1-2t
+
+In the previous section,
+
+we assume:
+
+1-2t
+
+(1-2 )
+
+t i=1
+
+2t-i gi2
+
+
+
+Scale-inv-X
+
+2(,
+
+1 2
+
+).
+
+Here, since gi  N (0, 2), we have
+
+f (t,2) i=1
+
+gt2+1-i
+
+f (t,2)
+
+
+
+Scale-inv-X 2(f (t,
+
+2),
+
+1 2
+
+).
+
+Thus,
+
+Equation
+
+5
+
+views
+
+Scale-inv-X
+
+2(f (t,
+
+2),
+
+1 2
+
+)
+
+as
+
+an
+
+approximation
+
+to
+
+Scale-inv-X
+
+2(,
+
+1 2
+
+).
+
+Therefore,
+
+we
+
+treat
+
+f (t,
+
+2)
+
+as
+
+an
+
+estimation
+
+of
+
+.
+
+For
+
+ease
+
+of
+
+notation,
+
+we
+
+mark
+
+f (t, 2)
+
+as
+
+t.
+
+Also,
+
+we
+
+record
+
+2 1-2
+
+-
+
+1
+
+as
+
+
+
+(maximum
+
+length
+
+of
+
+the
+
+approximated
+
+SMA),
+
+due
+
+to
+
+the
+
+inequality
+
+f (t, 2)
+
+
+
+limt
+
+f (t, 2)
+
+=
+
+2 1-2
+
+-
+
+1.
+
+4.2 VARIANCE ESTIMATION AND RECTIFICATION
+
+Based
+
+on
+
+the
+
+previous
+
+estimation,
+
+we
+
+have
+
+Var[(.)]
+
+=
+
+
+
+2
+
+(
+
+t t -2
+
+-
+
+t
+
+22t 
+
+-5
+
+B(
+
+t -1 2
+
+,
+
+t -1 2
+
+)2
+
+).
+
+The
+
+value of this function in the early stage is significantly larger than the late stage (as analyzed later, it
+
+decays
+
+roughly
+
+at
+
+the
+
+speed
+
+of
+
+O(
+
+1 t
+
+)).
+
+For
+
+example,
+
+the
+
+variance
+
+at
+
+t
+
+=
+
+5
+
+is
+
+over
+
+100
+
+times
+
+larger
+
+than the variance at t = 500. Additionally, based on Theorem 1, we know mint Var[(.)] =
+
+Var[(.)]|t= and mark this minimal value as Cvar. In order to ensure that the adaptive learning
+
+rate ((.)) has consistent variance, we rectify the variance at the t-th timestamp as below,
+
+Var[rt (g1, · · · , gt)] = Cvar where rt =
+
+Cvar Var[(g1, · ·
+
+·
+
+,
+
+. gt)]
+
+Although we have the analytic form of Var[(.)] (i.e., Equation 4), it is not numerically stable. Therefore, we use the first-order approximation to calculate the rectification term. Specifically, by approximating 2(.) to the first order (Wolter, 2007),
+
+2(.) 
+
+E[2(.)] + 2
+
+1 E[2(.)]
+
+(2(.)
+
+-
+
+E[2
+
+(.)])
+
+and
+
+Var[(.)]
+
+
+
+Var[2(.)] 4 E[2(.)] .
+
+5
+
+Work in Progress.
+
+Algorithm 2: Rectified Adam. All operations are element-wise.
+
+Input: {t}Tt=1: step size, {1, 2}: decay rate to calculate moving average and moving 2nd moment, 0: initial parameter, ft(): stochastic objective function.
+
+Output: t: resulting parameters 1 m0, v0  0, 0 (Initialize moving 1st and 2nd moment) 2   2/(1 - 2) - 1 (Compute the maximum length of the approximated SMA) 3 while t = {1, · · · , T } do
+
+4 gt  ft(t-1) (Calculate gradients w.r.t. stochastic objective at timestep t)
+
+5 vt  2vt-1 + (1 - 2)gt2 (Update exponential moving 2nd moment) 6 mt  1mt-1 + (1 - 1)gt (Update exponential moving 1st moment)
+7 mt  mt/(1 - 1t) (Compute bias-corrected moving average) 8 t   - 2t2t/(1 - 2t)(Compute the length of the approximated SMA) 9 if the variance is tractable, i.e., t > 4 then
+
+10
+
+vt  vt/(1 - 2t) (Compute bias-corrected moving 2nd moment)
+
+11
+
+rt 
+
+(t -4)(t -2) ( -4)( -2)t
+
+(Compute the variance rectification term)
+
+12
+
+t  t-1 - trtmt/vt (Update parameters with adaptive momentum)
+
+13 else
+
+14
+
+t  t-1 - tmt (Update parameters with un-adapted momentum)
+
+15 return T
+
+Since
+
+2(.)
+
+
+
+Scale-inv-X
+
+2(t,
+
+1 2
+
+),
+
+we
+
+have:
+
+Var[(.)]
+
+
+
+2(t
+
+-
+
+t 2)(t
+
+-
+
+4)2 .
+
+(6)
+
+In Section 5.3, we conduct simulation experiments to examine Equation 6 and find that it is a reliable
+
+approximation. Also, we know that Var[
+
+(.)]
+
+decreases
+
+approximately
+
+at
+
+the
+
+speed
+
+of
+
+O(
+
+1 t
+
+).
+
+With this approximation, we can calculate the rectification term as:
+
+rt =
+
+(t - 4)(t - 2) ( - 4)( - 2)t
+
+.
+
+Applying our rectification term to Adam, we come up with a new variant of Adam, RAdam, as summarized in Algorithm 2. Specifically, when the length of the approximated SMA is less or equal than 4, the variance of the adaptive learning rate is intractable and the adaptive learning rate is inactivated. Otherwise, we calculate the variance rectification term and update parameters with the adaptive learning rate. It is worth mentioning that, if 2  0.6, we have   4 and RAdam is degenerated to SGD with momentum.
+
+4.3 IN COMPARISON WITH WARMUP
+
+We notice that rt has a similar form to the heuristic linear warmup, which can be viewed as setting
+
+the
+
+rectification
+
+term
+
+as
+
+min(t,Tw Tw
+
+)
+
+.
+
+It
+
+verifies
+
+our
+
+intuition
+
+that
+
+warmup
+
+works
+
+as
+
+a
+
+variance
+
+reduction
+
+technique. Comparing these two strategies, RAdam deactivates the adaptive learning rate when
+
+its variance is divergent, thus avoiding undesired instability in the first few updates. Besides, our
+
+method does not require an additional hyperparameter (i.e., Tw) to control the variance reduction
+
+and can automatically adapt to different moving average rules.
+
+In this paper, we identify and fix an underlying issue of adaptive optimization methods instead of neural architectures. Thus, the proposed rectification term is orthogonal to other training stabilization techniques such as gradient clipping (Bengio et al., 2013), initialization (Balduzzi et al., 2017; Zhang et al., 2019) and normalization (Ba et al., 2016; Ioffe & Szegedy, 2015). Indeed, these techniques can be integrated with our proposed variance rectification. Specifically, since warmup is originally proposed to handle gradient variance for SGD (Goyal et al., 2017; Gotmare et al., 2019; Xiao et al., 2019), RAdam can also be integrated with the warmup heuristic to handle some extreme cases such as training with very large batches.
+
+6
+
+Work in Progress.
+
+Training PPL
+
+170 160 150 140 130 120 110
+8k 10k 12k 14k 16k 18k 20k 22k
+
+60 58 56 54 52 50 48 46 44 42 40
+0
+
+0.5M 1M 1.5M 2M 2.5M 3M 3.5M 4M
+
+Gradient updates
+
+Test PPL
+54 52 50 48 46 44 42 40 38 36 34
+0 1 2 3 4 5 6 7 8 9 10 11 12 13
+Iterations over training set
+
+RAdam
+
+Adam
+
+Figure 4: Language modeling (LSTMs) training on the One Billion Word dataset.
+
+5 EXPERIMENTS
+
+We evaluate RAdam on several benchmarks4: One Billion Word for Language Modeling; Cifar10 and ImageNet for Image Classification. Following Loshchilov & Hutter (2017), we decouple weight decays in the vanilla Adam, Adam with warmup and RAdam in our experiments.
+
+5.1 COMPARING TO VANILLA ADAM
+
+As analyzed before, the adaptive learning rate has undesirably large variance in the early stage of training and leads to suspicious/bad local optima on NMT. One question we are interested in answering is: whether such an issue widely exits in other similar tasks and applications. Thus, we conduct a set of experiments with two classical tasks of NLP and CV, i.e., language modeling and image classification. RAdam not only results in consistent improvements over the vanilla Adam, but also demonstrates its robustness to the change of learning rates. It verifies that the variance issue exists in various machine learning applications, and has a big impact on the model behavior. Detailed comparison and analysis are described as follows.
+
+Table 1: Perplexity on Language Modeling
+
+Method One Billion Word
+
+Adam
+
+36.92
+
+RAdam
+
+35.70
+
+Table 2: Accuracy on Image Classification
+
+Method SGD Adam
+RAdam
+
+CIFAR10 91.51 90.54 91.38
+
+ImageNet 69.86 66.54 67.62
+
+RAdam
+
+2.5 2.4 2.3 2.2 2.1
+2 1.9 1.8 1.7 1.6 1.5 1.4 1.3 1.2
+0
+
+Training loss
+70 68 66 64 62 60 58 56 54 52 50 48 46 10 20 30 40 50 60 70 80 90 0
+
+Test accuracy
+10 20 30 40 50 60 70 80 90
+
+Iteration over entire dataset
+
+Iteration over entire dataset
+
+ImageNet
+
+SGD
+
+Training loss
+
+Adam
+
+Test accuracy
+
+0.55 0.5
+0.45 0.4
+0.35 0.3
+0.25 0.2
+0.15 0.1
+0.05 00
+
+92 90 88 86 84 82 80
+
+20 40 60 80 100 120 140 160
+
+0
+
+20 40 60 80 100 120 140 160
+
+Iteration over entire dataset
+
+Iteration over entire dataset
+
+CIFAR10
+
+Figure 5: Training of ResNet-18 on the ImageNet and ResNet-20 on the CIFAR10 dataset.
+
+Performance Comparison. The performances on language modeling (i.e., One Billion Word 5 (Chelba et al., 2013)) and image classification (i.e., CIFAR10 (Krizhevsky et al., 2009) and ImageNet (Deng et al., 2009)) are summarized in Table 1 and Table 2, and their learning curves are presented in Figure 4 and Figure 5, respectively. The results show that RAdam outperforms Adam in all three datasets. As shown in Figure 4, although the rectification term makes RAdam slower than the vanilla Adam in the first few epochs, it allows RAdam to converge faster after that. In other words, by reducing the variance of the adaptive learning rate in the early stage, it gets both faster convergence and better performance, which verifies the impact of the variance issue. We also observe that RAdam obtains consistent improvements over Adam on image classification. It is worth
+4The detailed hyperparameter settings are elaborated in the Appendix B 5Rare words that occur less than 3 times are replaced with a special token, the resulting dictionary is shrank from 7.9M to 6.4M.
+
+7
+
+Work in Progress.
+
+Test accuracy
+
+RAdam
+
+92
+
+92
+
+90
+
+90
+
+88
+
+88
+
+86
+
+86
+
+84
+
+Different learning 84
+
+82
+
+rates lead to similar 82
+
+80
+
+performance. 80
+
+78
+
+78
+
+0 20 40 60 80 100 120 140 160 180
+
+0
+
+Adam
+
+Sensitive to the choice SGD
+
+of the learning rate.
+
+92
+
+90
+
+88
+
+86
+
+84
+
+82
+
+80
+
+78
+
+20 40 60 80 100 120 140 160
+
+0
+
+20 40 60 80 100 120 140 160
+
+0.55 0.5
+0.45 0.4
+0.35 0.3
+0.25 0.2
+0.15 0.1
+0.05 0
+0
+
+0.55
+
+0.5
+
+0.45
+
+0.4
+
+0.35
+
+0.3
+
+0.25
+
+0.2
+
+0.15
+
+0.1
+
+0.05
+
+0
+
+20 40 60 80 100 120 140 160
+
+0
+
+20 40 60 80 100 120 140 160
+
+0.55 0.5
+0.45 0.4
+0.35 0.3
+0.25 0.2
+0.15 0.1
+0.05 0 0
+
+20 40 60 80 100 120 140 160
+
+lr = 0.1
+
+lr = 0.03
+
+lr = 0.01
+
+lr = 0.003
+
+Training loss
+
+Figure 6: Performance of RAdam, Adam and SGD with different learning rates on CIFAR10. X-axis is the number of epochs.
+
+Training loss Test accuracy
+
+Comparing to RAdam, heuristic linear warmup needs to tune the warmup length to get the similar performance.
+
+RAdam
+
+91.5
+91
+90.5
+90
+89.5
+89
+88.5
+88
+87.5
+87 0
+0.22 0.2
+0.18 0.16 0.14 0.12
+0.1 0.08 0.06 0.04 0.02
+0 0
+
+20 40 60 80 100 120 140 160 20 40 60 80 100 120 140 160
+
+91.5
+91
+90.5
+90
+89.5
+89
+88.5
+88
+87.5
+87 0
+0.22 0.2
+0.18 0.16 0.14 0.12
+0.1 0.08 0.06 0.04 0.02
+0 0
+
+length:
+20 40 60 20 40 60
+
+100
+80 100 120 140 160 80 100 120 140 160
+
+91.5
+91
+90.5
+90
+89.5
+89
+88.5
+88
+87.5
+87 0
+0.22 0.2
+0.18 0.16 0.14 0.12
+0.1 0.08 0.06 0.04 0.02
+0 0
+
+Adam with warmup
+
+200
+
+500
+
+91.5
+
+91
+
+90.5
+
+90
+
+89.5
+
+89
+
+88.5
+
+88
+
+87.5
+
+20 40 60 80 100 120 140 160
+
+87 0
+
+91.5
+
+91
+
+90.5
+
+90
+
+89.5
+
+89
+
+88.5
+
+88
+
+87.5
+
+20 40 60 80 100 120 140 160
+
+87 0
+
+0.22
+
+0.2
+
+0.18
+
+0.16
+
+0.14
+
+0.12
+
+0.1
+
+0.08
+
+0.06
+
+0.04
+
+0.02
+
+0
+
+20 40 60 80 100 120 140 160
+
+0
+
+0.22
+
+0.2
+
+0.18
+
+0.16
+
+0.14
+
+0.12
+
+0.1
+
+0.08
+
+0.06
+
+0.04
+
+0.02
+
+0
+
+20 40 60 80 100 120 140 160
+
+0
+
+1000
+20 40 60 80 100 120 140 160 20 40 60 80 100 120 140 160
+
+lr = 0.1
+
+lr = 0.03
+
+lr = 0.01
+
+lr = 0.003
+
+Figure 7: Performance of RAdam, Adam with warmup on CIFAR10 with different learning rates. X-axis is the number of epochs.
+
+noting that, on both ImageNet and CIFAR10, although RAdam fails to outperform SGD in terms of test accuracy, it results in a better training performance (e.g., the training accuracy of SGD, Adam, and RAdam on ImageNet are 69.57, 69.12 and 70.30 respectively).
+Robustness to Learning Rate Change. Besides performance improvements, RAdam also improves the robustness of model training. We use different initial learning rates, conduct experiments with ResNet-20 on the CIFAR10 datasets, and summarize their performance in Figure 6. For learning rates within a broad range (i.e., {0.1, 0.03, 0.01, 0.003}), RAdam achieves consistent model performances (their test accuracy curves highly overlap with each other), while Adam and SGD are shown to be sensitive to the learning rate. The observation can be interpreted that by rectifying the variance of the adaptive learning rate, RAdam improves the robustness of model training and can adapt to different learning rates of a broader range.
+5.2 COMPARING TO HEURISTIC WARMUP
+To examine the effectiveness of RAdam, we first conduct comparisons on neural machine translation, on which the state-of-the-art employs Adam with the linear warmup. Specifically, we conduct experiments on three datasets, i.e., IWSLT'14 De-En, IWSLT'14 En-De, and WMT'16 En-De. Due to the limited size of the IWSLT'14 dataset, we conduct experiments using 5 different random seeds and report their mean and standard derivation. As discussed before, the vanilla Adam algorithm leads to suspicious/bad local optima (i.e., converges to a training perplexity around 500), and needs a learning rate warmup stage to stabilize the training.
+8
+
+Work in Progress.
+
+100 10-1 10-2 10-3
+
+Difference Analytic First Order Approx.
+
+10-1 10-2 10-3
+
+0
+
+2500 5000
+
+µ=0
+
+10-1 10-2 10-3
+
+0
+
+2500 5000
+
+µ = 0.001
+
+10-1 10-2 10-3
+
+Var[v1t] Var[vctt]
+
+0
+
+2500 5000
+
+µ = 0.01
+
+10-4 10-5
+0
+
+200
+
+400
+
+10-1 10-2 10-3
+0
+
+2500 5000
+
+10-2
+10-3
+10-4 0
+
+2500 5000
+
+10-5 10-6 10-7
+0
+
+2500 5000
+
+Figure 8: The value of Equation 4,
+
+µ = 0.1
+
+µ=1
+
+µ = 10
+
+Equation 6 and their difference (cal-
+
+culated as the absolute difference value). The x-axis is  and the y-axis
+
+Figure
+
+9:
+
+The
+
+simulation
+
+of
+
+Var[
+
+1 vt
+
+]
+
+and
+
+Var[
+
+ct vt
+
+].
+
+The
+
+x-axis
+
+is iteration number (the simulation starts from 5) and the y-
+
+is the variance in the log scale.
+
+axis is the variance in the log scale.
+
+We summarize the performance obtained with the heuristic warmup and our proposed rectification term in Table 3 and visualize the training curve of IWSLT De-En in Figure 1. With a consistent adaptive learning rate variance, our proposed method achieves similar performance to that of previous state-of-the-art warmup heuristics. It verifies our intuition that the problematic updates of Adam are indeed caused by the undesirably large variance in the early stage.
+
+Table 3: BLEU score on Neural Machine Translation.
+
+Method
+
+IWSLT'14 DE-EN IWSLT'14 EN-DE WMT'16 EN-DE
+
+Adam with warmup 34.66 ± 0.014
+
+28.56 ± 0.067
+
+27.03
+
+RAdam
+
+34.76 ± 0.003
+
+28.48 ± 0.054
+
+27.27
+
+Moreover, we applied Adam with warmup on the CIFAR10 dataset. Its best accuracy on the test set is 91.29, which is similar to RAdam (91.38). However, we found that RAdam requires less hyperparameter tuning. Specifically, we visualize their learning curves in Figure 7. For some warmup steps, Adam with warmup is relatively more sensitive to the choice of the learning rate. RAdam, at the same time, is not only more robust, but also can automatically control the warmup behavior (i.e., without requiring the length of warmup). For example, when setting the learning rate as 0.1, Adam with 100 steps of warmup fails to get satisfying performance and only results in an accuracy of 90.13; RAdam successfully gets a accuracy of 91.06, with the original setting of the moving average calculation (i.e., 1 = 0.9, 2 = 0.999). We conjecture the reason is due to the fact that RAdam, which is based on a rigorous variance analysis, explicitly avoids the extreme situation where the variance is divergent, and rectifies the variance to be consistent in other situations.
+
+5.3 SIMULATED VERIFICATION
+
+In Sections 3 and 4, we approximate Var[
+
+] t
+
+t i=1
+
+gi2
+
+to
+
+the
+
+first order,
+
+and assume 2(.)
+
+=
+
+1-2t
+
+(1-2 )
+
+t i=1
+
+2t-i gi2
+
+subjects
+
+to
+
+a
+
+scaled
+
+inverse
+
+chi-square
+
+distribution
+
+(covers
+
+the
+
+approximation
+
+from EMA to SMA). In this section, we examine these two approximations using simulations.
+
+First Order Approximation of Var[
+
+]. t
+
+t i=1
+
+gi2
+
+To
+
+compare
+
+Equations
+
+6
+
+and
+
+4,
+
+we
+
+assume
+
+
+
+=
+
+1
+
+and plot their values and their difference for  = {5, · · · , 500} in Figure 8. The curve of the analytic
+
+form and the first-order approximation highly overlap, and their difference is much smaller than
+
+their value by more than an order of magnitude. This result verifies the reliability of our first-order
+
+approximation.
+
+Scaled Inverse Chi-Square Distribution Assumption. In this paper, we assume gi accords to a Normal distribution with a zero mean. We also assume 2(.) accords to the scaled inverse chi-square
+
+9
+
+Work in Progress.
+
+distribution to derive the variance of Var[(.)], based on the similarity between the exponential moving average and simple moving average. Here, we empirically verify this assumption.
+
+Specifically, since gi in the optimization problem may not be zero-mean, we assume its expectation
+
+is µ and sample gi from N (µ, 1). Then, based on these samples, we calculate the variance of the
+
+original
+
+Var[
+
+rt vt
+
+]
+
+adaptive learning rate and respectively. We set 2 to
+
+the
+
+proposed
+
+rectified
+
+adaptive
+
+learning
+
+rate,
+
+i.e.,
+
+Var[
+
+1 vt
+
+]
+
+and
+
+0.999, the number of sampled trajectories to 5000, the number
+
+of iterations to 6000, and summarize the simulation results in Figure 9. Across all six settings with
+
+different µ, the adaptive learning rate has a larger variance in the first stage and the rectified adaptive
+
+learning rate has relative consistent variance. This verifies the reliability of our assumption.
+
+6 CONCLUSION
+In this paper, we explore the underlying principle of the effectiveness of the warmup heuristic used for adaptive optimization algorithms. Specifically, we identify that, due to the limited amount of samples in the early stage of model training, the adaptive learning rate has an undesirably large variance and can cause the model to converge to suspicious/bad local optima. We provide both empirical and theoretical evidence to support our hypothesis, and further propose a new variant of Adam, whose adaptive learning rate is rectified so as to have a consistent variance. Empirical results demonstrate the effectiveness of our proposed method. In future work, we plan to apply the proposed method to other applications such as Named Entity Recognition (Reimers & Gurevych, 2017; Lin et al., 2019). Another interesting direction to pursue is to adapt the choice of  based on the variance estimation of different parameters, i.e., use a larger  for parameters with a larger variance.
+
+REFERENCES
+Jimmy Lei Ba, Jamie Ryan Kiros, and Geoffrey E Hinton. Layer normalization. arXiv preprint arXiv:1607.06450, 2016.
+David Balduzzi, Marcus Frean, Lennox Leary, JP Lewis, Kurt Wan-Duo Ma, and Brian McWilliams. The shattered gradients problem: If resnets are the answer, then what is the question? In Proceedings of the 34th International Conference on Machine Learning-Volume 70, pp. 342­350. JMLR. org, 2017.
+Yoshua Bengio, Nicolas Boulanger-Lewandowski, and Razvan Pascanu. Advances in optimizing recurrent networks. In 2013 IEEE International Conference on Acoustics, Speech and Signal Processing, pp. 8624­8628. IEEE, 2013.
+Augustin Cauchy. Me´thode ge´ne´rale pour la re´solution des systemes de´quations simultane´es. Comp. Rend. Sci. Paris, 25(1847):536­538, 1847.
+Mauro Cettolo, Jan Niehues, Sebastian Stu¨ker, Luisa Bentivogli, and Marcello Federico. Report on the 11th iwslt evaluation campaign, iwslt 2014.
+Ciprian Chelba, Tomas Mikolov, Mike Schuster, Qi Ge, Thorsten Brants, Phillipp Koehn, and Tony Robinson. One billion word benchmark for measuring progress in statistical language modeling. arXiv preprint arXiv:1312.3005, 2013.
+Jia Deng, Wei Dong, Richard Socher, Li-Jia Li, Kai Li, and Li Fei-Fei. Imagenet: A large-scale hierarchical image database. In 2009 IEEE conference on computer vision and pattern recognition, pp. 248­255. Ieee, 2009.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. Bert: Pre-training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:1810.04805, 2018.
+Timothy Dozat. Incorporating nesterov momentum into adam. 2016.
+John Duchi, Elad Hazan, and Yoram Singer. Adaptive subgradient methods for online learning and stochastic optimization. Journal of Machine Learning Research, 12(Jul):2121­2159, 2011.
+
+10
+
+Work in Progress.
+Akhilesh Gotmare, Nitish Shirish Keskar, Caiming Xiong, and Richard Socher. A closer look at deep learning heuristics: Learning rate restarts, warmup and distillation. In International Conference on Learning Representations, 2019. URL https://openreview.net/forum?id= r14EOsCqKX.
+Priya Goyal, Piotr Dolla´r, Ross Girshick, Pieter Noordhuis, Lukasz Wesolowski, Aapo Kyrola, Andrew Tulloch, Yangqing Jia, and Kaiming He. Accurate, large minibatch sgd: Training imagenet in 1 hour. arXiv preprint arXiv:1706.02677, 2017.
+Kaiming He, Xiangyu Zhang, Shaoqing Ren, and Jian Sun. Deep residual learning for image recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 770­778, 2016.
+Sergey Ioffe and Christian Szegedy. Batch normalization: Accelerating deep network training by reducing internal covariate shift. arXiv preprint arXiv:1502.03167, 2015.
+Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980, 2014.
+Alex Krizhevsky, Geoffrey Hinton, et al. Learning multiple layers of features from tiny images. Technical report, Citeseer, 2009.
+Ying Lin, Liyuan Liu, Heng Ji, Dong Yu, and Jiawei Han. Reliability-aware dynamic feature composition for name tagging. In Proceedings of the 57th Conference of the Association for Computational Linguistics, pp. 165­174, 2019.
+Liyuan Liu, Xiang Ren, Jingbo Shang, Jian Peng, and Jiawei Han. Efficient contextualized representation: Language model pruning for sequence labeling. arXiv preprint arXiv:1804.07827, 2018.
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. Roberta: A robustly optimized bert pretraining approach. arXiv preprint arXiv:1907.11692, 2019.
+Ilya Loshchilov and Frank Hutter. Fixing weight decay regularization in adam. arXiv preprint arXiv:1711.05101, 2017.
+Robert Nau. Forecasting with moving averages. 2014.
+Myle Ott, Sergey Edunov, Alexei Baevski, Angela Fan, Sam Gross, Nathan Ng, David Grangier, and Michael Auli. fairseq: A fast, extensible toolkit for sequence modeling. arXiv preprint arXiv:1904.01038, 2019.
+Martin Popel and Ondrej Bojar. Training tips for the transformer model. The Prague Bulletin of Mathematical Linguistics, 110(1):43­70, 2018.
+Sashank J Reddi, Satyen Kale, and Sanjiv Kumar. On the convergence of adam and beyond. arXiv preprint arXiv:1904.09237, 2019.
+Nils Reimers and Iryna Gurevych. Optimal hyperparameters for deep lstm-networks for sequence labeling tasks. arXiv preprint arXiv:1707.06799, 2017.
+Christian Szegedy, Vincent Vanhoucke, Sergey Ioffe, Jon Shlens, and Zbigniew Wojna. Rethinking the inception architecture for computer vision. In Proceedings of the IEEE conference on computer vision and pattern recognition, pp. 2818­2826, 2016.
+Tijmen Tieleman and Geoffrey Hinton. Lecture 6.5-rmsprop, coursera: Neural networks for machine learning. University of Toronto, Technical Report, 2012.
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. In Advances in neural information processing systems, pp. 5998­6008, 2017.
+Kirk M Wolter. Taylor series methods. In Introduction to variance estimation, pp. 226­271. Springer, 2007.
+11
+
+Work in Progress. Lin Xiao, Adams Wei Yu, Qihang Lin, and Weizhu Chen. Dscovr: Randomized primal-dual block
+coordinate algorithms for asynchronous distributed optimization. Journal of Machine Learning Research, 20(43):1­58, 2019. Matthew D Zeiler. Adadelta: an adaptive learning rate method. arXiv preprint arXiv:1212.5701, 2012. Hongyi Zhang, Yann N Dauphin, and Tengyu Ma. Fixup initialization: Residual learning without normalization. arXiv preprint arXiv:1901.09321, 2019.
+12
+
+Work in Progress.
+
+A PROOF OF THEOREM 1
+
+To prove the monotonic, we need to show
+
+Lemma 1.
+
+for t  4,
+
+ t
+
+(
+
+t t-2
+
+-
+
+t
+
+22t-5 
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
+)
+
+<
+
+0
+
+Proof. The target inequality can be re-wrote as
+
+ (
+t t
+
+t -
+
+2
+
+-
+
+t
+
+22t-5 B( t 
+
+- 2
+
+1 ,
+
+t
+
+- 2
+
+1 )2)
+
+=
+
+(t
+
+-2 - 2)2
+
+-
+
+22t-5 B( t - 1 ,
+
+
+
+2
+
+t - 1 )2 2
+
+-
+
+t 22t-5 ln 4 B( t -
+
+
+
+2
+
+1 ,
+
+t- 2
+
+1 )2
+
+-
+
+2t
+
+22t-5
+
+B( t
+
+-
+
+1 ,
+
+t
+
+-
+
+1 )2(( t
+
+-
+
+1 )
+
+-
+
+(t
+
+-
+
+1)),
+
+
+
+22
+
+2
+
+ (x) (x) =
+(x)
+
+<0
+
+This inequality is equivalent to:
+
+64
+
+t-1
+
+(t
+
+-
+
+2)2
+
+4t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
++1
+
++ t ln 4
+
++ 2t(
+
+2
+
+)
+
+
+
+2t(t
+
+-
+
+1)
+
+(i)
+=
+
+t[(
+
+t
+
+-
+
+1
+
+)
+
++
+
+(
+
+t
+
+)
+
++
+
+ln
+
+4],
+
+2
+
+2
+
+where (i) is derived from Legendre duplication formula. Simplify the above inequality, we get:
+
+(t
+
+64
+
+-
+
+2)2
+
+4t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
++1
+
+t- + t(
+2
+
+1 )
+
+- t( t ) 2
+
+
+
+0,
+
+We only need to show
+
+(t
+
+-
+
+64
+
+2)24t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
++
+
+1
+
++
+
+t t(
+
+- 2
+
+1 )
+
+-
+
+t t( )
+2
+
+
+
+(t
+
+64
+
+-
+
+2)2
+
+4t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
++2
+
++ t(ln(t/2) -
+
+1/(t/2 - 0.5)) -
+
+t ln(t/2)
+
+=
+
+(t
+
+64
+
+-
+
+2)2
+
+4t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
+-
+
+2 t-
+
+1
+
+>
+
+(t
+
+64
+
+-
+
+2)2
+
+4t
+
+B(
+
+t-1 2
+
+,
+
+t-1 2
+
+)2
+
+-
+
+2 t-
+
+2
+
+
+
+0,
+
+where the first inequality is from ln(x) - 1/(2x) > (x) > ln(x + 0.5) - 1/x.
+
+Therefore, we only need to show
+
+32
+
+
+
+(t
+
+-
+
+2)4tB( t
+
+-
+
+1 ,
+
+t
+
+-
+
+1 )2,
+
+22
+
+which is equivalent to
+
+(t
+
+-
+
+2)4tB( t
+
+- 2
+
+1 ,
+
+t
+
+- 2
+
+1 )2
+
+=
+
+(t
+
+-
+
+2)4t
+
+(
+
+t-1 2
+
+)4
+
+(t - 1)2
+
+(=i)
+
+(t
+
+-
+
+2)4t
+
+(
+
+t-1 2
+
+)2
+
+(t/2)2
+
+42-t
+
+=
+
+16(t
+
+-
+
+2)
+
+(
+
+t-1 2
+
+)2
+
+(t/2)2
+
+
+
+32,
+
+where (i) is from Legendre duplication formula.
+
+So we only need to show
+
+(t
+
+-
+
+2)
+
+(
+
+t-1 2
+
+)2
+
+(t/2)2
+
+
+
+2
+
+(7)
+
+13
+
+Work in Progress.
+
+Using
+
+Gautschi's
+
+inequality
+
+(
+
+(x+1) (x+s)
+
+<
+
+(x
+
++
+
+1)1-s),
+
+we
+
+have
+
+(t
+
+-
+
+2)
+
+(
+
+t-1 2
+
+)2
+
+(t/2)2
+
+
+
+(t - 2)( t - 1 )-1 2
+
+=
+
+2(t - 2) t-1
+
+<
+
+2
+
+(8)
+
+B IMPLEMENTATION DETAILS
+B.1 LANGUAGE MODELING
+Our implementation is based on the previous work (Liu et al., 2018). Specifically, we use two-layer LSTMs with 2048 hidden states with adaptive softmax to conduct experiments on the one billion words dataset. Word embedding (random initialized) of 300 dimensions is used as the input and the adaptive softmax is incorporated with a default setting (cut-offs are set to [4000, 40000, 200000]). Additionally, as pre-processing, we replace all tokens occurring equal or less than 3 times with as UNK, which shrinks the dictionary from 7.9M to 6.4M. Dropout is applied to each layer with a ratio of 0.1, gradients are clipped at 5.0. We use the default hyper-parameters to update moving averages, i.e.1 = 0.9 and 2 = 0.999. The learning rate is set to start from 0.001, and decayed at the start of 10th epochs. LSTMs are unrolled for 20 steps without resetting the LSTM states and the batch size is set to 128. All models are trained on one NVIDIA Tesla V100 GPU.
+B.2 IMAGEINE CLASSIFICATION
+We use the default ResNet architectures (He et al., 2016) in a public pytorch re-implementation6. Specifically, we use 20-layer ResNet (9 Basic Blocks) for CIFAR-10 and 18-layer ResNet (8 Basic Blocks) for ImageNet. Batch size is 128 for CIFAR-10 and 256 for ImageNet. The model is trained for 186 epoches and the learning rate decays at the 81-th and the 122-th epoches by 0.1 on CIFAR10, while the model is trained for 90 epoches and the learning rate decays at the 31-th and the 61-th epoch by 0.1 on ImageNet. For Adam and RAdam, we set 1 = 0.9, 2 = 0.999. For SGD, we set the momentum factor as 0.9. The weight decay rate is 10-4. Random cropping and random horizontal flipping are applied to training data.
+B.3 NEURAL MACHINE TRANSLATION
+Our experiments are based on the default Transformers (Vaswani et al., 2017) implementation from the fairseq package (Ott et al., 2019). Specifically, we use word embedding with 512 dimensions and 6-layer encoder / decoder with 4 head and 1024 hidden dimensions on the IWSLT14' dataset; use word embedding with 512 dimension and 6-layer encoder / decoder with 8 heads and 2048 hidden dimensions. Label smoothed cross entropy is used as the objective function with an uncertainty = 0.1 (Szegedy et al., 2016). We use linear learning rate decay starting from 3e-4, and the checkpoints of the last 20 epoches are averaged before evaluation. As to the wamrup strategy, we use a linear warmup for Adam in the first 4000 updates, and set 2 to satisfy  = 4000 (2 = 0.9995). In the IWSLT'14 dataset, we conduct training on one NVIDIA Tesla V100 GPU, set maximum batch size as 4000, apply dropout with a ratio 0.3, using weight decay of 0.0001 and clip the gradient norm at 25. In the WMT'16 dataset, we conduct training on four NVIDIA Quadro R8000 GPUs and set maximum batch size as 8196.
+
+6https://github.com/bearpaw/pytorch-classification 14
+
+

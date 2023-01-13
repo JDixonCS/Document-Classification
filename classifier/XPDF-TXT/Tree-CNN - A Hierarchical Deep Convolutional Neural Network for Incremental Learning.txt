@@ -1,0 +1,1088 @@
+arXiv:1802.05800v3 [cs.CV] 8 Sep 2019
+
+Tree-CNN: A Hierarchical Deep Convolutional Neural Network for Incremental Learning
+Deboleena Roy, Priyadarshini Panda, Kaushik Roy
+Department of Electrical and Computer Engineering, Purdue University, West Lafayette, IN 47907, USA
+Abstract Over the past decade, Deep Convolutional Neural Networks (DCNNs) have shown remarkable performance in most computer vision tasks. These tasks traditionally use a fixed dataset, and the model, once trained, is deployed as is. Adding new information to such a model presents a challenge due to complex training issues, such as "catastrophic forgetting", and sensitivity to hyperparameter tuning. However, in this modern world, data is constantly evolving, and our deep learning models are required to adapt to these changes. In this paper, we propose an adaptive hierarchical network structure composed of DCNNs that can grow and learn as new data becomes available. The network grows in a tree-like fashion to accommodate new classes of data, while preserving the ability to distinguish the previously trained classes. The network organizes the incrementally available data into feature-driven superclasses and improves upon existing hierarchical CNN models by adding the capability of self-growth. The proposed hierarchical model, when compared against fine-tuning a deep network, achieves significant reduction of training effort, while maintaining competitive accuracy on CIFAR-10 and CIFAR-100. Keywords: Convolutional Neural Networks, Deep Learning, Incremental Learning, Transfer Learning
+Corresponding author Email addresses: roy77@purdue.edu (Deboleena Roy), pandap@purdue.edu (Priyadarshini Panda), kaushik@purdue.edu (Kaushik Roy)
+
+Preprint submitted to Neural Networks
+
+September 10, 2019
+
+1. Introduction
+In recent years Deep Convolutional Neural Networks (DCNNs) have emerged as the leading architecture for large scale image classification [1]. In 2012, AlexNet [2], an 8 layer Deep CNN, won the ImageNet Large Scale Visual Recognition Challenge (ISLVRC) and catapulted DCNNs into the spotlight. Since then, they have dominated ISLVRC and have performed extremely well on popular image datasets such as MNIST [3, 4], CIFAR-10/100 [5], and ImageNet [6].
+Today, with increased access to large amounts of labeled data (eg. ImageNet [6] contains 1.2 million images with 1000 categories), supervised learning has become the leading paradigm in training DCNNs for image recognition. Traditionally, a DCNN is trained on a dataset containing a large number of labeled images. The network learns to extract relevant features and classify these images. This trained model is then used on real world unlabeled images to classify them. In such training, all the training data is presented to the network during the same training process. However, in real world, we hardly have all the information at once, and data is, instead, gathered incrementally over time. This creates the need for models that can learn new information as it becomes available. In this work, we try to address the challenge of learning on such incrementally available data in the domain of image recognition using deep networks.
+A DCNN embeds feature extraction and classification in one coherent architecture within the same model. Modifying one part of the parameter space immediately affects the model globally [7]. Another problem of incrementally training a DCNN is the issue of "catastrophic forgetting" [8]. When a trained DCNN is retrained exclusively over new data, it results in the destruction of existing features learned from earlier data. This mandates using previous data when retraining on new data.
+To avoid catastrophic forgetting, and to leverage the features learned in previous task, this work proposes a network made of CNNs that grows hierarchically as new classes are introduced. The network adds the new classes like new leaves to the hierarchical structure. The branching is based on the similarity of features between new and old classes. The initial nodes of the Tree-CNN assign the input into coarse super-classes, and as we approach the leaves of the network, finer classification is done. Such a model allows us to leverage the convolution layers learned previously to be used in the new bigger network.
+2
+
+The rest of the paper is organized as follows. The related work on incremental learning in deep neural networks is discussed in Section 2. In Section 3 we present our proposed network architecture and incremental learning method. In Section 4, the two experiments using CIFAR-10 and CIFAR-100 datasets are described. It is followed by a detailed analysis of the performance of the network and its comparison with transfer learning and fine tuning in Section 5. Finally, Section 6 discusses the merits and limitations of our network, our findings, and possible opportunities for future work.
+2. Related Work
+The modern world of digitized data produces new information every second [9], thus fueling the need for systems that can learn as new data arrives. Traditional deep neural networks are static in that respect, and several new approaches to incremental learning are currently being explored. "One-shot learning" [10] is a Bayesian transfer learning technique, that uses very few training samples to learn new classes. Fast R-CNN [11], a popular framework for object detection, also suffers from "catastrophic forgetting". One way to mitigate this issue is to use a frozen copy of the original network compute and balance the loss when new classes are introduced in the network [12]. "Learning without Forgetting" [13] is another method that uses only new task data to train the network while preserving the original capabilities. The original network is trained on an extensive dataset, such as ImageNet [6], and the new task data is a much smaller dataset. "Expert Gate" [14] adds networks (or experts) trained on new tasks sequentially to the system and uses a set of gating autoencoders to select the right network ("expert") for the given input. Progressive Neural Networks [15] learn to solve complex sequences of task by leveraging prior knowledge with lateral connections. Another recent work on incremental learning in neural networks is "iCaRL" [16], where they built an incremental classifier that can potentially learn incrementally over an indefinitely long time period.
+It has been observed that initial layers of a CNN learn very generic features [17] that has been exploited for transfer learning [18],, [19]. Common features, that are shared between images, have been used previously to build hierarchical classifiers. These features can be grouped semantically, such as in [20], or be feature-driven, such as "FALCON" [21]. Similar to the progression of complexity of convolutional layers in a DCNN, the upper nodes of a hierarchical CNN classify the images into coarse super-classes using
+3
+
+basic features, like grouping green-colored objects together, or humans faces together. Then deeper nodes perform finer discrimination, such as "boy" v/s "girl" , "apples" v/s "oranges", etc. Such hierarchical CNN models have been shown to perform at par or even better than standard DCNNs [22]. "Discriminative Transfer Learning" [23] is one of the earliest works where classes are categorized hierarchically to improve network performance. Deep Neural Decision Forests [24] unified decision trees and deep CNN's to build a hierarchical classifier. "HD-CNN" [22], is a hierarchical CNN model that is built by exploiting the common feature sharing aspect of images. However, in these works, the dataset is fixed from the beginning, and prior knowledge of all the classes and their properties is used to build a hierarchical model.
+In our work, Tree-CNN starts out as a single root node and generates new hierarchies to accommodate the new classes. Images belonging to the older dataset are required during retraining, but by localizing the change to a small section of the whole network, our method tries to reduce the training effort and complexity. In [7], a similar approach is applied, where the new classes are added to the old classes, and divided into two super-classes, by using an error-based model. The initial network is cloned to form two new networks which are fine tuned over the two new super-classes. While their motivation was a "divide-and-conquer" approach for large datasets, our work tries to incrementally grow with new data over multiple learning stages. In the next section, we lay out in detail our design principle, network topology and the algorithm used to grow the network.
+3. Incremental Learning Model
+3.1. Network Architecture
+Inspired from hierarchical classifiers, our proposed model, Tree-CNN is composed of multiple nodes connected in a tree-like manner. Each node (except leaf nodes) has a DCNN which is trained to classify the input to the node into one of it's children. The root node is the highest node of the tree, where the first classification happens. The image is then passed on to its child node, as per the classification label. This node further classifies the image, until we reach a leaf node, the last step of classification. Branch nodes are intermediary nodes, each having a parent and two or more children. The leaf node is the last level of the tree. Each leaf node is uniquely associated to a class and no two leaf nodes have the same class. Fig. 1 shows the root node and branch nodes for a two-stage classification network. Each output
+4
+
+IMAGE
+
+Path of Data Flow Active sections of the Tree-CNN Output layer neuron with highest value
+Root Node classifies input image into one of the "superclasses"
+
+Branch Node Fine classifier
+Final Classification Label (Leaf Node)
+Figure 1: A generic model of 2-level Tree-CNN: The output of the root node is used to select the branch node at the next level.
+of the second level branch node is a leaf node, which is the output node of the branch CNN. The inference methodology of such a network is given by Algorithm 1.
+3.2. The Learning Algorithm We start with the assumption that we have a model that is already trained
+to recognize a certain number of objects. The model could be hierarchical with multiple CNNs or could be just a single CNN acting as a root node with multiple leaf nodes. A new task is defined as learning to identify images belonging to M new classes. We start at the root node of our given model, and we provide a small sample of images ( 10%) from the new training set as input to this node.
+We obtain a 3 dimensional matrix from the output layer, OK×M×I, where, K is the number of children of the root node, M is the number of new classes, and I is the number of sample images per class. O(k, m, i) denotes the output of the kth neuron for the ith image belonging to the mth class where k  [1, K], m  [1, M], and i  [1, I]. OaKv×gM is the average of the outputs over I images. Softmax likelihood is computed over Oavg (eq. 1) to obtain the likelihood
+5
+
+Algorithm 1 Tree-CNN: At Inference
+
+1: I = Input Image, node = Root Node of the Tree
+
+2: procedure ClassPredict(I, node)
+
+3: count = # of children of node
+
+4: if count = 0 then
+
+5:
+
+label = class label of the node
+
+6:
+
+return label
+
+7: else
+
+8:
+
+nextNode = EvaluateNode(I, node)
+
+9:
+
+returns the address of the child node of highest output neuron
+
+10:
+
+return ClassPredict(I, nextNode)
+
+11: end if
+
+12: end procedure
+
+matrix LK×M (eq. 2).
+
+Oavg(k, m)
+
+=
+
+I i=1
+
+O(k, m, i) I
+
+(1)
+
+L(k, m) = eOavg(k,m)
+
+(2)
+
+K
+
+eOavg(k,m)
+
+k =1
+
+(3)
+
+We generate an ordered list S from LK×M, having the following properties · The list S has M objects. Each object corresponds uniquely to one of
+the new M classes. · Each object S[i] has the following attributes:
+­ S[i].label = label of the new class ­ S[i].value = [v1, v2, v3], top 3 average softmax (oavg) output values
+for that class in descending order, v1  v2  v3 ­ S[i].nodes = [n1, n2, n3], output nodes corresponding to the softmax
+outputs v1, v2, v3 · S is ordered in the decreasing value of S[i].value[1] The ordering is done to ensure that new classes with high likelihood values
+are added first to Tree-CNN. Softmax likelihood is used instead of number of
+images that get classified as each of the child nodes because it translates the
+
+6
+
+Figure 2: An example illustrating multiple incremental learning stages of the Tree-CNN. The network starts as a single root node, and expands as new classes are added.
+output layer's response to the images into an exponential scale and helps us better identify how similar an image is to one of the already existing labels. After constructing S, we look at its first element, S[1], and take one of the 3 actions.
+i. Add the new class to an existing child node: If v1 is greater than the next value (v2) by a threshold,  (a design specification), that class indicates a strong resemblance/association with a particular child node. The new class is added to corresponding child node n1.
+ii. Merge two child nodes to form a new child node and add the new class to this node: If there are more than 1 child nodes that the new class has a strong likelihood for, we can combine them to form a new child node. It happens when v1 - v2 < , and v2 - v3 >  (another threshold, defined by the user). For example, if the top 3 likelihood values were v1 = 0.48, v2 = 0.45, and v3 = 0.05. Then, provided n2 is a leaf node, we merge n2 into n1, and add the new class to n1.
+iii. Add the new class as a new child node: If the new class doesn't have a likelihood value that is greater than other values by a good margin (v1 - v2 < , v2 - v3 < ), or all child nodes are full, the network expands horizontally by adding the new class as a new child node. This node will be a leaf node.
+As the root node keeps adding new branches and sub-branches, the branch nodes with more children tend to get heavier. Incoming new classes tend to
+7
+
+have a higher softmax likelihood for branch nodes with greater number of children. To prevent the Tree-CNN from becoming lop-sided, one can set the maximum number of children a branch node can have.
+When calculating L(k, m), we substitute eOavg(k,m) with 0 for those k branches that are `full', i.e have reached the limit for number of children per branch. We assign S[1].label a location in the Tree-CNN depending on its value. After that, we remove the column corresponding to that class from L(k, m), we check for "full" branch nodes, and modify L(k, m) for those output nodes. Finally we generate the ordered list S, and again apply our conditions on the new S[1] to determine where it is added to the root node. This is done iteratively till all new classes are assigned a location under the root node.
+The pseudo-code is outlined in Algorithm 2. We also illustrate a toy example of incremental learning in Tree-CNN with Fig. 2. The network starts as a single CNN that can classify 3 classes, C1, C2, C3. We want to increase the network capability by adding 3 new classes. In the first incremental learning stage, the softmax likelihood table L is generated, as shown in the figure. C4 and C5 are added to the leaf nodes containing C1 and C2 respectively, converting them into branch nodes B1 and B2, as per condition (i). For C6, the 3 likelihood values are v1 = 0.34, v2 = 0.33, v3 = 0.33. It satisfies neither condition (i) nor condition (ii), thus it is added as a new node to the root, as per condition (iii). Again, as new information is available, we want the Tree-CNN to be able to recognize 2 new image classes, C7, and C8. Both the new classes satisfy v1 - v2 > (= 0.1). Thus, both the classes are added to B1. While this example is for a two level Tree-CNN, the algorithm can potentially be extended to deeper Tree-CNN models.
+To create deeper Tree-CNN models, once the "Grow-Tree" algorithm is completed for the M classes at the root node, one can move to the next level of the tree. The same process is applicable on the child nodes that now have new classes to be added to them. The decision on how to grow the tree is semi-supervised: the algorithm itself decides how to grow the tree, given the constraints by the user. We can limit parameters such as maximum children for a node, maximum depth for the tree, etc. as per our system requirements.
+Once the new classes are allotted locations in the tree, supervised gradient descent based training is performed on the modified/new nodes. This saves us from modifying the whole network, and only affected portions of the network require retraining/fine-tuning. At every incremental learning stage, the root node is trained on all the available data as it needs to learn to classify all the objects into the new branches. During inference, a branch
+8
+
+Algorithm 2 Grow Tree-CNN
+
+1: L = Likelihood Matrix
+
+2: maxChildren = max. number of children per branch node 3: RootNode = Root Node of the Tree-CNN
+
+4: procedure GrowTree(L, Node) 5: S = GenenerateS(L, Node, maxChildren)
+
+6: while S is not Empty do
+
+7:
+
+Get attributes of the first object
+
+8:
+
+[label, value, node] = Get Attributes(S[1])
+
+9:
+
+if value[1] - value[2] >  then
+
+10:
+
+The new class has a strong preference for n1
+
+11:
+
+Adds label to node[1]
+
+12:
+
+RootNode = AddClasstoNode(RootNode, label, node[1])
+
+13:
+
+else
+
+14:
+
+if value[2] - value[3] >  then
+
+15:
+
+The new class has similar strong preference n1 and n2
+
+16:
+
+Merge = Check f or Merge(Node, node[1], node[2])
+
+17:
+
+Merge is True only if node[2] is a leaf node, and,
+
+18:
+
+the # of children of node[1] less than maxChildren - 1
+
+19:
+
+if Merge then
+
+20:
+
+Merge node[2] into node[1]
+
+21:
+
+RootNode = MergeNode(RootNode, node[1], node[2])
+
+22:
+
+RootNode = AddClasstoNode(RootNode, label, node[1])
+
+23:
+
+else
+
+24:
+
+Add new class to the smaller output node
+
+25:
+
+sNode = Node with lesser children (node[1], node[2])
+
+26:
+
+RootNode = AddClasstoNode(RootNode, label, sNode)
+
+27:
+
+end if
+
+28:
+
+else
+
+29:
+
+Add new class as a new Leaf node to Root Node
+
+30:
+
+RootNode = AddNewNode(RootNode, label)
+
+31:
+
+end if
+
+32:
+
+end if
+
+33:
+
+Remove the columns of the added class from L
+
+34:
+
+Remove the rows of "full" nodes from L
+
+35:
+
+Regenerate S
+
+36:
+
+S = GenenerateS(L, Node, maxChildren)
+
+37: end while
+
+38: end procedure 9
+
+node is activated only when the root node classifies the input to that branch node. If an incorrect classification happens at Root Node, for example it classifies an image of a car into the "Animal Node" (CIFAR-10 example, Sec 4.1), irrespective of what the branch node classifies it as, it would still be an incorrect classification. Hence we only train the branch node with the classes it has been assigned to. If there is no change in the branch node's look up table at an incremental learning stage, it is left as is.
+Handling input labels inside the Tree-CNN The dataset available to the user will have unique labels assigned to each
+of it's object classes. However, the root and branch nodes of the Tree-CNN tend to group/merge/split these classes as required by the algorithm. To ensure label consistency, each node of the Tree-CNN maintains it's own "LabelsTransform" lookup table. For example, when a new class is added to one of the pre-existing output nodes of a root node, the lookup table is updated with new class being assigned to that output node. Similarly when a new class is added as a new node, the class label and the new output node is added as a new entry to the lookup table. Every class is finally associated with a unique leaf node, hence leaf nodes do not require a look up table. Whenever two nodes are merged, the node with lower average softmax value (say, node A) gets integrated with the node with the higher average softmax value (say, node B) for the new class in consideration. If the two softmax values are equal, it is chosen at random. At the root node level, the lookup table is modified as follows: The class labels that were assigned to node A, will now be assigned to node B. The look up table of merged node B will add these class labels from node A as new entries and assign them to new leaf nodes.
+4. The Experimental Setup
+4.1. Adding Multiple New Classes (CIFAR-10) 4.1.1. Dataset
+CIFAR-10 dataset [5], having 10 mutually exclusive classes, was used for this experiment. The network is first trained on 6 classes, and then learns the remaining 4 classes in the next learning stage.
+10
+
+a)
+
+ROOT
+
+b)
+
+ROOT
+
+BRANCH NODES
+LEAF NODES
+
+ANIMAL
+CAT DOG HORSE
+
+VEHICLE
+SHIP TRUCK AUTOMOBILE
+
+NEW CLASSES
+
+ANIMAL
+CAT DOG HORSE DEER BIRD FROG
+
+VEHICLE
+SHIP TRUCK AUTOMOBILE AEROPLANE
+
+Figure 3: Graphical representation of Tree-CNN for CIFAR-10 a) before incremental learning, b) after incremental learning
+
+4.1.2. The Network Initialization The Tree-CNN for CIFAR-10 starts out as a two level network with a root
+node with two branch nodes as shown in Fig 3. The six initial classes of CIFAR10 are grouped into "Vehicles" and "Animals" and the CNN (Table 1) at the root is trained to classify input images into these two categories. Each of the two branch nodes has a CNN (Table 2) that does finer classification into leaf nodes. Fig. 3a) represents the initial model of Tree-CNN A. This experiment illustrates, that given provided a 2-level Tree-CNN, how the learning model can add new classes. The root node achieves a testing accuracy of 98.73%, while the branch nodes, "Animals" and "Vehicles", achieve 86% and 94.43% testing accuracy respectively. Overall, the network achieves a testing accuracy of 89.10%.
+4.1.3. Incremental Learning The remaining four classes are now introduced as the new learning task.
+50 images per class (10% of the training set) are selected at random , and shown to the root node. We obtain the L matrix, which is a 2 × 4 matrix with each element lij  (0, 1). The 1st row of the matrix indicates the softmax likelihood of each of the 4 classes as being classified as "Vehicles", while the second row presents the same information for "Animals". In this experiment,  is set at 0 (Algorithm 2), and the network is bound to take only one action:
+
+11
+
+Table 1: Root Node TreeCNN (CIFAR-10)
+Input 32×32×3 CONV-1
+64 5×5 ReLU [2 2] Max Pooling
+CONV-2 128 3×3 ReLU
+Dropout 0.5 128 3×3 ReLU [2 2] Max Pooling
+FC 8192×512 ReLU
+Dropout 0.5 512×128 ReLU
+Dropout 0.5 128×2 ReLU Softmax Layer
+
+Table 2: Branch Node TreeCNN (CIFAR-10)
+Input 32×32×3 CONV-1
+32 5×5 ReLU [2 2] Max Pooling
+Dropout 0.25 CONV-2
+64 5×5 ReLU [2 2] Max Pooling
+Dropout 0.25 CONV-3
+64 3×3 ReLU [2 2] Avg Pooling
+Dropout 0.25 FC
+1024×128 ReLU Dropout 0.5 128×N ReLU
+(N = # of Classes) Softmax Layer
+
+Table 3: Network B
+Input 32×32×3 CONV-1
+64 3×3 ReLU Dropout 0.5 64 3×3 ReLU [2 2] Max Pooling
+CONV-2 128 3×3 ReLU
+Dropout 0.5 128 3×3 ReLU [2 2] Max Pooling
+CONV-3 256 3×3 ReLU
+Dropout 0.5 256 3×3 ReLU [2 2] Max pooling
+CONV-4 512 3×3 ReLU
+Dropout 0.5 512 3×3 ReLU [2 2] Avg Pooling
+FC 2048×1024 ReLU
+Dropout 0.5 1024×1024 ReLU
+Dropout 0.5 1024×N
+(N= # of Classes)
+
+add the new class to one of the two child nodes. The branch node with higher likelihood value adds the new class to itself. The Tree-CNN before and after addition of these 4 classes is shown in Fig. 3 .
+Once the new classes have been assigned locations in the Tree-CNN, we begin the re-training of the network. The root node is re-trained using all 10 classes, divided into to subclasses. The branch node "animal" is retrained
+
+12
+
+using training data from 6 classes, 3 old and 3 new added to it. Similarly, branch node "vehicles" is retrained with training data from 4 classes, 3 old, 1 new.
+4.2. Sequentially Adding Multiple Classes (CIFAR-100)
+
+Table 4: Root Node Tree-CNN (CIFAR-100)
+Input 32×32×3 CONV-1
+64 5×5 ReLU [2 2] Max Pooling
+CONV-2 128 3×3 ReLU
+Dropout 0.5 128 3×3 ReLU [2 2] Max Pooling
+CONV-3 256 3×3 ReLU
+Dropout 0.5 256 3×3 ReLU [2 2] Avg Pooling
+FC 4096×1024 ReLU
+Dropout 0.5 1024×1024 ReLU
+Dropout 0.5 1024×N
+(N = # of Children)
+
+Table 5: Branch Node Tree-CNN (CIFAR100)
+Input 32×32×3 CONV-1
+32 5×5 ReLU [2 2] Max Pooling
+Dropout 0.25 CONV-2
+64 5×5 ReLU [2 2] Max Pooling
+Dropout 0.25 CONV-3
+64 3×3 ReLU Dropout 0.5 64 3×3 ReLU [2 2] Avg Pooling
+FC 1024×512 ReLU
+Dropout 0.5 512×128 ReLU
+Dropout 0.5 128×N
+(N = # of Children)
+
+4.2.1. Dataset The dataset, CIFAR-100 [5], has 100 classes, 500 training and 100 testing
+images per class. The 100 classes are randomly divided into 10 groups of 10 classes each and organized in a fixed order (Appendix A). These groups of classes are introduced to the network incrementally.
+
+13
+
+4.2.2. The Network Initialization We initialize the Tree-CNN as a root node with 10 leaf nodes. The root
+node, thus comprises of a CNN (Table 4), with 10 output nodes. Initially this CNN is trained to classify the 10 classes belonging to group 0 of the incremental CIFAR-100 dataset (Appendix A). In subsequent learning stages, as new classes get grouped together under same output nodes, the network adds branch nodes. The DCNN model used in these branch nodes is given in Table 5. The branch node has a higher chance of over-fitting than the root node as the dataset per node shrinks in size as we move deeper into the tree. Hence we introduce more dropout layers to the CNNs at these nodes to enhance regularization.
+4.2.3. Incremental Learning The remaining 9 groups, each containing 10 classes is incrementally intro-
+duced to the network in 9 learning stages. At each stage, 50 images belonging to each class are shown to the root node and a likelihood matrix L is generated. The columns of the matrix are used to form an ordered set S, as described in section 3.2 . For this experiment, we applied the following constraints to the Algorithm 2:
+· Maximum depth of the tree is 2. · We set  = 0.1 and  = 0.1. · Maximum number of child nodes for a branch node is set at 5, 10, 20
+for the three test cases: Tree-CNN-5,Tree-CNN-10, and Tree-CNN-20 respectively. At every learning stage, once the new classes have been assigned the location in the Tree-CNN, we update the corresponding branch and root CNNs by retraining them on the combined dataset of old and new classes added to them. The branch nodes to which new children have not been added are left untouched.
+4.3. Benchmarking
+There is an absence of standardized benchmark protocol for incremental learning, which led us to use a benchmarking protocol similar to one used in iCaRL [16]. The classes of the dataset are grouped and arranged in a fixed random order. At each learning stage, a selected set of classes would be introduced to the network. Once training is completed for a particular learning stage, the network would be evaluated on all the classes it has learned so far and the accuracy is reported.
+14
+
+4.3.1. Baseline Network To compare against the proposed Tree-CNN, we defined a baseline net-
+work (Network B ) with a complexity level similar to two stage Tree-CNN. The network is has a VGG-net [25] like structure with 11 layers. It has 4 convolutional blocks, each block having 2 sets of 3 × 3 convolutional kernels (Table 3).
+4.3.2. Fine-tuning the baseline network using old + new data The baseline network is trained in incremental stages using fine-tuning.
+The new classes are added as new output nodes of the final layer and 5 different fine tuning strategies have been used. Each method retrains/fine-tunes certain layers of the network. While fine tuning, all of the available dataset is used, both old data and new data. It is assumed that the system has access to all the data that has been introduced so far. As listed below, we set 5 different depths of back-propagation when retraining with the incremental data and the old data.
+· B:I [FC] · B:II [FC + CONV-1] · B:III [FC + CONV-1 + CONV-2] · B:IV [FC + CONV-1 + CONV-2 + CONV-3] · B:V [FC + CONV-1 + CONV-2 + CONV-3 + CONV-4] (equivalent to
+training a new network with all the classes)
+4.3.3. Evaluation Metrics We compare Tree-CNN against retraining Network B on two metrics:
+Testing Accuracy, and Training Effort , which is defined as Training Effort = (total number of weights × total number of training
+net s
+samples) Training Effort attempts to capture the number of weight updates that
+happen per training epoch. As batch size and number of training epochs is kept the same, the product of the number of weights and the number of training samples used can provide us with the measure of the computation cost of a learning stage. For Tree-CNN the training effort of each of the nodes (or nets) is summed together. Whereas, for network B, it is just one node/neural network, and for each of the cases (B:I-B:V ), we simply sum the number of weights in the layers that are being retrained and multiply it with total number of training samples available at a learning stage to calculate the Training Effort.
+15
+
+4.4. The Training Framework
+We used MatConvNet [26], an open-source Deep Learning toolbox for MATLAB [27], for training the networks. During training, data augmentation was done by flipping the training images horizontally at random with a probability of 0.5 [28]. All images were whitened and contrast normalized [28]. The activation used in all the networks is rectified linear activation ReLU, (x) = max(x, 0). The networks are trained using mini-batch stochastic gradient descent with fixed momentum of 0.9. Dropout [29] is used between the final fully connected layers, and between pooling layers to regularize the network. We also employed batch-normalization [30] at the output of every convolutional layer. Additionally, a weight decay  = 0.001 was set to regularize each model. The weight decay helps against overfitting of our model. The final layer performs softmax operation on the output of the nodes to generate class probabilities. All CNNs are trained for 300 epochs. The learning rate is kept at 0.1 for first 200 epochs, then reduced by a factor of 10 every 50 epochs.
+
+5. Results 5.1. Adding multiple new classes (CIFAR-10)
+
+Table 6: Training Effort and Test Accuracy comparison of Tree-CNN against Network B for CIFAR-10
+
+B:I B:II B:III B:IV B:V Tree-CNN
+
+Testing Accuracy
+
+78.37 85.02 88.15 90.00 90.51 86.24
+
+Normalized Training Effort 0.40 0.85 0.96 0.99 1
+
+0.60
+
+We initialized a Tree-CNN that can classify six classes (Fig. 3a). It had a root node and two branch nodes. The sample images from the 4 new classes generated the softmax likelihood output at root node as shown in Fig. 4a. Accordingly, the new classes are added to the two nodes, and the new Tree-CNN is shown in Fig. 3b. In Table 6, we report the test accuracy and the training effort for the 5 cases of fine-tuning network B against our Tree-CNN for CIFAR-10. We observe that retraining only the FC layers of baseline network (B:I ) requires the least training effort, however, it gives us the lowest accuracy of 78.37%. And as more classes are introduced, this method causes significant loss in accuracy, as shown with CIFAR-100 (Fig.
+
+16
+
+(a) Likelihood values at the root node (b) Testing Accuracy vs Normalized
+
+for the new classes
+
+Training Effort (CIFAR-10)
+
+Figure 4: Incrementally learning CIFAR-10: 4 New classes are added to Network B and Tree-CNN. Networks B:I to B:V represent 5 increasing depths of retraining for Network B. (a) The softmax likelihood output at the root node for the two branches. (b) Testing Accuracy vs Normalized Training Effort for Tree-CNN and networks B:I to B:V
+
+6b). The Tree-CNN has the second lowest normalized training effort,  40% less than B:V, and  30% less than B:II. At the same time, Tree-CNN had comparable accuracy to B:II and B:III, while just being less than the ideal case B:V by a margin of 3.76%. This accuracy vs training effort trade-off is presented in Fig. 4b, where it is clearly visible that Tree-CNN provided the most optimal solution for adding the 4 new classes.
+5.2. Sequentially adding new classes (CIFAR-100) We initialized a root node that can classify 10 classes, i.e. has 10 leaf
+nodes. Then, we incrementally grew the Tree-CNN for 3 different values of maximum children per branch node (maxChildren), namely 5, 10, and 20. We label these 3 models as Tree-CNN-5, Tree-CNN-10 and Tree-CNN-20 respectively. At the end of 9 incremental learning stages, the root node of Tree-CNN-5 had 23 branch nodes and 3 leaf nodes. Whereas, the root node of Tree-CNN-10 has 12 branch nodes and 5 leaf nodes. As expected, the root node of Tree-CNN-20 had least number of child nodes, 9 branch nodes and 3 leaf nodes. The final hierarchical structure of the Tree-CNNs can be found in Appendix B, Fig. B.9-B.11.
+We observe that as new classes are added, the Tree-CNNs grow in size by adding more branches (Fig. 5a). The size of Network B remains relatively unchanged, as only additional output nodes are added, which translates to a
+17
+
+(a) Network size of the 3 Tree-CNNs as new classes are added to the models, normalized with respect to Network B (CIFAR-100)
+
+(b) Test Accuracy of the 3 Tree-CNNs as as new classes are added to the models (CIFAR-100)
+
+Figure 5: Tree-CNN : Effect of varying the maximum number of children per branch node (maxChildren) as new classes are added to the models (CIFAR-100)
+
+small fraction of new weights in the final layer. Tree-CNN-5 almost grows 3.4× the size of Network B, while Tree-CNN-10 and Tree-CNN-20 reach 2.2× and 1.8× the baseline size, respectively. The training effort for the 3 Tree-CNNs was almost identical, within 1e-2 margin of each other (Fig. 6a), over the 9 incremental learning stages. As maxChildren is reduced, the test accuracy improves, as observed in Fig. 5b. If maxChildren is set to 1, we obtain a situation similar to test case B:V, where every new class is just a new output node.
+We compare the training effort needed for the Tree-CNNs against the 5 different fine-tuning cases of Network B over the 9 incremental learning stages in Fig. 6a. We normalized the training effort by dividing all the values with the highest training effort. i.e. B:V. For all the models, the training effort required at a particular learning stage was greater than the effort required by the previous stage. This is because we had to show images belonging to old classes to avoid "catastrophic forgetting". The Tree-CNNs exhibit a lower training effort than 4 fine-tuning test cases, B:II - B:V. the test case B:I has a significantly lower training effort than all the other cases, as it only retrains the final fully connected layer. However, it suffers the worst accuracy degradation over the 9 learning stages (Fig. 6b). This shows that
+
+18
+
+(a) Training Effort (CIFAR-100)
+
+(b) Testing Accuracy (CIFAR-100)
+
+Figure 6: CIFAR-100: New classes are added to Network B and Tree-CNNs in batches of 10. Networks B:I to B:V represent 5 increasing depths of retraining for Network B (a) Training effort for every learning stage (Table C.8) (b) Testing Accuracy at the end of each learning stage (Table C.9)
+
+only retraining the final linear classifier, i.e. the fully connected layer, is not sufficient. We need to train the feature extractors, i.e. convolutional blocks, as well on the new data.
+While B:I is the worst performer in terms of accuracy, Fig. 6b shows that all the networks suffer from some accuracy degradation with increasing number of classes. B:V provides the baseline accuracy at each stage, as it represents a network fully trained on all the available data at that stage. The three Tree-CNNs perform almost at par with B:IV, and outperform all other variants of network B. From Fig. 6, we can conclude that Tree-CNNs offer the most optimal trade-off between training effort and testing accuracy. This is further illustrated in Fig. 7a, where we plot the average test accuracy and average training effort over all the learning stages.
+We compare our model against two works on incremental learning, `iCaRL'[16] and `Learning without Forgetting' [13] as shown in Fig. 7b. We use the accuracy reported in [16] for CIFAR-100, and compare it against our method. For `LwF', a ResNet-32 [32] is retrained exclusively on new data at every stage. Hence it suffers the most accuracy degradation. In `iCarl' [16], a ResNet-32 is retrained with new data and only 2000 samples of old data (called `exemplars') at every stage. It is able to recover a good amount performance, compared to `LwF' but still falls short of state-of-the-art by 18%. Tree-CNNs yield 10% higher accuracy than `iCaRL' and over 50% higher accuracy than
+
+19
+
+Table 7: Test Accuracy over all 100 classes of CIFAR-100
+
+Model
+B:V Tree-CNN-5 Tree-CNN-10 Tree-CNN-20 iCarl (Rebuffi, et al. 2017) [16] LwF (Li, et al. 2017) [16, 13] HD-CNN (Yan, et al. 2015) [22] Hertel, et al. 2015 [31]
+
+Final Test Accuracy (%)
+63.05 61.57 60.46 59.99 49.11 25.00 67.38 67.68
+
+Average Test Accuracy(%)
+72.23 69.85 69.53 68.49 64.10 44.49 N/A N/A
+
+(a) Average test accuracy vs average training effort over all the learning stages of Tree-CNNs and Network B:I - B:V (CIFAR-100)
+
+(b) Accuracy over incremental learning stages of Tree-CNNs, iCaRL[16] and Learning without Forgetting(LwF) [13] where new classes are added in batches of 10 (CIFAR-100)
+
+Figure 7: The performance of Tree-CNN compared with a) Fine-tuning Network B b) Other incremental learning methods [16, 13]
+
+`Learning without Forgetting' (LwF). This shows that our learning method using the hierarchical structure is more resistant to catastrophic forgetting as new classes are added. Tree-CNNs are able to achieve near state-of-the-art accuracy for CIFAR-100 as illustrated in Table 7. While the second column reports the final accuracy, the third column reports the average accuracy of
+
+20
+
+the incremental learning methods where new classes are added in batches of 10.
+An interesting thing to note was similar looking classes, that were also semantically similar, were grouped under the same branches. At the end of the nine incremental learning stages, certain similar objects grouped together is shown in Fig. 8 for Tree-CNN-10. While there were some groups that had object sharing semantic similarity as well, there were odd groups as well, such as Node 13 as shown in Fig. 8. This opens up the possibility of using such a hierarchical structure for finding hidden similarity in the incoming data.
+Figure 8: Examples of groups of classes formed when new classes were added incrementally to Tree-CNN-10 in batches of 10 for CIFAR-100
+6. Discussion The motivation of this work stems from the idea that subsequent addition
+of new image classes to a network should be easier than retraining the whole network again with all the classes. We observed that each incremental learning stage required more effort than the previous, because images belonging to old classes needed to be shown to the CNNs. This is due to the inherent problem of "catastrophic forgetting" in deep neural networks. Our proposed method offers the best trade-off between accuracy and training effort when compared against fine-tuning layers of a deep network. It also achieves better accuracy, much closer to state-of-the-art on CIFAR-100, as compared to other works,
+21
+
+`iCarl' [16] and `LwF' [13]. The hierarchical node-based learning model of the Tree-CNN attempts to confine the change in the model to a few nodes only. And, in this way, it limits the computation costs of retraining, while using all the previous data. Thus, it can learn with lower training effort than fine-tuning a deep network, while preserving much of the accuracy. However, the Tree-CNN continues to grow in size over time, and the implications of that on memory requirements needs to be investigated. During inference, a single node is evaluated at a time, thus the memory requirement per node inference is much lower than the size of the entire model. Tree-CNN grows in a manner such that images that share common features are grouped together. The correlation of the semantic similarity of the class labels and the featuresimilarity of the class images under a branch is another interesting area to explore. The Tree-CNN generates hierarchical grouping of initially unrelated classes, thereby generating a label relation graph out of these classes[33]. The final leaf nodes, and the distance between them can also be used as a measure of how similar any two images are. Such a method of training and classification can be used to hierarchically classify large datasets. Our proposed method, Tree-CNN, thus offers a better learning model that is based on hierarchical classifiers and transfer learning and can organically adapt to new information over time.
+Acknowledgment
+This work was supported in part by the Center for Brain Inspired Computing (C-BRIC), one of the six centers in JUMP, a Semiconductor Research Corporation (SRC) program sponsored by DARPA, the National Science Foundation, Intel Corporation, the DoD Vannevar Bush Fellowship, and by the U.S. Army Research Laboratory and the U.K. Ministry of Defense under Agreement Number W911NF-16-3-0001.
+Declaration of Interests
+Declarations of interest: none
+22
+
+Appendix A. Incremental CIFAR-100 Dataset The 100 classes of CIFAR-100 were randomly arranged and divided in
+10 batches, each containing 10 classes. We randomly shuffled numbers 1 to 100 in 10 groups and then used that to group classes. We list the batches in the order they were added to the Tree-CNN for the incremental learning task below.
+0 chair, bridge, girl, kangaroo, lawn mower, possum, otter, poppy, sweet pepper, bicycle
+1 lion, man, palm tree, tank, willow tree, bowl, mountain, hamster, chimpanzee, cloud
+2 plain, leopard, castle, bee, raccoon, bus, rabbit, train, worm, ray 3 table, aquarium fish, couch, caterpillar, whale, sunflower, trout, butterfly,
+shrew, house 4 bottle, orange, dinosaur, beaver, bed, snail, flatfish, shark, tractor, apple 5 woman, fox, lobster, skunk, can, turtle, cockroach, dolphin, bear, pickup
+truck 6 lizard, road, porcupine, mouse, seal, sea, tiger, telephone, rocket, tulip 7 baby, motorcycle, elephant, clock, maple tree, mushroom, pear, orchid,
+spider, oak tree 8 wardrobe, squirrel, crocodile, wolf, plate, skyscraper, keyboard, beetle,
+streetcar, crab 9 snake, lamp, camel, pine tree, cattle, boy, rose, forest, television, cup
+23
+
+Appendix B. Final Tree-CNN for max children 5, 10, 20 (CIFAR100)
+We trained the Tree-CNN with the incremental CIFAR-100 dataset, and we set the maximum number of children a branch node can have as 5, 10, and 20. The corresponding 3 Tree-CNN s were labeled - Tree-CNN-5, TreeCNN-10, Tree-CNN-20. The 2-level hierarchical structure of these Tree-CNNs after 9 incremental learning stages is shown in Fig. B.9 - B.11. The nodes marked `yellow' indicate completely filled branch nodes (B), the ones marked `blue' indicate branch nodes (B) that are partially filled, while those marked `green' refer to leaf nodes (L).
+
+ROOT
+
+B
+
+APPLE
+
+BOWL
+
+SWEET PEPPER
+
+TABLE
+
+B
+
+AQ. FISH
+
+RAY
+
+SHREW
+
+TROUT
+
+B
+
+BABY
+
+LIZARD
+
+MUSHROOM
+
+SPIDER
+
+B
+
+BEAR
+
+BEAVER
+
+MOUSE
+
+PORCUPINE
+
+B
+
+BED
+
+BUS
+
+COUCH
+
+HOUSE
+
+B
+
+BEE
+
+BUTTERFLY CATERPILLAR
+
+POPPY
+
+B
+
+BOTTLE
+
+CAN
+
+CLOCK
+
+TELEPHONE
+
+B
+
+BRIDGE
+
+CASTLE
+
+PALM TREE
+
+TANK
+
+B CHIMPANZEE
+
+CLOUD
+
+MOUNTAIN
+
+OTTER
+
+B
+
+CUP
+
+KEYBOARD
+
+LAMP
+
+PLATE
+
+B
+
+DINOSAUR
+
+ELEPHANT
+
+FOX
+
+KANGAROO
+
+B
+
+DOLPHIN
+
+ROCKET
+
+SEAL
+
+SHARK
+
+B
+
+FLATFISH
+
+GIRL
+
+HAMSTER
+
+MAN
+
+B
+
+LEOPARD
+
+LION
+
+POSSUM
+
+RABBIT
+
+B MAPLE TREE
+
+OAK TREE
+
+PLAIN
+
+ROAD
+
+B
+
+BOY
+
+CAMEL
+
+CATTLE
+
+SQUIRREL
+
+B
+
+LOBSTER
+
+ORCHID
+
+ROSE
+
+TULIP
+
+B
+
+BEETLE
+
+COCKROACH
+
+SNAIL
+
+B LAWN MOWER PICKUP TRUCK STREETCAR
+
+B
+
+BICYCLE
+
+MOTORCYCLE
+
+B
+
+CRAB
+
+SNAKE
+
+B CROCODILE
+
+FOREST
+
+B
+
+ORANGE
+
+PEAR
+
+L
+
+CHAIR
+
+L
+
+PINE TREE
+
+L SKYSCRAPER
+
+WORM WHALE WOLF SKUNK TRACTOR SUNFLOWER WARDROBE TRAIN WILLOW TREE TELEVISION TIGER TURTLE WOMAN RACCOON
+SEA
+
+Figure B.9: Tree-CNN-5: After 9 incremental learning stages
+
+24
+
+ROOT
+
+B
+
+AQ. FISH ORCHID
+
+B
+
+BEAR PORCUPINE
+
+B
+
+BEAVER POSSUM
+
+BEETLE POPPY BOTTLE ROCKET DINOSAUR SHARK
+
+BUTTERFLY SPIDER CAN SKUNK FLATFISH SHREW
+
+COCKROACH SUNFLOWER CATERPILLAR TELEPHONE
+HAMSTER SNAIL
+
+CRAB TULIP FOX TIGER KANGAROO WHALE
+
+B
+
+BED
+
+BICYCLE
+
+MOTORCYCLE PICKUP TRUCK
+
+CHAIR ROAD
+
+COUCH TABLE
+
+HOUSE TRACTOR
+
+B
+
+BEE RABBIT
+
+BOWL
+
+CHIMPANZEE
+
+RACCOON
+
+RAY
+
+LION VLOUD
+
+OTTER WORM
+
+B
+
+BRIDGE PALM TREE
+
+BUS PLAIN
+
+CASTLE TANK
+
+LEOPARD MOUNTAIN TRAIN WILLOW TREE
+
+B
+
+DOLPHIN MUSHROOM
+
+ELEPHANT SEA
+
+LIZARD SEAL
+
+MAPLE TREE TROUT
+
+MOUSE TURTLE
+
+B
+
+CLOCK TELEVISION
+
+CUP WARDROBE
+
+LAMP
+
+PLATE
+
+SNAKE
+
+B
+
+BABY
+
+BOY
+
+GIRL
+
+MAN
+
+WOMAN
+
+B
+
+APPLE
+
+ORANGE
+
+PEAR
+
+ROSE
+
+SWEET PEPPER
+
+B FOREST
+
+OAK TREE PINE TREE STREET CAR
+
+B
+
+CAMEL
+
+CATTLE
+
+SQUIRREL
+
+L CROCODILE
+
+L LAWN MOWER
+
+L LOBSTER
+
+L SKYSCRAPER
+
+L
+
+WOLF
+
+Figure B.10: Tree-CNN-10: After 9 incremental learning stages
+
+25
+
+ROOT
+
+APPLE
+
+BED
+
+B
+
+CAN LOBSTER
+
+CASTLE PICKUP TRUCK
+
+TABLE
+
+TANK
+
+AQ. FISH
+
+BEE
+
+B
+
+CHIMPANZEE PALM TREE
+
+CLOUD PLAIN
+
+SWEET PEPPER TROUT
+
+BEAR
+
+BEAVER
+
+B
+
+ELEPHANT MUSHROOM
+
+FLATFISH OAK TREE
+
+SKUNK
+
+SNAIL
+
+B
+
+BABY HAMSTER
+
+BOY MAN
+
+B
+
+CAMEL POSSUM
+
+CATTLE RACCOON
+
+B
+
+ORANGE KEYBOARD
+
+ORCHID LAMP
+
+B
+
+BICYCLE MOTORCYCLE
+
+B
+
+FOREST
+
+MAPLE TREE
+
+B
+
+SEA
+
+SKYSCRAPER
+
+L
+
+BEETLE
+
+L KANGAROO
+
+L LAWNMOWER
+
+BOTTLE COUCH ROAD TELEPHONE BOWL LEOPARD RABBIT WHALE CLOCK
+FOX PORCUPINE
+SPIDER CHAIR TELEVISION CRAB SNAKE PEAR PLATE
+STREETCAR
+PINE TREE
+
+BRIDGE DOLPHIN ROCKET TRACTOR BUTTERFLY MOUNTAIN
+RAY WILLOW TREE COCKROACH
+LIZARD SEAL TIGER CUP WARDROBE CROCODILE SQUIRREL POPPY ROSE
+
+BUS HOUSE SHARK TRAIN CATERPILLAR OTTER SUNFLOWER WORM DINOSAUR MOUSE SHREW TURTLE
+GIRL WOMAN
+LION WOLF TULIP
+
+Figure B.11: Tree-CNN-20: After 9 incremental learning stages
+
+26
+
+Appendix C. Full Simulation Results
+
+Table C.8: Normalized Training Effort as classes are added incrementally in batches of 10 (CIFAR-100)
+
+Number of Classes
+
+B:I
+
+B:II B:III B:IV B:V
+
+20
+
+0.08 0.17 0.19 0.20 0.20
+
+30
+
+0.12 0.25 0.29 0.30 0.30
+
+40
+
+0.16 0.34 0.38 0.39 0.40
+
+50
+
+0.20 0.42 0.48 0.49 0.50
+
+60
+
+0.24 0.51 0.58 0.59 0.60
+
+70
+
+0.28 0.60 0.67 0.69 0.70
+
+80
+
+0.33 0.68 0.77 0.79 0.80
+
+90
+
+0.37 0.77 0.87 0.89 0.90
+
+100
+
+0.41 0.86 0.97 1.00 1.00
+
+TreeCNN-5
+0.18 0.26 0.34 0.42 0.50 0.59 0.67 0.74 0.82
+
+TreeCNN-10
+0.18 0.26 0.34 0.43 0.51 0.60 0.68 0.74 0.83
+
+TreeCNN-20
+0.18 0.27 0.35 0.42 0.52 0.60 0.68 0.75 0.84
+
+Table C.9: Test Accuracy as classes are added incrementally in batches of 10 (CIFAR-100)
+
+Number of Classes 20 30 40 50 60 70 80 90 100
+
+B:I
+64.30 52.47 46.68 41.42 37.98 35.43 34.55 33.88 31.73
+
+B:II
+73.60 67.17 61.72 58.74 55.80 52.96 51.68 51.09 48.68
+
+B:III
+77.40 72.27 67.55 64.74 61.85 59.10 57.77 55.77 54.16
+
+B:IV
+78.50 77.57 72.08 69.62 66.95 64.23 61.81 62.21 60.48
+
+B:V
+81.10 79.30 74.35 71.82 69.57 67.21 66.03 64.90 63.05
+
+TreeCNN-5 77.80 72.70 72.15 69.28 67.42 65.13 64.07 63.52 61.57
+
+TreeCNN-10
+81.35 77.00 72.90 67.40 65.73 62.91 61.73 60.93 60.46
+
+TreeCNN-20
+78.35 74.57 70.75 67.42 64.40 62.07 61.60 60.88 59.99
+
+27
+
+References
+[1] W. Rawat, Z. Wang, Deep Convolutional Neural Networks for Image Classification: A Comprehensive Review, Neural Computation 29 (9) (2017) 2352­2449.
+[2] A. Krizhevsky, I. Sutskever, G. E. Hinton, Imagenet classification with deep convolutional neural networks, in: Advances in neural information processing systems, 1097­1105, 2012.
+[3] Y. LeCun, L. Bottou, Y. Bengio, P. Haffner, Gradient-based learning applied to document recognition, Proceedings of the IEEE 86 (11) (1998) 2278­2324.
+[4] L. Wan, M. Zeiler, S. Zhang, Y. L. Cun, R. Fergus, Regularization of neural networks using dropconnect, in: Proceedings of the 30th international conference on machine learning (ICML-13), 1058­1066, 2013.
+[5] A. Krizhevsky, G. Hinton, Learning multiple layers of features from tiny images .
+[6] O. Russakovsky, J. Deng, H. Su, J. Krause, S. Satheesh, S. Ma, Z. Huang, A. Karpathy, A. Khosla, M. Bernstein, et al., Imagenet large scale visual recognition challenge, International Journal of Computer Vision 115 (3) (2015) 211­252.
+[7] T. Xiao, J. Zhang, K. Yang, Y. Peng, Z. Zhang, Error-Driven Incremental Learning in Deep Convolutional Neural Network for Large-Scale Image Classification, MM '14 Proceedings of the ACM International Conference on Multime d (2014) 177­186.
+[8] I. J. Goodfellow, M. Mirza, D. Xiao, A. Courville, Y. Bengio, An empirical investigation of catastrophic forgetting in gradient-based neural networks, arXiv preprint arXiv:1312.6211 .
+[9] S. John Walker, Big data: A revolution that will transform how we live, work, and think, 2014.
+[10] L. Fei-Fei, R. Fergus, P. Perona, One-shot learning of object categories, IEEE transactions on pattern analysis and machine intelligence 28 (4) (2006) 594­611.
+28
+
+[11] R. Girshick, Fast R-CNN, in: 2015 IEEE International Conference on Computer Vision (ICCV), IEEE, 2015.
+[12] K. Shmelkov, C. Schmid, K. Alahari, Incremental Learning of Object Detectors without Catastrophic Forgetting, in: 2017 IEEE International Conference on Computer Vision (ICCV), IEEE, 2017.
+[13] Z. Li, D. Hoiem, Learning without forgetting, IEEE Transactions on Pattern Analysis and Machine Intelligence .
+[14] R. Aljundi, P. Chakravarty, T. Tuytelaars, Expert gate: Lifelong learning with a network of experts, CoRR, abs/1611.06194 2.
+[15] A. A. Rusu, N. C. Rabinowitz, G. Desjardins, H. Soyer, J. Kirkpatrick, K. Kavukcuoglu, R. Pascanu, R. Hadsell, Progressive neural networks, arXiv preprint arXiv:1606.04671 .
+[16] S.-A. Rebuffi, A. Kolesnikov, C. H. Lampert, iCaRL: Incremental classifier and representation learning, in: Proc. CVPR, 2017.
+[17] S. S. Sarwar, P. Panda, K. Roy, Gabor filter assisted energy efficient fast learning Convolutional Neural Networks, in: 2017 IEEE/ACM International Symposium on Low Power Electronics and Design (ISLPED), IEEE, 1­6, 2017.
+[18] J. Yosinski, J. Clune, Y. Bengio, H. Lipson, How transferable are features in deep neural networks?, in: Advances in neural information processing systems, 3320­3328, 2014.
+[19] S. S. Sarwar, A. Ankit, K. Roy, Incremental Learning in Deep Convolutional Neural Networks Using Partial Network Sharing, arXiv preprint arXiv:1712.02719 .
+[20] P. Panda, K. Roy, Semantic driven hierarchical learning for energyefficient image classification, in: 2017 Design, Automation & Test in Europe Conference & Exhibition (DATE), IEEE, 1582­1587, 2017.
+[21] P. Panda, A. Ankit, P. Wijesinghe, K. Roy, FALCON: Feature driven selective classification for energy-efficient image recognition, IEEE Transactions on Computer-Aided Design of Integrated Circuits and Systems 36 (12).
+29
+
+[22] Z. Yan, H. Zhang, R. Piramuthu, V. Jagadeesh, D. DeCoste, W. Di, Y. Yu, HD-CNN: Hierarchical Deep Convolutional Neural Networks for Large Scale Visual Recognition, in: 2015 IEEE International Conference on Computer Vision (ICCV), IEEE, 2015.
+[23] N. Srivastava, R. R. Salakhutdinov, Discriminative transfer learning with tree-based priors, in: Advances in Neural Information Processing Systems, 2094­2102, 2013.
+[24] P. Kontschieder, M. Fiterau, A. Criminisi, S. R. Bulo, Deep neural decision forests, in: Computer Vision (ICCV), 2015 IEEE International Conference on, IEEE, 1467­1475, 2015.
+[25] K. Simonyan, A. Zisserman, Very deep convolutional networks for largescale image recognition, arXiv preprint arXiv:1409.1556 .
+[26] A. Vedaldi, K. Lenc, Matconvnet: Convolutional neural networks for matlab, in: Proceedings of the 23rd ACM international conference on Multimedia, ACM, 689­692, 2015.
+[27] MATLAB, version 9.2.0 (R2017a), The MathWorks Inc., Natick, Massachusetts, 2017.
+[28] I. J. Goodfellow, D. Warde-Farley, M. Mirza, A. Courville, Y. Bengio, Maxout networks, in: International Conference on Machine Learning, 2013.
+[29] N. Srivastava, G. E. Hinton, A. Krizhevsky, I. Sutskever, R. Salakhutdinov, Dropout: a simple way to prevent neural networks from overfitting., Journal of machine learning research 15 (1) (2014) 1929­1958.
+[30] S. Ioffe, C. Szegedy, Batch normalization: Accelerating deep network training by reducing internal covariate shift, in: International Conference on Machine Learning, 448­456, 2015.
+[31] L. Hertel, E. Barth, T. Kaster, T. Martinetz, Deep convolutional neural networks as generic feature extractors, in: 2015 International Joint Conference on Neural Networks (IJCNN), IEEE, 2015.
+[32] K. He, X. Zhang, S. Ren, J. Sun, Deep residual learning for image recognition, in: Proceedings of the IEEE conference on computer vision and pattern recognition, 770­778, 2016.
+30
+
+

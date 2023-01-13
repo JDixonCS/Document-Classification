@@ -1,0 +1,786 @@
+Ranking Related News Predictions
+
+Nattiya Kanhabua
+Dept. of Computer Science Norwegian University of Science and Technology Trondheim, Norway
+nattiya@idi.ntnu.no
+
+Roi Blanco
+Yahoo! Research Barcelona, Spain
+roi@yahoo-inc.com
+
+Michael Matthews
+Yahoo! Research Barcelona, Spain
+mikemat@yahoo-inc.com
+
+ABSTRACT
+We estimate that nearly one third of news articles contain references to future events. While this information can prove crucial to understanding news stories and how events will develop for a given topic, there is currently no easy way to access this information. We propose a new task to address the problem of retrieving and ranking sentences that contain mentions to future events, which we call ranking related news predictions. In this paper, we formally define this task and propose a learning to rank approach based on 4 classes of features: term similarity, entity-based similarity, topic similarity, and temporal similarity. Through extensive evaluations using a corpus consisting of 1.8 millions news articles and 6,000 manually judged relevance pairs, we show that our approach is able to retrieve a significant number of relevant predictions related to a given topic.
+Categories and Subject Descriptors
+H.3.3 [Information Storage and Retrieval]: Information Search and Retrieval--Retrieval models; H.3.4 [Information Storage and Retrieval]: Systems and Software--Performance evaluation (efficiency and effectiveness)
+General Terms
+Algorithms, Experimentation, Performance
+Keywords
+News predictions, Future events, Sentence retrieval and ranking
+1. INTRODUCTION
+Predicting the future has long been the holy grail in the financial world. The leaders of large organizations need to
+Work performed while intern at Yahoo! Research
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for prof t or commercial advantage and that copies bear this notice and the full citation on the f rst page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specif c permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+analyze information related to the future in order to identify the key challenges that can directly affect their organizations. However, it is not just businesses that care about the future - all people have anticipation and curiosity about the future. Canton [8] describes the future trends that can influence our lives, our jobs, our businesses, and even our world. These include the energy crisis, the global financial crisis, politics, health care, science, securities, globalization, climate changes, and technologies. When people read news stories on any of these topics whether it is an article about war in the middle east or the latest health care plan, they are naturally curious about potential future events. How long will the war last? How much will it cost? What happens if we do nothing at all? This obsession with the future is also reflected in the news articles themselves - our analysis of one year worth of news from over 100 sources indicates that nearly one third of news articles contain at least one statement made about a future date.
+Accessing this information in an intuitive way would greatly improve how people read and understand news. In this paper, we define a new task we call ranking related news predictions that directly addresses this problem by finding all predictions related to a news story in a news archive and ranking them according to their relevance to the news story. This task is motivated by the desire of news sites to increase user engagement by providing content that directly addresses the information needs of users. By providing links to relevant content, new sites can keep users on their site longer thus increasing the likelihood that users will click on revenue generating links and also improving user satisfaction. For a wide range of news events from natural disasters to political unrest in the middle east, the information need - the question most on people's minds - is what is going to happen next. This new task is a first step toward helping people answer this very question by finding and linking to predictions that are relevant to the user.
+Our query is extracted from a news article currently read by a user, and is composed of a bag of entities or terms. Using an automatically-generated query, predictions are retrieved, ranked over the time dimension, and presented to the user. Note that there are a number of future-related information analyzing tools including Recorded Future1, and Time Explorer [22]. Recorded Future extracts predictions from different sources (news publications, blogs, trade publications, government web sites, and financial databases). A user creates a query by selecting a topic of interest (e.g. a topic about "Financial Markets"), and then specifying an en-
+1 https://www.recordedfuture.com/
+
+755
+
+tity (people, companies, or organizations) from a set of "predefined" entities. The system will then retrieve predictions related to the selected topic and entity. A major difference with our system is that Recorded Future requires a query specified in advance, while our system automatically creates a query for the user based on the news article being read and it is not limited to "predefined" entities. Time Explorer is a search engine that allows users to see how topics have evolved over time and how they might continue to evolve in the future. The system extracts predictions from document collections and allows users to search for them using ad-hoc queries. However, neither Time Explorer nor Recorded Future provide details of how predictions are ranked nor do they evaluate performance in a formal setting as we do here.
+The main contributions of this paper are: 1) the first formalization of the ranking related news predictions task, 2) an evaluation dataset with over 6000 relevance judgments from the New York Times Annotated Corpus2 with queries that are selected from real-world future trends [8] 3) a learned ranking model incorporating four classes of features including term similarity, entity-based similarity, topic similarity, and temporal similarity 4) an in-depth analysis of feature selection to guide further research in the ranking related news predictions task.
+The organization of the rest of the paper is as follows. In Section 2, we explain our system architecture, and outline the models for annotated documents, predictions as well as queries. In Section 3, we propose four classes of features used for learning a ranking model. In Section 4, we describe our ranking model. In Section 5, we evaluate the proposed ranking model. In Section 6, we give an overview of related work. Finally, in Section 7, we conclude and outline future work.
+2. PROBLEM DEFINITION
+In this section, we outline the system architecture, and give the formalization of the models for annotated documents, predictions, and queries.
+2.1 System Architecture
+Figure 1 depicts our system which retrieves a set of predictions (sentences containing future dates) related to a given news article. Predictions can be extracted from a temporal document collection ­ any collection that contains timestamped documents, e.g., personal emails, news archives, company websites and blogs. In this work, we automatically extract predictions from news archives using different annotation tools. Our document annotation process includes tokenization, sentence extraction, part-of-speech tagging, named entity recognition, and temporal expression extraction. The result of this process is a set of sentences annotated with named entities and temporal expressions, which will be indexed as predictions for further processing or retrieval.
+A key component of the annotation process is the extraction of temporal expressions using a time and event recognition algorithm. The algorithm extracts temporal expressions mentioned in a document and normalizes them to dates so they can be anchored on a timeline. As explained in [1], there are three types of temporal expressions: explicit, im-
+2 http://www.ldc.upenn.edu/Catalog/docs/LDC2008T19/new_york_
+times_annotated_corpus.pdf
+
+Figure 1: Prediction retrieval system architecture.
+plicit and relative. An explicit temporal expression mentioned in a document can be mapped directly to a time point or interval, such as, dates or years on the Gregorian calendar. For example, "July 04, 2010" or "January 01, 2011" are explicit temporal expressions. An implicit temporal expression is given in a document as an imprecise time point or interval. For example, "Independence Day 2010" or "New Year Day's 2011" are implicit expressions that can be mapped to "July 04, 2010" or "January 01, 2011" respectively. A relative temporal expression mentioned in a document can be resolved to a time point or interval using a time reference - either an explicit or implicit temporal expressions mentioned in a document or the publication date of the document itself. For example, the expressions "this Monday" or "next month" are relative expressions which we map to exact dates using the publication date of the document.
+Instead of having an explicit information need provided, we automatically generate a query. In this case, we assume that the user's information needs lie in the news article being read by the user, and a query will be extracted from this news article (further details are given in Section 2.4). For a given news article, we retrieve predictions that are relevant to the news article, that is, relevant sentences containing future dates with respect to the publication date of the news article being read.
+Retrieved predictions are ranked by the degree of relevance, where a prediction is "relevant" if it is future information about the topics of the news article. Note that we do not give any specific instructions about how the dates involved are related to relevance. Nevertheless, we hypothesize that predictions extracted from more recent documents are more relevant. In this paper, we use a machine learning approach [20] for learning the ranking model of predictions. This involves identifying different classes of features (see Section 3) to measure the relevance of a prediction with respect to the news article.
+2.2 Annotated Document Model
+Our document collection contains a number of news articles defined as C = {d1, . . . , dn}. We treat each news article as a bag-of-words (an unordered list of terms, or features), d = {w1, . . . , wn}. time(d) is a function given the creation or publication date of d. Some of our proposed features are extracted from annotated documents, which are defined
+
+756
+
+Table 1: Example of a prediction with field/value pairs.
+
+Field
+
+Value
+
+id parent id title text
+context
+entity future date pub date
+
+1136243 1 1136243 Gore Pledges A Health Plan For Every Child Vice President Al Gore proposed today to guarantee access to affordable health insurance for all children by 2005, expanding on a program enacted two years ago that he conceded had had limited success so far. Mr. Gore acknowledged that the number of Americans without health coverage had increased steadily since he and President Clinton took office. Al Gore 2005 1999/09/08
+
+as follows. Each document d, has an associated annotated document d^, which will consist of three sets, d^e, d^t, d^s: a set of named entities d^e = {e1, . . . , en}, where each entity ei  E and E is the complete set of entities (typed as person, location, and organization) in the collection; a set of annotated temporal expressions d^t = {t1, . . . , tm} and a set of sentences d^s = {s1, . . . , sz}
+2.3 Prediction Model
+A prediction p can be viewed as a sentence containing field/value pairs of annotation information and we define dp as the parent document where p is extracted from. We define several fields for a prediction including id, parent id, title, entity, future date, pub date, text, and context. The field id specifies a prediction's unique number, parentid and title represent a unique number and the title of dp respectively entity contains a set of annotated entities pentity  d^e, future date consists of "future" temporal expressions pfuture annotated in p, pub date is the publication date of the parent document dp and text is a prediction's text ptxt or the sentence of p. Note that each prediction must contain at least one "future" temporal expression, that is, pfuture = . In addition, we explicitly model the context of the prediction pctx, represented by the field context and defined as surrounding sentences of the main sentence [6]. In our work, we define the context pctx as the sentence immediately before and the one immediately after ptxt. Table 1 contains an example of a prediction with its field/value pairs.
+2.4 Query Model
+As mentioned earlier, a query q is automatically generated from a news article being read dq; q is composed of two parts: keywords qtext, and the time of query qtime. The keywords qtext are extracted from dq in three ways resulting in three different types of queries.
+The first type of query is a bag of entities, noted as "entity query" or QE where its qtext is composed of the top-m entities (ranked by frequency) extracted from dq. Intuitively, we want to know whether using only key entities frequently mentioned in the news article can retrieve relevant predictions with high precision or not. For example, given an actual document about "President Bush and the Iraq war", we
+
+extract QE with qtext = George Bush, Iraq, America . At retrieval time, qtext will be matched with the entity field of the predictions.
+The second query is denoted "term query" or QT where its qtext is composed of top-n terms (ranked by term weighting, i.e., TF-IDF) extracted from dq. QT is considered a bag of terms important to both dq (locally) and the whole collection (globally). In contrast to the previous query type, QT aims at retrieving predictions related to the topics of news article, which can be represented as a set of informative terms. As an example, the QT with qtext = poll, bush, war, iraq is extracted from the same document used in the QE example above. In this case, qtext will be matched with the text field of the predictions.
+The last type is called "combined query" or QC where its qtext is a combination of both top-m entities and top-n terms formed by concatenating QE and QT . We discuss how we select top-m and top-n in Section 5.
+The last component of the query is the temporal criteria or qtime used for retrieving predictions on the time dimension; qtime is composed of two different time constraints. The first constraint is specified in order to retrieve only predictions that are future relative to the publication date of query's parent article, or time(dq). The second constraint indicates that those predictions must belong to news articles published before time(dq). Both time constraints will be represented using a time interval, i.e., [tb, te], where tb is a beginning time point and te is an ending time point, and te > tb. In all cases, the first constraint is (time(dq), tmax], and the second constraint is [tmin, time(dq)], where (time(dq), tmax] = [time(dq), tmax] - {time(dq)}, and tmax and tmin are the maximum time in the future and the minimum time in the past respectively. At retrieval time, the first constraint will be matched with the field future date of predictions, whereas the second constraint will be matched with the field pub date of predictions.
+3. FEATURES
+In this section, we present features used for learning a ranking model for related news predictions. The model will be described in Section 4. We propose several classes of features to capture the similarity between a news article query q and a prediction p, i.e., term similarity, entity-based similarity, topic similarity, and temporal similarity. The detailed description of each class will be given next.
+3.1 Term Similarity
+Since a prediction is defined with multiple fields, we employ the fielded searching provided with Apache Lucene search engine. The first term similarity feature retScore is the default similarity scoring function3 of Lucene, which is a variation of the tf-idf weighting scheme.
+A disadvantage of retScore is that it will not retrieve any predictions that do not match the query terms. This issue is exacerbated in sentence retrieval by the fact that we have to retrieve short fragments of text which might refer to the query terms using anaphora or other linguistic phenomena. One technique to overcome this problem is to use query expansion/reformulation using synonyms or different words with very similar meanings. It has also been shown that
+3 http://lucene.apache.org/java/2_9_3/api/core/org/apache/lucene/
+search/Similarity.html
+
+757
+
+extending a sentence structure by its surrounding context sentences and weighting them using a field aware ranking function like bm25f consistently improves sentence retrieval [6]. Therefore, rather than reformulating a query, we will retrieve a prediction by looking at the context and title fields, in addition to the text field. Thus, even if the text field does not match exactly with a query term, p can receive a score if either the context or title field match the query term.
+In our case, instead of weighting differently keyword matches in the title or body of a Web-page, we assign a different importance to matches in the sentence itself or its context. The second term similarity feature bm25f can be computed as follows.
+
+bm25f(q,
+
+p, F )
+
+=
+
+X
+wi q
+
+weight(wi, p) k1 + weight(wi, p)
+
+·
+
+idf(wi)
+
+weight(wi, p)
+
+=
+
+X
+f F
+
+freq(wi, f ) · boost(f )
+
+(1 - bf )
+
++
+
+bf
+
+·
+
+lf avlf
+
+(1)
+
+idf(wi)
+
+=
+
+log
+
+NP - nwi + 0.5 nwi + 0.5
+
+where lf is the field length, avl f is the average length for a field f , bf is a constant related to the field length, k1 is a free parameter and boost(f ) is the boost factor applied to a field f . NP is the total number of predictions and nwi is the number of prediction containing wi, and F = {text, context, title}. We discuss parameter settings in Section 5.1.
+
+3.2 Entity-based Similarity
+
+This feature class is aimed at measuring the similarity between q and p by measuring the similarity of the entities they each contain. Note that, this class is only applicable for a query consisting of entities, that is, QE and QC , and it is ignored for QT . The first feature entitySim compares a string similarity between the entities of q and pentity using the Jaccard coefficient, which can be computed as follows.
+
+entitySim(q, p) = |q  pentity|
+
+(2)
+
+|q  pentity|
+
+where pentity is a set of entities, |q  pentity| and |q  pentity| are the size of intersection and union of entities of q and p.
+Thus, the higher the overlap between the entities of a prediction and the query, the higher the prediction will be ranked for the query. We also want to rank predictions by using features that are commonly employed in an entity ranking task. For example, an entity is relevant if it appears in the title of a document, or it always occurs as a subject of sentence. We will employ entity ranking features by assuming that the more relevant entities a prediction contains, the more relevant it is. The entity-based features will be extracted and computed relative to the parent document of a prediction (dp) or on the prediction itself (p).
+Features extracted from documents are title, titleSim, senPos, senLen, cntSenSubj, cntEvent, cntFuture, cntEventSubj, cntFutureSubj, timeDistEvent, timeDistFuture and tagSim. Features extracted from predictions are isSubj and timeDist. The value of all features is normalized to range from 0 to 1, unless otherwise stated. First, the feature title indicates whether an entity e is in the title of dp.
+
+title(e, dp) = isInTitle(e, dp)
+
+(3)
+
+A value is 1 if e appears in the title of dp, or 0 if otherwise. titleSim is a string similarity between e and the title.
+
+titleSim(e, dp)
+
+=
+
+|e  title(dp)| |e  title(dp)|
+
+(4)
+
+senPos gives the position of the 1st sentence where e occurs in dp.
+
+senPos(e, dp)
+
+=
+
+len(dp)
+
+- pos(firstSen(e)) len(dp)
+
+(5)
+
+where len(dp) gives the length of dp in words. pos(sy) is the position of a sentence sy in dp. senLen gives the length of
+the first sentence of d that contains e.
+
+senLen(e, dp) = len(firstSen(e))
+
+(6)
+
+maxsydp len(sy )
+
+cntSenSubj is the number of sentences where e is a subject. We run a dependency parser over the sentences in order to determine whether an entity is a subject of not.
+
+cntSenSubj(e, dp)
+
+=
+
+1 |Se|
+
+X
+sy Se
+
+isSubj(e, sy)
+
+(7)
+
+where Se is a set of all sentences of e in dp. isSubj(e, sy) is 1 if e is a subject of sy. cntEvent is the number of event sentences (or sentences annotated with dates) of e.
+
+cntEvent(e, dp)
+
+=
+
+1 |Edp|
+
+XX isEqual(sz, sy)
+sz Edp sy Se
+
+(8)
+
+where Edp is a set of all event sentences in dp. isEqual(sz, sy) returns 1 if sz equals to sy. cntFuture is the number of
+sentences with a mention of a future date. cntEventSubj is
+the number of event sentences that e is a subject.
+
+cntEventSubj(e, dp)
+
+=
+
+1 |Edp|
+
+X isSubj(e, sz)
+sz Edp
+
+(9)
+
+Similarly, cntFutureSubj is the number of future sentences
+that e is a subject. timeDistEvent is a measure of the distance between e and all dates in dp.
+
+timeDistEvent(e, dp)
+
+=
+
+1 |Ee|
+
+X avg(normist(e, sz))
+sz Ee
+
+(10)
+
+where
+
+normDist(e, sz) =
+
+1P
+|Tsz | tk Tsz
+
+. maxDist(sz )-dist(e,tk)
+maxDist(sz )
+
+dist(wi, wj) = |pos(wi) - pos(wi)| - 1. Ee is a set of all event
+
+sentences of e, and Tsz is a set of all temporal expressions
+
+in sz. dist(wi, wj) is a distance in words between terms wi
+
+and wj. maxDist(sz) is a maximum distance between terms in sz. timeDistFuture(e, dp) is a distance of e and all future dates in dp computed similarly to timeDistEvent. tagSim is
+
+a string similarity between e and an entity tagged in dp.
+
+tagSim(e, dp) = max |e  en| enNdp |e  en|
+
+(11)
+
+where Ndp is a set of all entities tagged in dp. tagSim is only applicable for a collection provided with manually assigned tags (e.g., the New York Times Annotated Corpus).
+isSubj (e, p) is 1 if e is a subject with respect to a prediction p, and timeDist(e, p) is a distance of e and all future dates in p computed similarly to timeDistEvent. All features in this class are parameter-free.
+
+758
+
+3.3 Topic Similarity
+This class of features is aimed to compare the similarity between q and p on a higher level by representing them using topics. Examples of topics are "health care reform", "financial crisis", and "global warming". Several works [7, 32] have proposed to model a document with a low dimensionality, or to use topics rather than terms. We will use latent Dirichlet allocation (LDA) [7] to model a set of topics. LDA is based on a generative probabilistic model that models documents as mixtures over an underlying set of topic distributions. In general, topic modeling consists of two main steps. The first step is to learn topic models from training data. LDA requires the parameter Nz or the number of topics to be specified. After a model is trained, the next step is to infer topics from the learned topic model outputting a topic distribution for the prediction.
+Wei and Croft [32] incorporated topic modeling for ad-hoc retrieval, and showed that linearly combining LDA with the query likelihood model outperformed non-topic models like the unigram model. We incorporate LDA into the retrieval process differently from Wei and Croft in two ways. First, instead of combining LDA scores with the original retrieval score, we represent q and p as vectors of topic distributions and compute the topic-based similarity using a cosine similarity between two vectors. Second, we explicitly take the time dimension into modeling topics because topics distributions can evolve over time. Intuitively, topics keep changing over time according to different trends.
+We apply topic modeling to future retrieval in three main steps: 1) learning a topic model, 2) inferring topic models, and 3) measuring topic similarity.
+Learning a topic model. We take into account the time dimension for learning topic models. As shown in Figure 2, we create training data by partitioning the document collection DN into sub-collections (or document snapshots) with respect to time. In other words, we group documents by year of publication, and randomly select documents as training data, called a training data snapshot Dtrain,tk at time tk. Note that, we can also use more sophisticated approaches for modeling topics over time as presented in [31]. However, we will leave this study for future work.
+Topic model inference. Using learned models from the previous step, we determine the topics for q and p from their contents. This process is called topic inference, which represents a query and a prediction by a distribution of topics (probabilities). For example, given a topic model , a prediction p can be represented as p = p(z1), . . . , p(zn), where p(z) gives a probability of a topic z obtained from . Because our topic models are learned from different time periods, a question is which model snapshot we use for inference. Note that, q and p must be inferred from the same model snapshot in order to be comparable. We select a topic model for inferring in two ways. First, we select a topic model from a time snapshot time(dq) which corresponds to the publication date of the news article parent of q. Second, a topic model is selected from a time snapshot t which corresponds to the publication date of the news article making prediction p, or the time(dp). Moreover, a prediction p will be inferred in three different ways depending on the contents used: 1) only text ptxt, 2) both text ptxt and context pctx, and 3) the parent document dp. For a query q, the contents of its parent document dq will be used for inference.
+In addition to using all Nz topics for inference, we will
+
+also select only top-k topics ranked by the importance. The idea is that measuring the topic similarity using too many topics may not be as accurate as using only the most important topics. We use coverage and variation proposed in [29] for ranking topics. A topic coverage µ(z) assumes that topics that cover a significant portion of the corpus content are more important than those covering little content, while a topic variation (z) considers topics that appear in all the documents to be too generic to be interesting, although they have significant content coverage. µ(z) and (z) are computed using a mean and a standard deviation over topic distributions, and the final score for ranking topic is a multiply of µ(z) and (z). The calculation µ(z) and (z) for a topic z at time tk is given as:
+
+1
+
+ND
+X
+
+µ(z)
+
+=
+
+PND
+i=1
+
+len(di)
+
+len(di) · pi(z)
+i=1
+
+(12)
+
+v
+
+(z)
+
+=
+
+u u
+
+1
+
+t
+
+PND
+i=1
+
+len(di)
+
+ND
+X
+i=1
+
+len(di)
+
+·
+
+(pi(z)
+
+-
+
+µ(z))2
+
+(13)
+
+where ND is the number of documents in a training set at time tk, or |Dtrain,tk |. pi(z) gives a probability of a topic z in a document di and len(di) is the document length of di.
+A final score for ranking a topic z can be computed as:
+
+rank(z) = µ(z)1 · (z)2
+
+(14)
+
+where the parameters 1 and 2 indicate the importance of µ(z) and (z). If 1 = 1 and 2 = 0, the ranking is determined purely by topic coverage. On the contrary, if 1 = 0 and 2 = 1, the ranking emphasizes topic variance.
+Measuring topic similarity. Given a topic model , the topic similarity can be calculated using a cosine similarity between a topic distribution of query q and a topic distribution of prediction p as follows.
+
+topicSim(q, p) = q · p ||q|| · ||p||
+
+=
+
+P
+zZ
+
+qz
+
+·
+
+pz
+
+q P
+zZ
+
+q2 z
+
+·
+
+q P
+zZ
+
+p2z
+
+(15)
+
+We denote a topical feature using LDAi,j,k, where i is
+one of the two different methods for selecting model snap-
+shot: i = 1 for selecting a topic model from a time snapshot time(dq), and i = 2 for selecting from a time snapshot time(dp); j is one of the three different ways of using the contents for inference: ptxt, pctx, or dp. Finally, k refers
+to whether we use all of only top-k of topics for inference.
+Thus, this results in 12 (=3*2*2) LDA-based features in to-
+tal.
+
+3.4 Temporal Similarity
+As mentioned earlier, we explicitly exploit temporal expressions in ranking. To measure the temporal similarity between a query and a prediction, we employ two features proposed in previous work: TSU [16] and FS [15].
+We will represent our model of time using a time interval [b, e] having a begin point b and the end point e. The actual value of any time point, e.g., b or e in [b, e], is an integer or the number of time units (e.g., milliseconds or days) passed (or to pass) a reference point of time (e.g., the UNIX epoch).
+
+759
+
+where
+
+f1(time(dp))
+
+is
+
+equal
+
+to
+
+" time(dp)-1 "n
+time(dq )-1
+
+if
+
+time(dp)
+
+=
+
+time(dq), or 1 if time(dp) = time(dq).
+
+We define the second temporal feature based on a fuzzy set
+
+by using the prediction's future dates pfuture and the publication date of query article time(dq). Similarly, if a prediction
+
+p has more than one future date, a final score will be av-
+
+eraged over scores of all dates pfuture. The second temporal
+
+feature FS2 is defined as follows.
+
+Figure 2: LDA topic snapshots based on time.
+
+The first feature TSU is defined as the probability of generating the time of query qtime from the document creation date time(d). TSU can be computed as follows.
+
+TSU
+
+=
+
+DecayRate·
+
+|qtime -time(d)| µ
+
+(16)
+
+where DecayRate and  are constants, 0 < DecayRate < 1
+
+and  > 0. µ is a unit of time distance. Intuitively, the prob-
+
+ability obtained from this function decreases proportional to
+
+the distance between qtime and time(d), that is, a document with its creation date closer to qtime will receive a higher probability than a document with its creation date farther
+
+from qtime. We apply TSU for measuring the temporal similarity be-
+
+tween q and p based on two assumptions. First, we assume that p is more likely to be relevant if its parent time time(dp) is closer to the time of query article time(dq). Our first tem-
+
+poral feature, denoted TSU1, will be calculated similarly to Equation 16 resulting the following function.
+
+TSU1(q,
+
+p)
+
+=
+
+DecayRate·
+
+|time(dq )-time(dp )| µ
+
+(17)
+
+The second assumption, denoted TSU2, is that a prediction is more likely to be relevant if its future dates pfuture are closer to the publication date of query article time(dq). If there are more than one future dates associated to p, a final score will be averaged over scores of all future dates pfuture. The temporal distance of TSU2 of q and p is defined as follows.
+
+TSU2(q, p) =
+
+1 Nf
+
+X
+
+DecayRate·
+
+|time(dq µ
+
+)-tf
+
+|
+
+tf pfuture
+
+(18)
+
+where tf is a future date in pfuture and Nf is the number of all future dates.
+In addition to TSU1 and TSU2, we can measure the temporal similarity between q and p using a fuzzy membership function, which is originally proposed by Kalczynski and Chou [15].
+We adapt the original fuzzy set function in [15] by using its parent time time(dp) and the time of query article time(dq). We denote this feature as FS1, and it can be computed as follows.
+
+8 >0 < FS1(q, p) = f1(time(dp))
+> :1
+
+if time(dp) < 1  time(dp) > time(dq ), if time(dp)  1  time(dp) < time(dq ), if time(dp) = time(dq ).
+(19)
+
+8
+
+1
+
+>0 X<
+
+FS2(q, p)
+
+=
+
+Nf
+
+1 tf pfuture >:f2(tf )
+
+if tf < time(dq)  tf > 2, if tf = time(dq), if tf > time(dq)  tf  2.
+(20)
+
+Nf is the number of all future dates in pfuture, and tf is a fu-
+
+ture
+
+date,
+
+i.e.,
+
+tf
+
+
+
+pfuture .
+
+f2(tf )
+
+is
+
+equal
+
+to
+
+" 2-tf "m
+2-time(dq )
+
+if tf = time(dq), or 1 if tf = time(dq). n and m are con-
+
+stants. 1 and 2 are the minimum and maximum time of
+
+reference with respect to qtime. 1 is calculated by subtract-
+
+ing the time offset smin from from qtime , and 2 is calculated
+
+by adding the offset smax to qtime.
+
+4. RANKING MODEL
+Given a query q, we will rank a prediction p using a ranking model obtained by training over a set of labeled query/prediction pairs using a learning algorithm. An unseen query/prediction pair (q, p) will be ranked according to a weighted sum of feature scores:
+
+N
+score(q, p) = X wi × xi
+i=1
+
+(21)
+
+where xi are the different features extracted from p and q, N is the number of features, and wi are the weighting coefficients. The goal of the algorithm is to learn the weights wi using a training set of queries and predictions, in order to minimize a given loss function. Learning to rank algorithms can be categorized into three approaches: pointwise, pairwise, and listwise approaches [20]. The pointwise approach assumes that retrieved documents are independent, so it predicts a relevance judgment for each document and ignores the positions of documents in a ranked list. The pairwise approach considers a pair of documents, and relevance prediction is given as the relative order between them (i.e., pairwise preference). The listwise approach considers a whole set of retrieved documents, and predicts the relevance degrees among documents. For a more detailed description of each approach, please refer to [20].
+We employ the listwise learning algorithm SVMMAP [34]. The algorithm trains a classifier using support vector machines (SVM), and it determines the order of retrieved documents in order to directly optimize Mean Average Precision (MAP). In addition, we also experimented with other learned ranking algorithms: RankSVM [14], SGD-SVM [36], PegasosSVM [28], and PA-Perceptron [9]. However, these algorithms do not perform as well as SVMMAP in our experiments. Thus, we will only discuss the results obtained from SVMMAP in the next section.
+
+760
+
+Table 2: Examples of future-related topics.
+
+Politics
+
+Environment Space
+
+president election global warming Mars
+
+Iraq war
+
+energy efficiency Moon
+
+Science earthquake tsunami
+
+Physics particle Physics Big Bang
+
+Health bird flue influenza
+
+Business subprime financial crisis
+
+Sport Olympics World cup
+
+Technology Internet search engine
+
+5. EXPERIMENTS
+In this section, we evaluate the retrieval effectiveness of our proposed ranking model using three different query formats. We will first describe the experimental settings followed by an explanation of the results and a detailed discussion.
+5.1 Experimental Settings
+Temporal document collection. We used the New York Times Annotated Corpus for our document collection, which contains 1.8 million documents covering the period from January 1987 to June 2007. In order to extract predictions and features, a series of language processing tools, including OpenNLP (for tokenization, sentence splitting and part-of-speech tagging, and shallow parsing), the SuperSense tagger (for named entity recognition) and TARSQI Toolkit (for extracting temporal expressions from documents). Given the importance of time to our system, we note that the temporal expression extraction of TARSQI has a reported performance of 0.81 F1 on the Time Expression Recognition and Normalization task4.
+We employed the Apache Lucene search engine for both indexing and retrieving predictions. The statistics of extracted data are as follows. There are 44,335,519 sentences and 548,491 are predictions. There are 939,455 future dates, and an average future date per prediction is 1.7 and the standard deviation is 0.92. Among 1.8 million documents, more than 25% of all documents contain at least one prediction (i.e., a reference to the future). In order to determine this percentage over a broader range of news sources, we performed the same analysis on 2.5 million documents from over 100 news sources from Yahoo! News for the one year period from July 2009 to July 2010 and found over 32% of the documents contained at least one prediction.
+Future-related queries. There is no gold standard available to evaluate the task of ranking related news prediction. We manually selected 42 query news articles from the New York Times that cover the future-related topics shown in Table 2. The actual queries (QE, QT and QC ) used for retrieving predictions are extracted from these news articles.
+Relevance assessments. Human assessors were asked to evaluate query/prediction pairs (e.g., relevant or nonrelevant) using 5 levels of relevance: 4 for excellent (very relevant prediction), 3 for good (relevant prediction), 2 for fair (related prediction), 1 for bad (non-relevant prediction), and 0 for non prediction (incorrect tagged date). The last option was presented because there are predictions incorrectly annotated with time (this is an error produced by
+4 http://timex2.mitre.org/tern.html
+
+the annotation tools). More precisely, an assessor was asked to give a relevance score Grade(q, p, t) where (q, p, t) is a triple of a query q, a prediction p, and a future date t in p. Consider the following prediction about the topic "global warming" and the publication date of the news article is 2007/02/21:
+Formal ratification of the pact ­ which commits the union to reduce emissions of "greenhouse gases" by 8 percent of 1990 levels during the five-year period from 2008 through 2012 ­ now goes to the European Council of heads of state and government, which could act as early as this month at the union summit in Barcelona.
+The prediction contains two future dates (as highlighted in bold). Hence, an assessor has to give judges to two triples corresponding to q, p and both future dates. A triple (q, p, t) is considered relevant if Grade(q, p, t)  3, and it is considered non-relevant if 1  Grade(q, p, t)  2. Relevance level 0 is not included in the evaluation5. These judgments are normalized by a query/prediction pair (q, p) since we are interested in presenting a prediction for all future dates, regardless of their number. That is, a query/prediction pair (q, p) is relevant if and only if there is at least one relevant triple (q, p, t), and a prediction is non-relevant if all triples are non-relevant. Our assumption is that predictions extracted from more recent documents are more relevant.
+In total, assessors judged 52 queries and for each one of them we retrieved up to 100 sentences that contained predictions. On average 94 sentences with future mentions were retrieved, with an average of 1.2 future dates per prediction. Finally, assessors evaluated 4,888 query/prediction pairs (approximately 6,032 of triples)6.
+Our machine learning ranking models operate in a supervised manner, and as such, they need training data for learning. We created training data using cross validation by randomly partitioned query articles into NF folds. We used NF - 1 query/prediction from other folds for training a ranking mode and the remaining fold for testing. We removed queries with zero relevant results, and we obtained NF = 3, 4, 5 for QE, QC , QT respectively.
+Parameter setting. We set the boost factors on an independent experiment as boost(text) = 5.0, boost(context) = 1.0, and boost(title) = 2.0. We use the recommended values for the constants b = 0.75 for all fields, and k1 = 1.2 [26]. For LDA-based features, we trained a yearly model snapshot by selecting 4% of all documents in each year. For each document, we filtered out terms occurring in less than 15 documents and the 100 most common terms. We learn a topic model for each document snapshot by employing Stanford Topic Modeling Toolbox7, and the number of topics for training LDA Nz is fixed to 500 and the number of topics for inference k is 200. A learning algorithm we use is the collapsed variational Bayes approximation to the LDA objective (CVB0LDA) [2]. All other parameters are default values of the topic modeling. Using CVB0LDA
+5We are interested in assessing the performance of the ranking algorithm and not the annotation tools. However, we note the overall system will be impacted by the annotation errors. 6The evaluation collection we have created is available for download at http://www.idi.ntnu.no/~nattiya/data/sigir2011/ futurepredictions.zip. 7 http://nlp.stanford.edu/software/tmt/tmt- 0.3/
+
+761
+
+0.6
+
+P10
+
+MAP
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 top-m entities
+
+0.6
+
+P10
+
+MAP
+
+0.5
+
+0.4
+
+0.3
+
+0.2
+
+0.1
+
+0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 top-n terms
+
+Figure 3: P@10 and MAP performance of QE (left) when varying top-m entities, and QC (right) when varying top-n terms.
+
+Table 3: The effectiveness of each method when using all queries; , indicates statistical improvement over the corresponding simple methods using t-test with significant at p < 0.1,p < 0.05 respectively.
+
+Method P@1 P@3 P@10 MRR MAP
+
+QE
+
+0.300 0.333 0.290 0.473 0.219
+
+QT
+
+0.643 0.579 0.455 0.760 0.385
+
+QC
+
+0.500 0.561 0.427 0.656 0.231
+
+Re -QE Re -QT Re -QC
+
+0.500 0.499 0.360 0.629 0.266 0.738 0.619 0.462 0.831 0.387 0.773 0.682 0.455 0.841 0.271
+
+required high CPU and memory, but needed fewer iterations and had faster convergence rates than a collapsed Gibbs sampler [12], which requires less memory during training.
+For both T SU1 and T SU2, DecayRate = 0.5,  = 0.5 and µ = 2y are used where y the number of years. For both F S1 and F S2, n = 2, m = 2, smin = 4y and smax = 2y are used. So, 1 = time(dq) - 4y and 2 = time(dq) + 2y.
+Methods for comparison. We experiment with the three different ways of constructing the query QE, QT , and QC . The baseline for retrieval is Lucene's default ranking function and our queries incorporate two time constraints as explained in Section 2.4. We re-rank the baseline results using SVMMAP yielding Re-QE, Re-QT and Re-QC . For the application of ranking related news predictions, we prefer top-precision retrieval performance metrics over recall-based metrics: a user will be typically interested in a few top predictions even though there are many predictions retrieved. Consequently, we envision a user interface that contains little space for displaying related predictions. Thus, we will measure the retrieval effectiveness by the precision at 1, 3 and 10 (P@1, P@3, and P@10 respectively), Mean Reciprocal Rank (MRR), and Mean Average Precision (MAP). We report the average performance over NF folds to measure the overall performance, for each query type.
+5.2 Experimental Results
+The three types of queries (QE,QT , and QC ) are composed of either top-m entities or top-n terms, or both. We first establish which are good m and n values for each one of the types. Instead of varying m and n in re-ranking, we select the m and n that give a reasonable improvement in a hold-out set (where we randomly divided queries into two folds). Therefore, we will use only one fixed version of m and n for the rest of our experiments. We select the values of m and n by performing a preliminary analysis as follows. First, by looking at P@10 and MAP, we select the value of m that yields the best performance using only QE to retrieve predictions for each varying m. As shown in Figure 3 (left), 9  m  12 give almost no difference in terms of P@10. In spite of that, we choose the number of entities m = 11 because it is slightly better than the other values. Next, we find the optimal value of n by observing the performance of QC when m is fixed to 11 and the value of n is varied. As depicted in Figure 3(right), there is very slight difference in P@10 for 9  n  11; We choose the number of terms n = 10 because it obtains the best in MAP among them.
+The retrieval effectiveness of simple methods and their corresponding re-ranking methods are displayed in Table 3. These results are averaged over queries retrieving at least
+
+one relevant prediction. In general, QT gains the highest effectiveness in all measurements followed by QC and QE and the feature-based re-ranking approach improves the effectiveness for all query types. In addition, Re-QC has the highest effectiveness over other re-ranking methods for P@1 and P@3, while Re-QT gains the highest effectiveness for the rest of all metrics.
+QE and QC pose a problem in not retrieving any relevant result of our judged pool among the first 100 for a large number of queries, which makes it impossible for the machine learning model to improve the ranking. However, we still want to compare the performance between the different variations of the query (QE, QC , QT ). Therefore, we use a subset of queries that contained at least one relevant result among all the different methods. The results are shown in Table 4 where we compare all other methods against QE because we have observed that QE performs worst among them. As seen from the results of each re-ranking method, our proposed features improve the effectiveness for all corresponding simple methods. In particular, the re-ranking method Re-QC outperforms the simple method QE significantly. However, Re-QE did not provide a significant improvement over QE. The results show that, for the same set of queries, using entities alone are limited while terms alone are able to retrieve most of relevant predictions.
+Interestingly, when looking at the same sub-set of queries with relevant predictions, the re-ranking approach Re-QC outperforms every other method, even if the plain retrieval QT is superior to QC . This is an indicator that entity-based features are able to produce higher quality results but only for a certain type of topics. We performed an error analysis to determine why QE is unable to retrieve relevant predictions. In general, QE fails for a topic that cannot be represented using only people, locations, or organizations. For example, for the topic about "the Europeans agreement of gas emissions", the top-5 QE is European Union, Brussels, Finland, Germany, Hungary and the top-5 QT is european, emission, target, climate, brussels . In this case, QE is unable to represent the key terms "emission" and "climate", and thus fails to retrieve many relevant predictions that match those terms.
+Similarly, for the query topic about "Clinton health care reform", QE is represented using the named entity Clinton (the terms "health care" and "reform" are not annotated as entities). When matching, all predictions containing the entity Clinton are matched which will return many documents that are not related to "health care" and "reform".
+
+762
+
+Table 4: The effectiveness of each method when using a subset of queries; ,, indicates statistical improvement over the method QE using t-test with significant at p < 0.1, p < 0.05, p < 0.01 respectively.
+
+Method P@1 P@3 P@10 MRR MAP
+
+QE
+
+0.300 0.333 0.290 0.473 0.219
+
+QT
+
+0.500 0.533 0.430 0.638 0.219
+
+QC
+
+0.600 0.533 0.360 0.727 0.163
+
+Re -QE Re -QT Re -QC
+
+0.500 0.499 0.360 0.629 0.700 0.600 0.410 0.762 1.000 0.714 0.443 1.000
+
+0.266 0.236 0.303
+
+Table 5: Top-5 features with highest weights and lowest weights for each query type.
+
+QE
+Feature
+tagSim FS 1 TSU 2 LDA1,txt,k LDA1,txt,all
+
+Wi
+1.00 0.97 0.88 0.87 0.82
+
+QT
+Feature
+bm25f retScore LDA1,parent,k LDA2,parent,k LDA1,parent,all
+
+Wi
+1.00 0.60 0.55 0.51 0.49
+
+QC
+Feature
+LDA1,parent,k retScore LDA1,parent,all bm25f isSubj
+
+Wi
+1.00 0.99 0.96 0.93 0.87
+
+cntSenSubj cntEventSubj isInTitle cntEventSen querySim
+
+0.01 0.01 0.00 0.00 -0.01
+
+timeDistEvent timeDistFuture cntEventSen cntFutureSen senLen
+
+-0.03 -0.11 -0.12 -0.12 -0.16
+
+cntEventSen querySim cntFutureSen timeDistFuture senLen
+
+-0.02 -0.05 -0.10 -0.14 -0.18
+
+5.3 Feature Analysis
+We analyzed feature weights obtained from the learning algorithm SVMMAP in order to understand better what is the importance of the different features,. Note that, in order to compare the weights among different queries, we performed normalization by diving with the maximum value of all weights for each query. Column wi in Table 5 displays the top-5 features with highest and lowest weights for each query type.
+At least two topic-based features of all query types are in the top-5 features with highest weight, and therefore topicbased features play an important role in the re-ranking model. Although retScore and bm25f measure the similarity on a term level, they help to re-rank predictions when incorporated into the machine learning model. as seen in the top5 features for QT and QC . The feature that received the highest importance value for the QE type is tagSim, which measures the similarity between entities in a prediction and manually tagged entities. This indicates that tagged entities in a query document can precisely represent user information needs. The temporal features FS 1 and FS 1 also play an important role for QE.
+Features in top-5 features with lowest weights are those from the entity-based class. Recall that these features are extracted in order to measure the importance of entities annotated in a prediction with respect to their respective parent documents. However, the results show that these features are not good enough for discriminating between relevant and non-relevant predictions.
+6. RELATED WORK
+Our related work includes sentence retrieval, entity ranking, temporal ranking, and domain-specific predictions.
+Sentence retrieval is the task of retrieving a relevant sentence related to a query. Different application areas of sen-
+
+tence retrieval are mentioned in the book of Murdock [24] and references therein, including, for example, question answering [30], text summarization, and novelty detection. Surdeanu et al. [30] applied supervised learning to rank a set of short answers (sentences) matched a given question (query) by using different classes features. Li and Croft [19] proposed to detect novelty topics by analyzing sentence-level information (sentence lengths, named entities, and opinion patterns). Generally, because sentences are much smaller than documents and thus have limited content compared to documents, the effectiveness of the retrieval of sentences is significantly worse. To address this problem, Blanco and Zaragoza [6] proposed to use the context of sentences in order to improve the effectiveness of sentence retrieval.
+There have been a number shared tasks with the goal of furthering research in the area of entity ranking. For instance, the TREC 2008 Enterprise track was created with the objective to find experts (or people) related to a given topic of interest. The INEX Entity Ranking track [10] was launched with the task of finding a list of relevant entities (represented by Wikipedia articles) for a given topic. Recently, the TREC 2009 Entity track was introduced, and the task is to find related entities (represented by homepages) given a topic (called a source entity). The difference between the TREC 2009 Entity and the previous tracks is that it allows a relation and a target entity type to be explicitly specified. There are various approaches to ranking entities by using language models [4], voting models [21], and entity-based graph models [35].
+Many ranking models exploiting temporal information have been proposed, including [5, 11, 18, 23]. Li and Croft [18] experimented with time-based language models by assigning a document prior using an exponential decay function of its creation date, such that the more recent documents obtain the higher probabilities of relevance. Diaz and Jones [11] build a temporal profile of a query from the distribution of document publication dates. They use time dependent features derived from these profiles that improve the ranking of temporal queries.
+Berberich et al. [5] integrated temporal expressions into query-likelihood language modeling, which considers uncertainty inherent to temporal expressions in a query and in documents, i.e., two temporal expressions can refer to the same time interval even when they are not exactly equal. Metzler et al. [23] mined query logs to identify implicit temporal information needs and presented a time-dependent ranking model for certain types of queries.
+There is much research in domain-specific predictions such as stock market predictions [27, 33] and recommender systems [17, 25]. The first aims at predicting stock price movements by analyzing financial news, while the latter applies collaborative filtering algorithms for recommending books, videos, movie, etc. based on users' interests.
+The future retrieval problem was first presented by BaezaYates [3]. He proposed to extract temporal expressions from news, index news articles together with temporal expressions, and retrieve future information (composed of text and future dates) by using a probabilistic model. A document score is given as a multiplication of a keyword similarity and a time confidence, i.e., a probability that the document's events will actually happen. The limitation of this original work is that it is evaluated using a small data set and only a year granularity is used.
+
+763
+
+The more recent work on the future-related information retrieval is presented by Jatowt et al. [13]. In contrast to our work, they do not focus on relevance and ranking futurerelated information retrieval. They presented an analytical tool for extracting, summarizing and aggregating futurerelated events from news archives, but did not perform an extensive evaluation, only calculating averaged precision on a small set of generated results.
+7. CONCLUSIONS AND FUTURE WORK
+In this paper, we demonstrated that future related information is abundant in news stories and defined the task of ranking related future predictions. The main goal of this task is to improve user access to this information by selecting the predictions from a news archive that are most relevant to a given news article. We created an evaluation dataset with over 6000 relevance judgments and addressed this task using a learning to rank methodology incorporating four classes of features including term similarity, entity-based similarity, topic similarity, and temporal similarity that outperforms a strong baseline system. Finally, we performed an in-depth analysis of feature importance. Possible future work includes time-dependent query classification using query logs, combining multiple sources (Wikipedia, blogs, home pages, and tweets) of future-related information, sentimental analysis for future-related information and evaluating the effectiveness of the predictions in a real-world news application.
+8. ACKNOWLEDGMENTS
+We would like to thank Hugo Zaragoza for his help at the early stages of this paper. This work is partially supported by the EU Large Scale Integrated Project LivingKnowledge (contract no. 231126).
+9. REFERENCES
+[1] O. Alonso, M. Gertz, and R. Baeza-Yates. On the value of temporal information in information retrieval. ACM SIGIR Forum, 41(2):35­41, 2007.
+[2] A. Asuncion, M. Welling, P. Smyth, and Y. W. Teh. On smoothing and inference for topic models. In Proceedings of UAI'2009, 2009.
+[3] R. Baeza-Yates. Searching the future. In Proceedings of ACM SIGIR workshop MF/IR 2005, 2005.
+[4] K. Balog, L. Azzopardi, and M. de Rijke. A language modeling framework for expert finding. Inf. Process. Manage., 45(1):1­19, 2009.
+[5] K. Berberich, S. Bedathur, O. Alonso, and G. Weikum. A language modeling approach for temporal information needs. In Proceedings of ECIR'2010, 2010.
+[6] R. Blanco and H. Zaragoza. Finding support sentences for entities. In Proceeding of SIGIR'2010, 2010.
+[7] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation. J. Mach. Learn. Res., 3:993­1022, March 2003.
+[8] J. Canton. The Extreme Future: The Top Trends That Will Reshape the World in the Next 20 Years. Plume, 2007.
+[9] K. Crammer, O. Dekel, J. Keshet, S. Shalev-Shwartz, and Y. Singer. Online passive-aggressive algorithms. J. Mach. Learn. Res., 7:551­585, 2006.
+[10] G. Demartini, A. P. Vries, T. Iofciu, and J. Zhu. Overview of the INEX 2008 Entity Ranking Track. 2009.
+[11] F. Diaz and R. Jones. Using temporal profiles of queries for precision prediction. In Proceedings of SIGIR'2004, 2004.
+[12] T. L. Griffiths. Finding scientific topics. Proceedings of the National Academy of Science, 101:5228­5235, Jan. 2004.
+
+[13] A. Jatowt, K. Kanazawa, S. Oyama, and K. Tanaka. Supporting analysis of future-related information in news archives and the web. In Proceedings of JCDL'2009, 2009.
+[14] T. Joachims. Optimizing search engines using clickthrough data. In Proceedings of KDD'2002, 2002.
+[15] P. J. Kalczynski and A. Chou. Temporal document retrieval model for business news archives. Inf. Process. Manage., 41, 2005.
+[16] N. Kanhabua and K. Nørv°ag. Determining time of queries for re-ranking search results. In Proceedings of ECDL'2010, 2010.
+[17] N. Lathia, S. Hailes, L. Capra, and X. Amatriain. Temporal diversity in recommender systems. In Proceeding of SIGIR'2010, 2010.
+[18] X. Li and W. B. Croft. Time-based language models. In Proceedings of CIKM'2003, 2003.
+[19] X. Li and W. B. Croft. Improving novelty detection for general topics using sentence level information patterns. In Proceedings of CIKM'2006, 2006.
+[20] T.-Y. Liu. Learning to rank for information retrieval. Found. Trends Inf. Retr., 3(3):225­331, 2009.
+[21] C. Macdonald and I. Ounis. Searching for expertise: Experiments with the voting model. Comput. J., 52(7):729­748, 2009.
+[22] M. Matthews, P. Tolchinsky, R. Blanco, J. Atserias, P. Mika, and H. Zaragoza. Searching through time in the new york times. In Bridging Human-Computer Interaction and Information Retrieval, 2010.
+[23] D. Metzler, R. Jones, F. Peng, and R. Zhang. Improving search relevance for implicitly temporal queries. In Proceedings of SIGIR'2009, 2009.
+[24] V. Murdock. Exploring Sentence Retrieval. VDM Verlag Dr. Mueller e.K., 2008.
+[25] M. J. Pazzani and D. Billsus. The adaptive web. pages 325­341, 2007.
+[26] S. E. Robertson and S. Walker. Some simple effective approximations to the 2-poisson model for probabilistic weighted retrieval. In Proceedings of SIGIR'1994, 1994.
+[27] R. P. Schumaker and H. Chen. Textual analysis of stock market prediction using breaking financial news: The azfin text system. ACM Trans. Inf. Syst., 27:12:1­12:19, March 2009.
+[28] S. Shalev-Shwartz, Y. Singer, and N. Srebro. Pegasos: Primal estimated sub-gradient solver for svm. In Proceedings of ICML'2007, 2007.
+[29] Y. Song, S. Pan, S. Liu, M. X. Zhou, and W. Qian. Topic and keyword re-ranking for lda-based topic modeling. In Proceeding of CIKM'2009, 2009.
+[30] M. Surdeanu, M. Ciaramita, and H. Zaragoza. Learning to rank answers on large online qa collections. In Proceedings of ACL-08: HLT, 2008.
+[31] X. Wang and A. McCallum. Topics over time: a non-markov continuous-time model of topical trends. In Proceedings of KDD'2006, 2006.
+[32] X. Wei and W. B. Croft. Lda-based document models for ad-hoc retrieval. In Proceedings of SIGIR'2006, 2006.
+[33] D. Wu, G. P. C. Fung, J. X. Yu, and Q. Pan. Stock prediction: an event-driven approach based on bursty keywords. Frontiers of Computer Science in China, 3(2):145­157, 2009.
+[34] Y. Yue, T. Finley, F. Radlinski, and T. Joachims. A support vector method for optimizing average precision. In Proceedings of SIGIR'2007, 2007.
+[35] H. Zaragoza, H. Rode, P. Mika, J. Atserias, M. Ciaramita, and G. Attardi. Ranking very many typed entities on wikipedia. In Proceedings of CIKM'2007, 2007.
+[36] T. Zhang. Solving large scale linear prediction problems using stochastic gradient descent algorithms. In Proceedings of ICML'2004, 2004.
+
+764
+
+

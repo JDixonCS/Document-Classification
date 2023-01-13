@@ -1,0 +1,270 @@
+arXiv:1910.10685v2 [stat.ML] 25 Oct 2019
+
+Machine Learning for Scent: Learning Generalizable Perceptual Representations of Small Molecules
+Benjamin Sanchez-Lengeling1*, Jennifer N Wei1*, Brian K Lee1, Richard C Gerkin2, Alán Aspuru-Guzik3, and Alexander B Wiltschko1,
+1Google Research, Brain Team 2School of Life Sciences, Arizona State University 3Department of Chemistry, University of Toronto 3Department of Computer Science, University of Toronto 3Vector Institute for Artificial Intelligence, Toronto, Ontario, Canada 3Canadian Institute for Advanced Research, Toronto, Ontario, Canada
+*Contributed equally Email: alexbw@google.com
+Abstract
+Predicting the relationship between a molecule's structure and its odor remains a difficult, decades-old task. This problem, termed quantitative structure-odor relationship (QSOR) modeling, is an important challenge in chemistry, impacting human nutrition, manufacture of synthetic fragrance, the environment, and sensory neuroscience. We propose the use of graph neural networks for QSOR, and show they significantly outperform prior methods on a novel data set labeled by olfactory experts. Additional analysis shows that the learned embeddings from graph neural networks capture a meaningful odor space representation of the underlying relationship between structure and odor, as demonstrated by a strong performance on two challenging transfer learning tasks. Machine learning has already had a large impact on the senses of sight and sound. Based on these early results with graph neural networks for molecular properties, we hope machine learning can eventually do for olfaction what it has already done for vision and hearing.
+1 Introduction
+Predicting properties of molecules is an area of growing research in machine learning [1, 2], particularly as models for learning from graph-valued inputs improve in sophistication and robustness [3, 4]. A molecular property prediction problem that has received comparatively little attention during this surge in research activity is building Quantitative Structure-Odor Relationships (QSOR) models (as opposed to Quantitative Structure-Activity Relationships, a term from medicinal chemistry). This is a 70+ year-old problem straddling chemistry, physics, neuroscience, and machine learning [5].
+Odor perception in humans is the result of the activation of 300-400 different types of olfactory receptors (ORs), expressed in millions of olfactory sensory neurons (OSNs), embedded in a small 5 cm2 patch of tissue called the olfactory epithelium. These OSNs send signals to the olfactory bulb, and then to further structures in the brain [6, 7]. Advances in deep learning for vision and audition suggest that we might be able to directly predict the end sensory result of an input stimulus. Progress in deep learning for olfaction would aid in the discovery of new synthetic odorants, thereby reducing the ecological impact of harvesting natural products. Additionally, new representations of molecules derived from a model trained on odor recognition tasks may contribute our understanding of sensory perception in the brain [8].
+
+Figure 1: Structurally similar molecules do not necessarily have similar odor descriptors. A. Lyral, the reference molecule. B. Molecules with similar structure can share similar odor descriptors. C. However, a small structural change can render the molecule odorless. D. Further, large structural changes can leave the odor of the molecule largely unchanged. Example from Ohloff, Pickenhagen and Kraft [28].
+Here, we curated a dataset of molecules associated with expert-labeled odor descriptors (in QSOR, odor descriptors refer to the properties we wish to predict, as opposed to their usage in chemoinformatics, where they refer to the input features of a model). We trained Graph Neural Networks (GNNs) [4, 9] to predict these odor descriptors using a molecule's graph structure alone. We show that our model learned a representation of odor space that clusters molecules based on perceptual similarity rather than purely on structural similarity, on both a global and local scale. Further, we show that this representation is useful for making predictions on related tasks, which is a developing area in chemistry applications of machine learning [10, 11]. These results indicate that our modeling approach has captured a general-purpose representation of the relationship between a molecule's structure and odor, which we anticipate to be useful for rational molecular design and screening.
+2 Prior Work in QSOR: A Decades-Long Pursuit
+The problem of QSOR is ancient [12], but in the scientific literature emerges with Amoore, Schiffman and Dyson, among others [13, 14, 15]. Modern attempts to solve this problem in a directly data-driven and statistical manner began a few decades ago [5], and even included early applications of neural networks [16]. However, the number of odor descriptors used in these early studies was small (less than ten, usually one), and the number of total stimuli was limited (usually 10s, rarely 100s of molecules) [17, 18, 19]. This has remained an open problem for so long due to its difficulty--very small changes in a molecule's structure can have dramatic effects on its odor, a phenomenon known in medicinal chemistry as an activity cliff [20, 21]. A classic example is Lyral, which is a commercially successful molecule that smells of muguet (a floral scent often used in dryer sheets). Its structural neighbors are not always perceptual neighbors, and some of its perceptual neighbors share little structural similarity (Figure 1).
+Recently, the DREAM Olfactory Challenge spurred applications of traditional machine learning approaches to QSOR prediction [22]. This challenge presented a dataset where 49 untrained panelists rated 476 molecules on 21 odor attributes on an analog scale. The winning models of the DREAM challenge primarily relied on either the Dragon molecular features [23] or Morgan fingerprints [24] as a featurization of molecules. These features were used by random forests to make predictions, an approach with a long track record of success in chemoinformatics. We use these methods as baselines in this work.
+We wish to highlight a few modern machine learning approaches to QSOR. Tran and colleagues [25] have revisited the use of neural networks for this task and have developed a convolutional neural network taking as input a custom 3D spatial representation of molecules. Nozaki et al. [26] used the mass spectra of molecules and natural language processing tools to predict textual descriptions of odor. Gutierrez et al. [27] used word embeddings and chemoinformatics representations of molecules to predict odor properties.
+2.1 Classic Approaches to Featurizing Molecules and Modeling Their Properties
+QSOR has historically used many computational techniques from chemoinformatics and medicinal chemistry. For predicting molecular properties, molecules are typically transformed into fixed-length
+2
+
+vectors using hand-crafted features, and fed to a prediction model such as a random forest or fullyconnected neural network [2, 29]. We describe the details of baseline approaches to featurizing molecules below.
+2.1.1 Dragon and Mordred Features
+There are several available hand-crafted featurizations for molecules, which are popular in the field of olfactory neuroscience. Both Dragon (closed source, [23]) and Mordred (open source, [30]) are approaches that include many thousands of computed molecular features. They are an agglomeration of several types of molecular information and statistics, such as counts of atom types, graph topology statistics, and acid/base counts. Some of these features are easily interpretable (e.g. number of Carbon atoms) and some are not (e.g. spectral moment of order 4 from distance/detour matrix). We use Mordred in the present work because it is open source, and we found no appreciable difference in predictive performance between these features and Dragon features (data not shown).
+2.1.2 Molecular Fingerprints
+Molecular fingerprints encode topological environments of a molecular graph into a fixed-length vector. An environment is a fragment of the molecular graph, and indicates the presence of a single atom type or a functional group, e.g. an alcohol or ester group. This approach to featurizing molecules is popular in the field of medicinal chemistry; traditionally, bit-based Morgan fingerprints have been used in chemoinformatics for retrieving nearest neighbor molecules using Tanimoto similarity [31]. When these environments are atom-centered and constructed via adjacent atoms, they are called Extended-Connectivity Fingerprints, or Morgan fingerprints [32] and when they are constructed via paths through the graph they are path descriptor fingerprints [33]. The more commonly used bit variant records the presence of a given environment (e.g., is there an ester in this molecule?), while the count variant records the number of instances of a given environment (e.g. how many ester groups are there in this molecule?). This information is hashed into a fixed-length vector. There are two tunable parameters: max topological radius and fingerprint vector size. The max topological radius determines the largest fragment which the fingerprint can represent. Fingerprint vector size affects how likely a hash collision can occur. We tune both of these parameters to maximize predictive performance.
+In our baseline experiments, we explicitly compare bit-based path descriptors fingerprints (bFP) and count-based Morgan fingerprints (cFP). The cheminformatics package RDKit was used to generate both types of fingerprints [34]. Molecular properties are typically predicted using models such as random forests or support vector machines, so we use random forests as the predictive model for each of the bFP and cFP features.
+3 Graph Neural Networks
+Most machine learning models require regularly-shaped input (e.g. a grid of pixels, or a vector of numbers) as input. Recently, Graph Neural Networks (GNNs) have enabled the use of irregularlyshaped inputs, such as graphs, to be used directly in machine learning applications [35]. Fields of use include predicting friendships in social network graphs, citation networks in academic literature, and most germane for this work, classification and regression tasks in chemistry [1].
+3.1 Graph Neural Networks for Predicting Molecular Properties
+By viewing atoms as nodes, and bonds as edges, we can interpret a molecule as a graph. GNNs are learnable permutation-invariant transformations on nodes and edges, which produce fixed-length vectors that are further processed by a fully-connected neural network. GNNs can be considered learnable featurizers specialized to a task, in contrast with expert-crafted general features [4, 9]. GNNs have achieved state-of-the-art results in the prediction of biophysical, biological, physical, and electronic quantum properties of molecules [1], and thus, we believe their use in QSOR to be promising.
+The GNN consists of message passing layers, each followed by a reduce-sum operation, followed by several fully connected layers. Architectural details can be found in the the appendix, Table 8. The final fully-connected layer has a number of outputs equal to the number of odor descriptors being
+3
+
+predicted. Figure 2 illustrates our model. We implement these GNN models using the TensorFlow software package [36].
+Figure 2: Model Schematic. Each molecule is first featurized by its constituent atoms, bonds, and connectivities. Each Graph Neural Network (GNN) layer, here represented as different colors, transforms the features from the previous layer. The outputs from the final GNN layer is reduced to a vector, which is then used for predicting odor descriptors via a fully-connected neural network. We retrieve graph embeddings from the penultimate layer of the model. An example of the embedding space representation for four odor descriptors is shown in the bottom right; the colors of the regions in this plot correspond to the colors of odor descriptors in top right.
+3.2 Learned Graph Neural Network Embeddings
+All deep neural network architectures build representations of input data at their intermediate layers. The success of deep neural networks in prediction tasks relies on the quality of their learned representations, often referred to as embeddings [37]. For instance, ImageNet embeddings are often used as-is to make predictions on unrelated image tasks [38, 39], and with the advent of the BERT model and its cousins, this ability to use pre-trained embeddings is becoming common in natural language processing [40]. The structure of a learned embedding can even lead to insights on the task or problem area, and the embedding can even be an object of study itself [8, 41]. We save the activations of the penultimate fully connected layer as a fixed-dimension "odor embedding". The GNN model must transform a molecule's graph structure into a fixed-length representation that is useful for classification. Although the utility of learned neural network embeddings of molecules is still young and relatively unproven [42, 43], we still anticipate that a learned GNN embedding on an odor prediction task may include a semantically meaningful and useful organization of odorant molecules. We explicitly test the utility of this odor embedding in later sections in this work.
+4 A Curated QSOR Dataset
+We assembled an expert-labeled set of 5030 molecules from two separate sources: the GoodScents perfume materials database (n = 3786, [44]) and the Leffingwell PMP 2001 database (n = 3561, [45]). The datasets share 2317 overlapping molecules. Molecules are labeled with one or more odor descriptors by olfactory experts (usually a practicing perfumer), creating a multi-label prediction problem. GoodScents describes a list of 1­15 odor descriptors for each molecule (Figure 3A), whereas Leffingwell uses free-form text. Odor descriptors were canonicalized using the GoodScents ontology, and overlapping molecules inherited the union of both datasets' odor descriptors. After filtering for odor descriptors with at least 30 representative molecules, 138 odor descriptors remained (Figure 3B), including an odorless descriptor. Some odor descriptors were extremely common, like fruity or green, while others were rare, like radish or bready. This dataset is composed of materials for perfumery, and so is biased away from malodorous compounds. There is also skew in label counts resulting from different levels of specificity, e.g. fruity will always be more common than pineapple.
+4
+
+There is an extremely strong co-occurrence structure among odor descriptors that reflects a commonsense intuition of which odor descriptors are similar and dissimilar (Figure 3C). For example, there is a dairy cluster that includes the dairy, yogurt, milk, and cheese descriptors, indicating that they often co-occur as descriptors in individual molecules. There is also a fruity cluster with apple, pear, pineapple etc., and a bakery cluster that includes toasted, nutty, and cocoa, among others. Previous approaches in QSOR often train one model per odor descriptor. To take advantage of this correlation structure, we apply a GNN to predict all 138 odor descriptor tasks at once.
+Figure 3: Dataset overview. A. Distribution of odor descriptor frequencies. B. Distribution of label density. C. Co-ocurrence matrix for odor descriptors. The 10 most frequent descriptors are removed for visual clarity, and remaining descriptors re-ordered using spectral clustering. Main odor groups with examples are highlighted. The color range is on a log-scale, and normalized such that each row and column sums to 1.
+5 QSOR Prediction Performance Benchmark
+We benchmark classification performance for each odor descriptor in our dataset, as a multi-label classification problem. We compare the GNN model against random forest models (RF) and k-nearest neighbor models (KNN) on bit-based RDKit fingerprints (bFP), count-based Morgan fingerprints (cFP), and Mordred features. We report several metrics (Table 1), as each metric can highlight different performance characteristics. For the rest of the analysis, we primarily compare models on mean AUROC, averaged across odor descriptors; AUROC performance by descriptor is shown in Figure 4. We trained non-graph based fully-connected neural networks on cFP and bFP features, but their performance is indistinguishable from the RF model (data not shown).
+6 Evaluating Odor Embeddings
+An odor embedding representation that reflects common-sense relationships between odors should show structure both globally and locally. Specifically, for global structure, odors that are perceptually similar should be nearby in an embedding. For local structure, individual molecules that have similar odor percepts should cluster together and thus be nearby in the embedding. We examine both of these properties in sequence. 6.1 Examining the Global Structure of a Learned Odor Space We take our embedding representation of each data point from the penultimate-layer output of a trained GNN model. In the case of our best model, each molecule gets mapped to a 63-dimensional
+5
+
+GNN RF-Mordred
+RF-bFP RF-cFP KNN-bFP KNN-cFP
+
+AUROC
+0.894 [0.888, 0.902] 0.850 [0.838, 0.860] 0.832 [0.821, 0.842] 0.845 [0.835, 0.854] 0.791 [0.778, 0.803] 0.796 [0.785, 0.809]
+
+Precision
+0.379 [0.351, 0.398] 0.311 [0.288, 0.333] 0.321 [0.293, 0.339] 0.315 [0.280, 0.332] 0.328 [0.305, 0.347] 0.333 [0.307, 0.351]
+
+F1
+0.360 [0.337, 0.372] 0.306 [0.283, 0.319] 0.295 [0.272, 0.308] 0.295 [0.272, 0.311] 0.323 [0.299, 0.335] 0.316 [0.292, 0.327]
+
+Table 1: Odor descriptor prediction results. mean, 95% CI [lower, upper] bounds reported. Numbers reported are an unweighted mean across all 138 odor descriptors; see Supplemental Table 8 for results reported by odor label. Precision/recall decision thresholds are optimized for F1 score on a cross-validation split created from the training set. The best values for each metric are in bold. Models include graph neural networks (GNN), random forest (RF) and k-nearest neighbor. Featurizations include bit-based RDKit fingerprints (bFP), count-based Morgan fingerprints (cFP), and Mordred features. There was no statistical winner as measured by recall, and thus it is omitted; these scores ranged from 0.365 to 0.393, with high overlap amongst all models.
+
+Figure 4: Comparison of RF-cFP and GNN, broken down by odor descriptor. Each dot represents an odor descriptor, with size representing the number of positive examples. GNN outperforms RF-cFP on nearly all odor descriptors.
+vector. Qualitatively, to visualize this space in 2D we use principal component analysis (PCA) to reduce its dimensionality. The distribution of all molecules sharing a similar label can be highlighted using kernel density estimation (KDE).
+The global structure of the embedding space is illustrated in Figure 5. In this example, we find that individual odor descriptors (e.g. musk, cabbage, lily and grape) tend to cluster in their own specific region. For odor descriptors that co-occur frequently, we find that the embedding space captures a hierarchical structure that is implicit in the odor descriptors. The clusters for odor labels jasmine, lavender and muguet are found inside the cluster for the broader odor label floral. If we examine the
+6
+
+pairwise distances between all odors in our learned embedding, we see the block structure apparent in Figure 3C is reflected by the learned GNN embedding, but not with molecular fingerprints (Figure S1). Further, a dimensionally-reduced molecular fingerprint does not share the same degree of organization and interpretability (Figure S3).
+Figure 5: 2D representation of a GNN model embeddings as a learned odor space. Molecules are represented as individual points. Shaded and contoured areas are kernel density estimates of the distribution of labeled data. A. Four odor descriptors with low co-occurrence have low overlap in the embedding space. B. Three general odor descriptors (floral, meaty, alcoholic) each largely subsume more specific labels within their boundaries. See Supplemental Figure S3 for the equivalent analysis with molecular fingerprints.
+6.2 Evaluating the Local Structure of a Learned Odor Space We tested whether molecules nearby in embedding space share perceptual similarity. Specifically, we asked whether molecules with small cosine distances in our GNN embeddings were perceptually similar. As a baseline, we used Tanimoto distance, which is equivalent to Jaccard distance on bFP features. Tanimoto distance is a commonly used metric for molecular database lookup in chemoinformatics. However, molecules with similar structural features do not always smell the same (Figure 1), so we anticipated that nearest neighbors using bFP features may not be as perceptually similar as neighbors in using our embeddings. We trained a k-nearest neighbors (KNN) classifier (k = 20) to predict odor descriptors from GNN embeddings and bFPs. GNN embeddings (AUROC = 0.818, 95% CI [0.806, 0.830] ) outperformed bFP (AUROC = 0.782, 95% CI [0.773, 0.797]). Inspecting the nearest neighbors found by each method (Figure 6) reveals that both methods yield molecules with similar structural features, but retrieval using GNN embeddings yields molecules that are more perceptually similar to the source molecule. This suggests that our representations are better able to cluster molecules by their odor perceptual similarity than bit-based fingerprints. Figure S2 and Table S4 show additional results comparing odor perceptual similarity and embedding distance between molecules using different distance metrics with bFPs and GNN embeddings. We have shown that our embedding space has global and local structure that reflect the commonsense and psychophysical organization of odor descriptors. In the following sections, we show that this organization is useful, and that this embedding can be used to make predictions on adjacent, challenging tasks.
+7
+
+Figure 6: Nearest neighbor retrieval. The top-five nearest neighbors to damascone carboxylate are shown for cosine similarity on GNN embeddings and for Tanimoto distance on bit-based Morgan fingerprints. The AUROCs are shown for k-Nearest Neighbor classifier (k = 20) performance averaged over all odor descriptors, trained with the corresponding feature representation.
+6.3 Transfer Learning to Previously-Unseen Odor Descriptors
+An odor descriptor may be newly invented or refined (e.g., molecules with the pear descriptor might be later attributed a more specific pear skin, pear stem, pear flesh, pear core descriptor). A useful odor embedding would be able to perform transfer learning [46] to this new descriptor, using only limited data. To approximate this scenario, we ablated one odor descriptor at a time from our dataset. Using the embeddings trained from (N - 1) odor descriptors as a featurization, we trained a random forest to predict the previously held-out odor descriptor. We used cFP and Mordred features as a baseline for comparison. The results are shown in Figure 7. GNN embeddings significantly outperform Morgan fingerprints and Mordred features on this task, but as expected, still perform slightly worse than a GNN trained on the target odor. This indicates that GNN-based embeddings may generalize to predict new, but related, odors.
+Figure 7: Mean AUROC on a previously held-out odor. Average AUROC scores across all labels on the single label ablation task. The error bars denote 95% confidence intervals. The top bar denotes the performance of the model trained on all of the labels. The middle bar denotes the performance of a random forest model trained using the GNN embeddings from a model trained on (N - 1) odor labels. The bottom bar denotes a random forest trained on counting Morgan fingerprints.
+6.4 Generalizing to Other Olfaction Tasks: the DREAM Olfaction Prediction Challenge
+The DREAM Olfaction Prediction Challenge [22] was an open competition to build QSOR models on a dataset collected from untrained panelists. The DREAM dataset has several differences from our own. First, it was a regression problem --­ panelists rated the amount that a molecule smelled of a particular odor descriptor on a scale from 1 to 100. Second, it had 476 molecules compared to our  5k (although our dataset contains nearly all of the DREAM molecules). Third, the ratings were provided by a large panel of untrained individuals over a short period of time, whereas ours were gleaned from a small set of experts over many years. The DREAM challenge measured model performance as the Pearson's r correlation of model predictions with the mean reported intensity of
+8
+
+each odor descriptor, which we show in Figure 8. Additional statistics such as R2 and 95% confidence intervals are found in Figures S4, S5.
+Figure 8: Predictive performance of GNN and best baseline model on the the DREAM Olfaction Prediction Challenge. Pearson's r for DREAM challenge winner (for most odors, a random forest on a subset of Dragon features) versus a RF trained on GNN embeddings, broken down by odor descriptor. Dotted gray represents equal performance for both models. Data points above the diagonal line indicate better GNN predictive performance. Although mean values are generally higher for the GNN model, both the state-of-the-art model and GNN are statistically indistinguishable. The winning DREAM model used random forest models with a combination of several sources of features, primarily Dragon and Morgan fingerprints, among other sources of information [22]. Using only our embedding with a tuned random forest model, we achieve a mean Pearson's r = 0.55 while the state-of-the-art model described above achieved a mean Pearson's r = 0.54. While we can have better average performance in 13 tasks, when taking into account confidence intervals, we find the performance is indistinguishable between the two models for both r and R2 regression scores (Figures S4, S5). Overall, this indicates that our QSOR modeling approach can generalize to adjacent perceptual tasks, and captures meaningful and useful structure about human olfactory perception, even when measured in different contexts, with different methodologies.
+7 Conclusion
+We assembled a novel and large dataset of expertly-labeled single-molecule odorants, and trained a graph neural network to predict the relationship between a molecule's structure and its smell. We demonstrated state-of-the-art results on this QSOR task with respect to field-recognized baselines. Further, we showed that the embeddings capture meaningful structure on both a local and global scale. Finally, we showed that the embeddings learned by our model are useful in downstream tasks, which is currently a rare property of modern machine learning models and data in chemistry. Thus, we believe our model and its learned embeddings might be generally useful in the rational design of new odorants.
+8 Acknowledgments
+We thank D. Sculley, Steven Kearnes, Jasper Snoek, Emily Reif, Carey Radebaugh, David Belanger, Joel Mainland and Emily Mayhew for support, suggestions and useful discussions on the manuscript.
+9
+
+We thank Max Bileschi and Yoni Halpern for their technical guidance. We thank Aniket Zinzuwadia for discussion and who did preliminary work on the DREAM and GoodScents datasets for his senior thesis. We thank Bill Luebke of GoodScents and John Leffingwell of Leffingwell and Associates for their generosity in sharing their data for research use. We thank all of our colleagues in the Google Brain Cambridge office for creating and maintaining such a supportive and stimulating environment.
+References
+[1] Zhenqin Wu, Bharath Ramsundar, Evan N Feinberg, Joseph Gomes, Caleb Geniesse, Aneesh S Pappu, Karl Leswing, and Vijay Pande. MoleculeNet: a benchmark for molecular machine learning. Chemical Science, 9(2):513­530, 2018.
+[2] John B O Mitchell. Machine learning methods in chemoinformatics. Wiley Interdiscip. Rev. Comput. Mol. Sci., 4(5):468­481, September 2014.
+[3] Franco Scarselli, Marco Gori, Ah Chung Tsoi, Markus Hagenbuchner, and Gabriele Monfardini. Computational capabilities of graph neural networks. IEEE Trans. Neural Netw., 20(1):81­102, January 2009.
+[4] Justin Gilmer, Samuel S Schoenholz, Patrick F Riley, Oriol Vinyals, and George E Dahl. Neural message passing for quantum chemistry. April 2017.
+[5] Karen J Rossiter. Structure-odor relationships. Chem. Rev., 96(8):3201­3240, 1996.
+[6] Chih-Ying Su, Karen Menuz, and John R Carlson. Olfactory perception: receptors, cells, and circuits. Cell, 139(1):45­59, October 2009.
+[7] John P McGann. Poor human olfaction is a 19th-century myth. Science, 356(6338):eaam7263, 2017.
+[8] Daniel L K Yamins and James J DiCarlo. Using goal-driven deep learning models to understand sensory cortex. Nature Neuroscience, 19(3):356­365, 2016.
+[9] David K Duvenaud, Dougal Maclaurin, Jorge Iparraguirre, Rafael Gómez-Bombarell, Timothy Hirzel, Alán Aspuru-Guzik, and Ryan P Adams. Convolutional Networks on Graphs for Learning Molecular Fingerprints. In Advances in Neural Information Processing Systems, pages 2215­2223, 2015.
+[10] Han Altae-Tran, Bharath Ramsundar, Aneesh S Pappu, and Vijay Pande. Low data drug discovery with One-Shot learning. ACS Cent Sci, 3(4):283­293, April 2017.
+[11] Clyde Fare, Lukas Turcani, and Edward O Pyzer-Knapp. Powerful, transferable representations for molecules through intelligent task selection in deep multitask networks. September 2018.
+[12] Charles Sell. Perfume in the Bible. Royal Society of Chemistry, July 2019.
+[13] J E Amoore, J W Johnston, Jr, and M Rubin. THE STEROCHEMICAL THEORY OF ODOR. Sci. Am., 210:42­49, February 1964.
+[14] G Malcolm Dyson. Raman effect and the concept of odour. Perfum. Essent. Oil Rec, 28:13, 1937.
+[15] Susan S Schiffman. Physicochemical correlates of olfactory quality. Science, pages 112­117, 1974.
+[16] M Chastrette, D Cretin, and C el Aïdi. Structure-odor relationships: using neural networks in the estimation of camphoraceous or fruity odors and olfactory thresholds of aliphatic alcohols. J. Chem. Inf. Comput. Sci., 36(1):108­113, January 1996.
+[17] Sigma-Aldrich Corporation. Aldrich Chemistry 2012-2014: Handbook of Fine Chemicals. 2011.
+[18] Andrew Dravnieks and ASTM Committee E-18 on Sensory Evaluation of Materials and Products. Section E-18.04.12 on Odor Profiling. Atlas of odor character profiles. Astm Intl, 1985.
+[19] Steffen Arctander. Perfume and flavor chemicals:(aroma chemicals), volume 2. Allured Publishing Corporation, 1969.
+[20] C S Sell. On the unpredictability of odor. Angewandte Chemie International Edition, 45(38):6254­6261, 2006.
+10
+
+[21] Dagmar Stumpfe and Jürgen Bajorath. Exploring activity cliffs in medicinal chemistry. J. Med. Chem., 55(7):2932­2942, April 2012.
+[22] Andreas Keller, Richard C Gerkin, Yuanfang Guan, Amit Dhurandhar, Gabor Turu, Bence Szalai, Joel D Mainland, Yusuke Ihara, Chung Wen Yu, Russ Wolfinger, Celine Vens, Leander Schietgat, Kurt De Grave, Raquel Norel, DREAM Olfaction Prediction Consortium, Gustavo Stolovitzky, Guillermo A Cecchi, Leslie B Vosshall, and Pablo Meyer. Predicting human olfactory perception from chemical features of odor molecules. Science, 355(6327):820­826, February 2017.
+[23] Andrea Mauri, Viviana Consonni, Manuela Pavan, and Roberto Todeschini. Dragon software: An easy approach to molecular descriptor calculations. Match, 56(2):237­248, 2006.
+[24] David Rogers and Mathew Hahn. Extended-connectivity fingerprints. J. Chem. Inf. Model., 50(5):742­754, May 2010.
+[25] Ngoc Tran, Daniel Kepple, Sergey A Shuvaev, and Alexei A Koulakov. DeepNose: Using artificial neural networks to represent the space of odorants. November 2018.
+[26] Yuji Nozaki and Takamichi Nakamoto. Predictive modeling for odor character of a chemical using machine learning combined with natural language processing. PLoS One, 13(6):e0198475, June 2018.
+[27] E Darío Gutiérrez, Amit Dhurandhar, Andreas Keller, Pablo Meyer, and Guillermo A Cecchi. Predicting natural language descriptions of mono-molecular odorants. Nat. Commun., 9(1):4979, November 2018.
+[28] Günther Ohloff, Wilhelm Pickenhagen, and Philip Kraft. Scent and Chemistry. Wiley, January 2012.
+[29] Vladimir Svetnik, Andy Liaw, Christopher Tong, J Christopher Culberson, Robert P Sheridan, and Bradley P Feuston. Random forest: a classification and regression tool for compound classification and QSAR modeling. J. Chem. Inf. Comput. Sci., 43(6):1947­1958, November 2003.
+[30] Hirotomo Moriwaki, Yu-Shi Tian, Norihito Kawashita, and Tatsuya Takagi. Mordred: a molecular descriptor calculator. J. Cheminform., 10(1):4, February 2018.
+[31] Gerald Maggiora, Martin Vogt, Dagmar Stumpfe, and Jürgen Bajorath. Molecular similarity in medicinal chemistry. J. Med. Chem., 57(8):3186­3204, April 2014.
+[32] David Rogers and Mathew Hahn. Extended-connectivity fingerprints. J. Chem. Inf. Model., 50(5):742­754, May 2010.
+[33] Milan Randic´ and Subhash C Basak. Optimal molecular descriptors based on weighted path numbers. J. Chem. Inf. Comput. Sci., 39(2):261­266, March 1999.
+[34] RDKit: Open-source cheminformatics. http://www.rdkit.org.
+[35] Zonghan Wu, Shirui Pan, Fengwen Chen, Guodong Long, Chengqi Zhang, and Philip S. Yu. A comprehensive survey on graph neural networks. CoRR, abs/1901.00596, 2019.
+[36] Martín Abadi, Paul Barham, Jianmin Chen, Zhifeng Chen, Andy Davis, Jeffrey Dean, Matthieu Devin, Sanjay Ghemawat, Geoffrey Irving, Michael Isard, et al. Tensorflow: A system for large-scale machine learning. In 12th {USENIX} Symposium on Operating Systems Design and Implementation ({OSDI} 16), pages 265­283, 2016.
+[37] Yoshua Bengio, Aaron Courville, and Pascal Vincent. Representation learning: a review and new perspectives. IEEE Trans. Pattern Anal. Mach. Intell., 35(8):1798­1828, August 2013.
+[38] Jeff Donahue, Yangqing Jia, Oriol Vinyals, Judy Hoffman, Ning Zhang, Eric Tzeng, and Trevor Darrell. Decaf: A deep convolutional activation feature for generic visual recognition. In International conference on machine learning, pages 647­655, 2014.
+[39] Ali Sharif Razavian, Hossein Azizpour, Josephine Sullivan, and Stefan Carlsson. Cnn features off-the-shelf: an astounding baseline for recognition. In Proceedings of the IEEE conference on computer vision and pattern recognition workshops, pages 806­813, 2014.
+[40] Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. BERT: Pre-training of deep bidirectional transformers for language understanding. October 2018.
+11
+
+[41] Andy Coenen, Emily Reif, Ann Yuan, Been Kim, Adam Pearce, Fernanda Viégas, and Martin Wattenberg. Visualizing and measuring the geometry of BERT. arXiv preprint arXiv:1906.02715, 2019.
+[42] Rafael Gómez-Bombarelli, Jennifer N Wei, David Duvenaud, José Miguel Hernández-Lobato, Benjamín Sánchez-Lengeling, Dennis Sheberla, Jorge Aguilera-Iparraguirre, Timothy D Hirzel, Ryan P Adams, and Alán Aspuru-Guzik. Automatic chemical design using a Data-Driven continuous representation of molecules. ACS Cent Sci, 4(2):268­276, February 2018.
+[43] Alex Zhavoronkov, Yan A Ivanenkov, Alex Aliper, Mark S Veselov, Vladimir A Aladinskiy, Anastasiya V Aladinskaya, Victor A Terentiev, Daniil A Polykovskiy, Maksim D Kuznetsov, Arip Asadulaev, Yury Volkov, Artem Zholus, Rim R Shayakhmetov, Alexander Zhebrak, Lidiya I Minaeva, Bogdan A Zagribelnyy, Lennart H Lee, Richard Soll, David Madge, Li Xing, Tao Guo, and Alán Aspuru-Guzik. Deep learning enables rapid identification of potent DDR1 kinase inhibitors. Nat. Biotechnol., 37(9):1038­1040, September 2019.
+[44] The good scents company - flavor, fragrance, food and cosmetics ingredients information. http://www.thegoodscentscompany.com/. Accessed: 2019-9-4.
+[45] John C Leffingwell. Leffingwell & associates, 2005.
+[46] S J Pan and Q Yang. A survey on transfer learning. IEEE Trans. Knowl. Data Eng., 22(10):1345­ 1359, October 2010.
+[47] Piotr Szyman´ski and Tomasz Kajdanowicz. A network perspective on stratification of MultiLabel data. April 2017.
+Supporting Information
+Hyperparameter Tunning and GNN Architecture
+We consider two types of GNNs: Message Passing Neural Networks (MPNN) [4] and Graph Convolution Networks (GCN) [9]. With both variants, we utilize a shared trunk that consists of message passing layers, followed by a reduce-sum operation, followed by several fully connected layers.
+For the GCN and MPNN, we optimized the hyperparameters of our model using 5-fold crossvalidation in our training set of 4,000 molecules, and tuned 30 hyperparameters (including learning rate, momentum, architecture depth & width, etc) using 500 trials of random search. Each model fit took less than 1 hour on a Tesla P100. We present results for the model with the highest mean AUROC on the cross-validation set.
+We found that MPNNs and GCNs perform similarly. Both MPNNs and GCNs significantly outperform all baseline models. Because MPNNs and GCNs perform similarly, and GCNs are architecturally simpler, the analysis of GNN results in this work are reported on the GCN model.
+For our RF baseline methods, we tuned an exhaustive space of configurations of fingerprinting methods (bits, radius, counted/binary, RDKit/Morgan), and RF hyperparameters. The RDKit software was used to calculate all features [34].
+For the KNN baseline methods, we also tuned fingerprinting options along with the number of neighbors. This resulted in a binary RDKit fingerprint of 4096 bits with radius 6. The optimal k = 20 was found with an elbow analysis over k = 3 to 100 using the Jaccard distance. KNN predictions are weighted by distance.
+Since our multi-label problem had highly unbalanced labels, we used second-order iterative stratification to build our train/test/validation splits [47]. Iterativative stratification is an iterative procedure for stratified sampling that attempts to preserve many-order label ratios, prioritizing more unbalanced combinations. For second order, this means preserving ratios of pairs of labels in each split.
+Confidence Intervals
+Confidence intervals were constructed by bootstrap resampling. We resampled the test dataset with replacement n = 1000 times, and computed AUROC on each sample. The training set and model remained fixed. We report the [2.5, 97.5] percentile boundaries to construct a 95% CI interval.
+12
+
+Message Passing Layers
+Readout
+fully-connected neural net Prediction Training
+
+GCN
+
+MPNN
+
+concatenation message type, 4
+
+edge-conditioned matrix
+
+layers of dim: [15,20,27,36], multiply message type, 5 layers
+
+selu activation, max graph of dim 43, GRU-update at each
+
+pooling
+
+layer
+
+Global sum pooling with softmax, 175 dim, one per MP
+layer and summed
+
+Global sum pooling with softmax, 197 dim, one per MP layer with residual connections
+and summed
+
+2-layers of dim [96, 63] with relu, batchnorm, dropout of 0.47
+
+3-layers of dim 392 with relu, batchnorm, dropout of 0.12 and
+l1/l2 regularization
+
+Multi-headed sigmoid, 138 tasks
+
+Weighted-cross entropy loss, optimized with Adam,
+
+used learning rate decay with warm restarts, 300 epochs
+
+Table S1: Tuned GNN architectures. Hyperparameter settings from GCN and MPNN architectures.
+
+AUROC
+
+Precision
+
+Recall
+
+F1
+
+MPNN 0.890 [0.882, 0.898] 0.379 [0.352, 0.399] 0.387 [0.366, 0.408] 0.362 [0.335, 0.375] GCN 0.894 [0.888, 0.902] 0.379 [0.351, 0.398] 0.390 [0.365, 0.412] 0.360 [0.337, 0.372]
+
+Table S2: GCN and MPNN performance. AUROC, Precision, Recall, and F1 results for odor prediction tasks for GCN and MPNN models. There are no appreciable differences between the MPNN and GCN performance. In the main text, GNN model refers to the GCN model.
+
+Table of Per-Descriptor Results
+AUROC and AUPRC performance results by descriptor for the GNN model and the Random Forest model with counting fingerprint features.
+
+Alcoholic Aldehydic Alliaceous Almond Amber Animal Anisic Apple Apricot Aromatic Balsamic Banana Beefy Bergamot Berry Bitter Black currant Brandy Burnt Buttery Cabbage Camphoreous Caramellic Cedar
+
+AUROC GNN RF-cFP
+
+0.961 0.961 0.967 0.943 0.931 0.812 0.791 0.917 0.930 0.855 0.910 0.961 0.976 0.959 0.858 0.719 0.984 0.982 0.903 0.881 0.977 0.951 0.904 0.969
+
+0.960 0.923 0.897 0.933 0.911 0.837 0.881 0.878 0.821 0.766 0.873 0.913 0.953 0.959 0.808 0.801 0.861 0.867 0.853 0.900 0.913 0.916 0.865 0.945
+
+AUPRC GNN RF-cFP
+
+0.796 0.327 0.286 0.509 0.240 0.198 0.383 0.446 0.220 0.056 0.539 0.541 0.231 0.568 0.142 0.241 0.473 0.514 0.245 0.224 0.189 0.410 0.474 0.235
+
+0.532 0.320 0.281 0.132 0.210 0.183 0.101 0.371 0.157 0.029 0.553 0.207 0.261 0.337 0.127 0.071 0.328 0.034 0.184 0.171 0.332 0.239 0.322 0.160
+
+13
+
+Celery Chamomile Cheesy Cherry Chocolate Cinnamon Citrus Clean Clove Cocoa Coconut Coffee Cognac Cooked Cooling Cortex Coumarinic Creamy Cucumber Dairy Dry Earthy Ethereal Fatty Fermented Fishy Floral Fresh Fruit skin Fruity Garlic Gassy Geranium Grape Grapefruit Grassy Green Hawthorn Hay Hazelnut Herbal Honey Hyacinth Jasmine Juicy Ketonic Lactonic Lavender Leafy Leathery Lemon Lily Malty Meaty Medicinal Melon Metallic Milky Mint
+
+0.878 0.956 0.920 0.905 0.925 0.880 0.918 0.878 0.947 0.938 0.959 0.938 0.979 0.848 0.973 0.759 0.950 0.808 0.983 0.884 0.731 0.745 0.915 0.898 0.895 0.915 0.852 0.756 0.840 0.859 0.986 0.986 0.905 0.953 0.929 0.845 0.818 0.942 0.775 0.987 0.766 0.872 0.943 0.951 0.907 0.966 0.919 0.961 0.842 0.830 0.855 0.937 0.888 0.945 0.906 0.884 0.758 0.849 0.898
+
+0.753 0.896 0.882 0.926 0.787 0.840 0.897 0.786 0.939 0.927 0.860 0.911 0.950 0.795 0.878 0.629 0.873 0.674 0.976 0.742 0.679 0.728 0.852 0.871 0.776 0.845 0.843 0.715 0.710 0.842 0.979 0.871 0.829 0.944 0.873 0.834 0.764 0.906 0.690 0.992 0.723 0.836 0.880 0.943 0.646 0.886 0.898 0.920 0.776 0.698 0.804 0.971 0.586 0.896 0.969 0.843 0.705 0.825 0.846
+
+0.201 0.564 0.315 0.198 0.188 0.403 0.517 0.072 0.322 0.355 0.525 0.392 0.488 0.243 0.342 0.181 0.565 0.185 0.464 0.123 0.206 0.234 0.577 0.595 0.555 0.527 0.539 0.263 0.123 0.797 0.610 0.566 0.327 0.454 0.315 0.300 0.668 0.241 0.045 0.330 0.246 0.444 0.268 0.454 0.089 0.590 0.339 0.364 0.218 0.070 0.387 0.217 0.045 0.482 0.496 0.214 0.386 0.133 0.488
+
+0.041 0.627 0.191 0.230 0.063 0.574 0.441 0.122 0.698 0.388 0.348 0.457 0.298 0.193 0.299 0.024 0.160 0.092 0.345 0.098 0.124 0.190 0.424 0.546 0.251 0.469 0.535 0.222 0.146 0.743 0.522 0.214 0.204 0.304 0.387 0.308 0.583 0.060 0.032 0.654 0.222 0.321 0.236 0.321 0.209 0.586 0.205 0.286 0.126 0.041 0.272 0.392 0.004 0.396 0.411 0.344 0.156 0.231 0.472
+
+14
+
+Muguet Mushroom Musk Musty Natural Nutty Odorless Oily Onion Orange Orangeflower Orris Ozone Peach Pear Phenolic Pine Pineapple Plum Popcorn Potato Powdery Pungent Radish Raspberry Ripe Roasted Rose Rummy Sandalwood Savory Sharp Smokey Soapy Solvent Sour Spicy Strawberry Sulfurous Sweaty Sweet Tea Terpenic Tobacco Tomato Tropical Vanilla Vegetable Vetiver Violet Warm Waxy Weedy Winey Woody
+
+0.922 0.910 0.917 0.774 0.811 0.844 0.973 0.833 0.979 0.933 0.973 0.910 0.957 0.839 0.952 0.949 0.956 0.954 0.862 0.977 0.983 0.881 0.886 0.923 0.827 0.911 0.932 0.920 0.812 0.963 0.944 0.810 0.909 0.885 0.857 0.839 0.813 0.909 0.983 0.914 0.747 0.745 0.995 0.877 0.941 0.848 0.985 0.884 0.907 0.833 0.815 0.902 0.748 0.902 0.873
+
+0.900 0.889 0.832 0.731 0.752 0.827 0.955 0.801 0.961 0.901 0.815 0.855 0.887 0.810 0.926 0.948 0.895 0.939 0.791 0.992 0.973 0.831 0.845 0.830 0.737 0.868 0.907 0.877 0.807 0.968 0.877 0.701 0.903 0.764 0.580 0.718 0.784 0.873 0.982 0.773 0.706 0.744 0.892 0.899 0.925 0.782 0.970 0.816 0.912 0.753 0.696 0.887 0.524 0.833 0.859
+
+0.262 0.476 0.659 0.114 0.077 0.508 0.754 0.375 0.673 0.201 0.643 0.228 0.120 0.189 0.456 0.679 0.306 0.541 0.109 0.316 0.282 0.150 0.554 0.451 0.190 0.162 0.510 0.477 0.186 0.376 0.254 0.210 0.343 0.154 0.078 0.259 0.432 0.062 0.666 0.083 0.523 0.061 0.629 0.104 0.151 0.367 0.733 0.232 0.090 0.254 0.117 0.417 0.021 0.359 0.593
+
+0.115 0.374 0.521 0.169 0.053 0.372 0.660 0.331 0.559 0.172 0.363 0.138 0.467 0.180 0.351 0.487 0.207 0.501 0.346 0.266 0.246 0.132 0.433 0.056 0.146 0.055 0.431 0.457 0.086 0.615 0.298 0.044 0.305 0.114 0.017 0.039 0.384 0.073 0.754 0.052 0.455 0.245 0.305 0.269 0.147 0.256 0.678 0.242 0.097 0.142 0.093 0.524 0.023 0.284 0.478
+
+15
+
+Figure S1: A comparison of embedding distances with odor label co-occurrence . We compare the odor label co-occurrence (center) with the Morgan fingerprint embedding (left) and the GNN embedding (right). For the fingeprint embedding and the GNN embeddings, the cosine distance between the embeddings of two molecules sharing the corresponding label are depicted. The correlation coefficient between the GCN embedding image and the label co-occurrence matrix is 0.43, and the correlation coefficient between the fingerprint embedding and the label co-occurrence matrix is 0.22. The color range for each matrix is on a log-scale, and the matrix is normalized such that per-row and per-column sums equal 1.
+Figure S2: Label distance vs. embedding distance under different metrics. We found that label distance (as measured by Jaccard distance) correlated with distance in embedding space for different choices of embedding space and distance metrics. We calculated all pairwise distances between our training set and test set molecules, for the following spaces and metrics: GNN embeddings/Euclidean distance, GNN embeddings/cosine distance, Morgan bFP embeddings/Jaccard distance, Morgan bFP embeddings/cosine distance.
+16
+
+Embedding space / distance metric
+GCN embeddings with Euclidean distance GCN embeddings with cosine distance Morgan bit-FP with Jaccard distance Morgan bit-FP with cosine distance
+
+Kendall 
+0.280 0.235 0.187 0.180
+
+Table S4: Kendall Tau coefficient of embedding spaces and distance metrics. To assess which distance metric best correlated with label distance, we computed the Kendall Tau coefficient for each embedding space and metric. The Kendall Tau coefficient can be thought of intuitively as the fraction of the time that two pairwise distances are ordered correctly, ranging from [-1, 1] for reverse-sorted to sorted.
+
+Figure S3: 2D representation of molecular fingerprints as an unlearned odor space. Fingerprints are dimensionally-reduced to two dimensions using PCA. For clarity, molecules are assigned a z-score based on a Gaussian fit of the data, and molecules with z > 2.5 are not shown. Contoured and shaded areas are computed via KDE of positive labeled data identically to Figure 5. A. Labels with low co-occurrence are spread across the embedding space, but show substantial overlap, as opposed to the GNN-based embeddings. B, C and D each show an individual general label (Floral, Alcoholic and Meaty), and three more specific versions that should be contained in each label. On the whole, the embedding space does not reflect the hierarchical organization of odor descriptors as reflected in both the co-occurrence matrix (Figure 3C) or the GNN embeddings learned from the data (Figure 5).
+17
+
+Figure S4: DREAM Pearson's r with confidence intervals. Bar chart of Pearson's r for DREAM challenge winner versus a RF trained on GNN embeddings, broken down by odor descriptor and approach. 95% CI intervals are computed via bootstrap. The predictions transfer-learned using a random forest on GNN embeddings are statistically indistinguishable from the state-of-the-art DREAM model.
+Figure S5: DREAM olfaction challenge R2 with confidence intervals. Bar chart of R2 for DREAM challenge winner versus a RF trained on GNN embeddings, broken down by odor descriptor and approach. 95% CI intervals are computed via bootstrap. The predictions transfer-learned using GNN embeddings are statistically indistinguishable from the state-of-the-art DREAM model.
+18
+
+

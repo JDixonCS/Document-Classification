@@ -1,0 +1,880 @@
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Adapting Markov Decision Process for Search Result Diversification
+
+Long Xia, Jun Xu, Yanyan Lan, Jiafeng Guo, Wei Zeng, Xueqi Cheng
+CAS Key Lab of Network Data Science and Technology, Institute of Computing Technology, Chinese Academy of Sciences {xialong,zengwei}@so ware.ict.ac.cn,{junxu,lanyanyan,guojiafeng,cxq}@ict.ac.cn
+
+ABSTRACT
+In this paper we address the issue of learning diverse ranking models for search result diversi cation. Typical methods treat the problem of constructing a diverse ranking as a process of sequential document selection. At each ranking position, the document that can provide the largest amount of additional information to the users is selected, because the search users usually browse the documents in a top-down manner. us, to select an optimal document for a position, it is critical for a diverse ranking model to capture the utility of information the user have perceived from the preceding documents. Existing methods usually calculate the ranking scores (e.g., the marginal relevance) directly based on the query and the selected documents, with heuristic rules or handcra ed features.
+e utility the user perceived at each of the ranks, however, is not explicitly modeled. In this paper, we present a novel diverse ranking model on the basis of continuous state Markov decision process (MDP) in which the user perceived utility is modeled as a part of the MDP state. Our model, referred to as MDP-DIV, sequentially takes the actions of selecting one document according to current state, and then updates the state for the chosen of the next action. e transition of the states are modeled in a recurrent manner and the model parameters are learned with policy gradient. Experimental results based on the TREC benchmarks showed that MDP-DIV can signi cantly outperform the state-of-the-art baselines.
+KEYWORDS
+learning to rank; search result diversi cation; Markov decision process
+ACM Reference format: Long Xia, Jun Xu , Yanyan Lan, Jiafeng Guo, Wei Zeng, Xueqi Cheng. 2017. Adapting Markov Decision Process for Search Result Diversi cation. In Proceedings of SIGIR17, August 7­11, 2017, Shinjuku, Tokyo, Japan, , 10 pages. DOI: h p://dx.doi.org/10.1145/3077136.3080775
+* Corresponding author: Jun Xu.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR17, August 7­11, 2017, Shinjuku, Tokyo, Japan © 2017 ACM. ISBN 978-1-4503-5022-8/17/08. . . $15.00. DOI: h p://dx.doi.org/10.1145/3077136.3080775
+
+1 INTRODUCTION
+In many information retrieval tasks, one important goal involves providing search results that covers a wide range of topics for a search query, called search result diversi cation [1]. One of the key problems in search result diversi cation is ranking, speci cally, how to develop a ranking model that can sort documents based on their relevance to the given query as well as the novelty of the information in the documents.
+Typical approaches to search result diversi cation, including the heuristic approaches and the learning approaches, treat the process of constructing a diverse ranking as a problem of sequential document selection. At each ranking position, the additional amount of information (utility) a document can provide is estimated, on the basis of the user query and the documents ranked ahead. e document that can provide maximal additional utility is selected.
+e sequential document selection matches well with the user activity of browsing the search results: search users usually browse the search results in a top-down manner. us, to accurately select the document at each of the positions, it is critical for a diverse ranking algorithm to model the utility of information the users have already perceived from the preceding documents.
+Several methods for diverse ranking have been developed and applied to document retrieval. Di erent criteria are adopted in these methods to estimate the new utility a candidate document can provide. For example, in the representative heuristic approach of maximal marginal relevance (MMR) [2], the marginal relevance, which is de ned as a sum of the query-document relevance and the maximal document distance, is used as the utility. In x AD [20], another widely used diverse ranking model, the utility is de ned so as to explicitly account for the relationship between documents retrieved for the original query and the possible aspects underlying this query, in the form of sub-queries. In recent years, machine learning methods have been proposed and applied to search result diversi cation [18, 24­27, 31]. Typical diverse learning models, including the relational learning to rank (R-LTR) [31] and its variations [24­26], de ne the utilities as the linear combinations of the relevance features and the novelty features.
+All the existing methods on diverse ranking [2, 20, 31] are designed to estimate the utility of a candidate document directly based on the user query and the preceding documents, calculated either by the carefully designed heuristics (e.g., the scoring functions in MMR and x AD) or as a linear combination of the handcra ed relevance features and novelty features (e.g., the scoring function in R-LTR). e utility perceived by the users from the preceding documents, however, is not explicitly modeled and fully utilized.
+In this paper we propose to formalize the construction of a diverse ranking as a process of sequential decision making, which can
+
+535
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+be modeled with a continuous state Markov decision process (MDP). e new diverse ranking model, referred to as MDP-DIV, model
+the user perceived utility of information as a part of its MDP state. Speci cally, in MDP-DIV, a document ranking with M positions is considered as a sequence of M discrete time steps where each time step corresponds to a ranking position. e ranking of documents, thus, is formalized as a sequence of M decisions and each action corresponds to selecting one document from the candidate set. At each time step, the agent receives the environment's state, which models the user's dynamic state on the perceived utility, starting from the rst ranking position. Based on the received state, the agent chooses an action. One time step later, as a consequence of the action, the search users perceive some additional utility from the new selected document, and the system transit to a new state.
+e transition function, which maps old state and the selected document to a new state, is implemented in a recurrent manner. At each time step, the chosen of the action depends on a policy, which is a function maps from the current state to a probability distribution of selecting each actions.
+Reinforcement learning is employed to train the model parameters. Given a set of labeled queries, at each time step, the agent can receive a numerical action-dependent reward which can be de ned upon the diversity evaluation measures. e policy gradient algorithm of REINFORCE [22] is adopted to adjust the model parameters so that expected long-term discounted rewards in terms of the diversity evaluation measure is maximized. In the testing phase, the system fully trusts the learned policy. Given a query and the associated documents, the action with the maximal probability is selected at each ranking position.
+Advantages of the proposed model include: 1) explicitly modeling the dynamic state on the user perceived utility of information in diverse ranking learning, which uni es the relevance and novelty and can be utilized as the criterion for selecting documents; 2) ability to conduct diverse ranking learning in an end-to-end manner, achieving a diverse ranking model with no need of handcra ing features; 3) ability to learn a ranking model towards to a diversity evaluation measure, via involving the measure in the training.
+To evaluate the e ectiveness of MDP-DIV, we conducted experiments on the basis of TREC benchmark datasets. e experimental results showed that MDP-DIV can signi cantly outperform the state-of-the-art diverse ranking approaches including the heuristic methods of MMR, x AD, and the learning methods of R-LTR, PAMM, and PAMM-NTN. We analyzed the results and showed that MDP-DIV improved the performances through 1) optimizing the diversity evaluation measures in training, 2) modeling the dynamic user state on the perceived utility, and 3) utilizing both the immediate rewards and the long-term returns in training phase.
+2 RELATED WORK
+2.1 Search result diversi cation
+It is a common practice to formalize the construction of a diverse ranking list in search as a process of sequential document selection.
+is is based on the observation that in diverse ranking the additional utility a document can provide depends on not only the document itself but also the preceding documents. Di erent models designed di erent criteria for estimating the utility the search users
+
+can perceive from a candidate document. Following the idea, Carbonell and Goldstein [2] proposed the maximal marginal relevance criterion to guide the selection of the documents. At each iteration, the document with the highest marginal relevance score is selected, where the score is a linear combination of the query-document relevance and the maximum distance of the document to the documents in current result set, in other words, novelty. e marginal relevance score is then updated in the next iteration as the number of documents in the result set increases by one. Based on MMR, Guo and Sanner [7] proposed the probabilistic latent MMR model. x AD [19] directly models di erent aspects underlying the original query in the form of sub-queries, and estimates the utility as the relevance of the retrieved documents to each identi ed sub-query. PM-2 [5] treats the problem of nding a diverse search result as nding a proportional representation for the document ranking. Hu et al. [9] proposed a utility function that explicitly leverages the hierarchical intents of queries and selects the documents that maximize diversity in the hierarchical structure. Evaluation methods have also developed based on the intent hierarchies [23]. He et al. [8] proposed to combine the implicit and explicit topic representations for constructing be er diverse rankings. Gollapudi and Sharma [6] proposed an axiomatic approach to result diversi cation.
+Machine learning techniques, which automatically learn the ranking models from the human labeled data, have been applied to construct diverse ranking models. Most of learning approaches still adopt sequential document selection as the basic framework, and the additional utility a candidate document can provide is usually modeled as a sum of the relevance score and the novelty score. For example, Zhu et al. [31], Xia et al. [24], and Xu et al. [26] employed a set of handcra ed relevance features and novelty features to calculate the relevance score and the novelty score, respectively. Both of the scores are de ned as linear combinations of the features. Xia et al.[25] proposed to model the novelty score with the deep learning model of neural tensor networks. SVM-DIV [18] propose to construct a diverse ranking with the diversity criterion only. Structured output learning [11] and deep learning models [15] have also been employed to address the problem of learning diverse rankings.
+Existing methods calculates the ranking scores directly based on the query and the selected documents, with the heuristic rules or the ranking features. ough it is a critical issue for constructing optimal diverse rankings, the dynamic utility the search user perceived from the preceding documents is still not explicitly modeled and fully utilized in current diverse ranking methods.
+2.2 MDP for information retrieval
+In this paper we employ MDP for constructing diverse ranking model, which has been widely used in variant IR applications. For example, in [13], a win-win search framework based on partially observed Markov decision process (POMDP) is proposed to model session search as a dual-agent stochastic game. In the model, the state of the search users are encoded as a four hidden decision making states. In [30], the log-based document re-ranking is also modeled as a POMDP to improve the re-ranking performances. MDP is also used for building recommender systems. For example, [21] designed an MDP-based recommendation model for taking
+
+536
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+both the long-term e ects of each recommendation and the expected value of each recommendation into account. Besides the MDP, researchers also employed the bandits model for constructing diverse ranking [18] and optimizing IR system [28].
+Recent advances in deep learning makes it possible to incorporate deep learning methods with sequential decision making. In the literature of vision, Mnih et al. [16] a empts to implement a entional processing in a deep learning framework. Lu and Yang[12] proposes POMDP-Rec, a neural-optimized POMDP algorithm, for building a collaborative ltering recommender system.
+ough MDP has been applied to various information retrieval tasks, applying it to learning to rank and search result diversi cation is hard. e di culties lie in how to formalize diverse ranking under the MDP framework and how to convert the human labels to the supervision information that can be utilized by MDP. In this paper, we propose to formulate the diverse ranking learning as a problem of learning an MDP model.
+3 MARKOV DECISION PROCESS
+In the paper, we employ continuous state MDP[17, 22], a widely used sequential decision making model, for learning the diverse ranking. An MDP is composed by states, actions, rewards, policy, and transitions, and represented by a tuple S, A,T , R,  :
+States S is a set of states. For instance, in this paper we de ne the state as a tuple consisting of preceding document ranking, candidate documents, and the utility the user perceived from the preceding documents.
+Actions A is a discrete set of actions that an agent can take. e actions available may depend on the state s, denoted as A(s).
+Transition T is the state transition function st+1 = T (st , at ) which speci es a function which maps a state st into a new state st+1 in response to the action selected at .
+Reward r = R(s, a) is the immediate reward, also known as reinforcement. It gives the immediate reward of taking action a at state s.
+Policy  (a|s) describes the behaviors of an agent, which is a probability distribution over the possible actions.  is usually optimized to decide how to move around in the state space to optimize the long term return.
+e agent and environment interact at each of a sequence of discrete time steps, t = 0, 1, 2, · · · . At each time step t the agent receives some representation of the environment's state, st  S, and on that basis selects an action at  A(st ), where A(st ) is the set of actions available in state st . One time step later, in part as a consequence of its action, the agent receives a numerical reward, rt +1  R and nds itself in a new state st +1 = T (st , at ). Figure 1 illustrates the agent-environment interaction in MDP.
+4 MDP FORMULATION OF DIVERSE RANKING
+In this paper, we employ the continuous state MDP to model the construction of the diverse ranking.
+4.1 e basic model
+Suppose we are given a query q, which is associated with a set of retrieved documents X = {x1, · · · , xM }  X, where both the
+
+state st
+st = [Zt, Xt, ht]
+
+reward rt
+rt = R(st, at)
+rt+1
+
+st+1
+
+Agent
+
+action at
+sample at  
+
+Environment
+
+Figure 1: e agent-environment interaction in MDP.
+
+query q and the documents xi are represented as L-dimensional preliminary representations, i.e., the vectors learned by the doc2vec
+model [10], and X is the set of all possible documents. e goal of
+diverse ranking is to construct a model that can rank the documents
+so that the top ranked documents cover a wide range of subtopics
+for a search query.
+Supervised learning approaches can be used to construct the model. Suppose we are given N labeled training queries {(q(n), X (n), (n))}nN=1, where (n) denotes the human labels on the documents, in the form of a binary matrix. (n)(i, j) = 1 if document xi(n) contains the j-th subtopic of q(n) and 0 otherwise1. e learning of a
+diverse ranking model, thus, can be considered as the learning the
+parameters in an MDP model in which each time step corresponds
+to a ranking position. e states, actions, rewards, transitions, and
+policy of the MDP are set as:
+States S: We design the state at time step t as a triple st = [Zt , Xt , ht ], where Zt = {x(n)}nt =1 is the sequence of t preceding documents, where x(n) is the document ranked at position n. Note that we de ne Z0 =  is a empty sequence; Xt  2X is the set of candidate documents; ht  RK is a vector that encodes the user perceived utility from preceding documents in Zt , as well as the information need based on q.
+At the beginning (t = 0), the state is initialized as s0 = [Z0 = , X0 = X , h0]: Z0 is initialized as an empty sequence , the candidate set X0 contains all of the M documents in X , and h0 is initialized as the user's initial information needs, implemented with a
+nonlinear transformation of the query:
+
+h0 =  (Vq q),
+
+(1)
+
+where q  RL is the preliminary representation of the user issued query, Vq  RK×L is the transformation matrix, and  (x) is the
+nonlinear sigmoid function applied to each of the entries:
+
+ (x) =  ( x1, · · · , xK ) =
+
+1
+
+1 + e-x1
+
+,
+
+·
+
+·
+
+·
+
+,
+
+1
+
++
+
+1 e -x K
+
+.
+
+Actions A: At each time step t, the A(st ) is the set of actions the agent can choose, each corresponds to selecting a document
+from Xt . at is, the action at the time step t, at  A(st ) selects a document xm(at )  Xt for the ranking position t + 1, where m(at ) is the index of the document selected by at .
+
+1Some datasets also use graded judgements. In this paper, we assume that all labels are binary.
+
+537
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+TransitionT : e transition functionT : S ×A  S also consists of three parts, as shown in the following Equation (2):
+
+st +1 = T (st , at )
+
+= T ([Zt , Xt , ht ], at )
+
+(2)
+
+= Zt  {xm(at )}, Xt \ {xm(at )},  (Vxm(at ) + Wht ) ,
+where  concatenates the old sequence Zt with xm(at ), V  RK×L is the document-state transformation matrix, and W  RK×K is the state-state transformation matrix. At each time step t, based on state st the system chooses an action at . en, the system moves to time step t + 1 and the system transits to a new state st+1: First, the system appends the selected document to the end of Zt , generating a new document sequence; Second, the selected document at step t is removed from the candidate set: Xt +1 = Xt \ {xm(at )}. us, the number of actions the agent can choose at step t + 1 is reduced by one. ird, the information from the user's last state and the selected document are combined together to form a new user state.
+Note that in the initialization of h, the parameter Vq is used for transforming the query to state. In the state transformation, another parameter V is used for transforming the selected document to state.
+e se ing is based on the consideration that they have di erent goals: Vq is for transforming the query q which represents the information needs of the search users; V is for transforming the documents x which contain the utility that can be perceived by the users for ful lling the information needs.
+Also note that though the state transition function is implemented in a recurrent fashion, they have striking di erence with recurrent neural networks (RNN): in MDP-DIV the input at time step t depends on the output (action) at the time step t - 1.
+Reward R: e reward can be considered as an evaluation of the quality of the selected document. In search result diversi cation, the diversity evaluation measures are used to evaluate the quality of a ranking. Most of these measures are calculated in a sequential manner. us, it is natural to de ne the reward function on the basis of the diversity evaluation measures. For example, based on the diversity evaluation measure of -DCG, we can de ne the reward function as the promotion of -DCG caused by choosing the action at :
+
+R -DCG(st , at ) =  -DCG[t + 1] -  -DCG[t],
+
+where -DCG[t] is the discounted cumulative gain [4] at the t-th position, and the -DCG value at the rank 0 is de ned as zero:  -DCG[0] = 0. 2
+Similarly, on the basis of diversity evaluation measure of Srecall [29], we can also de ne another reward which is the promotion of S-recall by the action:
+
+RS-recall(st , at ) = S-recall[t + 1] - S-recall[t],
+where S-recall[t] is the S-recall value at the t-th position, and Srecall[0] = 0.
+Since the training algorithm learns the model parameters under the supervision of the rewards, de ning the rewards according to a diversity evaluation measure can guide the training process to achieve an optimal model in terms of that evaluation measure.
+
+2 e calculation of reward is based on the document sequence Zt in st , the selected documents xm(at ), and the relevance labels of these documents. Here we assume that the state st also contains the document labels in the training phase.
+
+Policy  (a|s): e policy  : A × S  [0, 1] de nes the probabi-
+lity of selecting each action. Given current state st = [Zt , Xt , ht ] and a possible action at , the policy  is de ned as a normalized so -max function whose input is the bilinear product of the utility
+and the selected document:
+
+exp  (at |[Zt , Xt , ht ]) =
+
+xTm(at )Uht Z
+
+,
+
+(3)
+
+where U  RL×K is the parameter in the bilinear product and Z is the normalization factor:
+
+Z=
+
+exp xTm(a)Uht .
+
+a A(st )
+
+Construction of a diverse ranking for the queries in the training data can be formalized as: given a user query q, a set of M candidate documents X , and the corresponding human labels , the system state is initialized as s0 = [Z0 = , X0 = X , h0 =  (Vq q)]. en, at each of the time steps t = 0, · · · , M - 1, the agent receives the state st = [Zt , Xt , ht ], chooses an action at which selects the document xm(at ) from the candidate set, and places it to the rank t +1. Moving to the next step t + 1, the state becomes st +1 = [Zt +1, Xt +1, ht +1]. On the basis of the human labels for the query, the agent receives immediate reward rt+1 = R([Zt , Xt , ht ], at ), which could be used as supervision for training the model parameters. e process is repeated until the candidate set becomes empty.
+Note that in online ranking/testing phase, there is no reward available because the queries are unlabeled. To construct a diverse ranking, we fully trust the learned policy and choose the action with maximal probability at each time step.
+Next, we will discuss the o -line training algorithm and online ranking algorithm.
+
+4.2 Learning with policy gradient
+e model has parameters  = {Vq, U, V, W} to learn. Inspired by the REINFORCE [22] algorithm of policy gradient, we devised a novel algorithm which can learn the parameters toward the diversity evaluation measure. e algorithm is referred as MDP-DIV and shown in Algorithm 1. e Algorithm 2 shows the procedure of sampling an episode for Algorithm 1.
+e basic idea of Algorithm 1 is updating the parameters via Monte-Carlo stochastic gradient ascent. At each iteration, an episode (consisting a sequence of M states, actions, and rewards) is sampled according to current policy. en, at each time step t of the sampled episode, the model parameters are adjusted according to the gradients of the parameters  log  (at |st ; ), scaled by the step size , discount rate  t , and the long-term return Gt , where Gt is de ned as the discounted sum of the rewards from position t:
+
+M -1-t
+
+Gt =
+
+ k rt +k+1,
+
+(4)
+
+k =0
+
+where M = |X | is the number documents in the candidate set. Note
+that if  = 1, G0 is exactly the evaluation measure calculated at the nal rank of the document list, i.e., -DCG@M or S-recall@M.
+Intuitively, the se ing of Gt let the parameters move most in the directions so that the favor actions can yield the highest return.
+
+538
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Algorithm 1 MDP-DIV learning
+
+Algorithm 2 SampleEpisode
+
+Input: Labeled training set D = {(q(n), X (n), (n))}nN=1, learning rate , discount factor  , and reward function R
+
+Input: Parameters  = {Vq, U, V, W}, q, X , , and R Output: An episode
+
+Output:  = {Vq, U, V, W}
+
+1: Initialize s  [, X ,  (Vq q)]{Equation (1)}
+
+1: Initialize  = {Vq, U, V, W}  random values in [-1, 1] 2: repeat
+
+2: M  |X | 3: E = (){empty episode}
+
+3: for all (q, X , )  D do
+
+4: for t = 0 to M - 1 do
+
+4:
+
+(s0, a0, r1, · · · , sM-1, aM-1, rM )  SampleEpisode(, q, X , , R) 5: A  A(s) {Possible actions according to X in state s}
+
+{Algorithm (2), and M = |X |}
+
+6: for all a  A do
+
+5:
+
+for t = 0 to M - 1 do
+
+7:
+
+P(a)   (a|s; )
+
+6:
+
+Gt 
+
+M -1-t k =0
+
+ k rt +k+1
+
+{Equation
+
+(4)}
+
+7:
+
+   +  t Gt  log  (at |st ; ) {Equation (5)}
+
+8:
+
+end for
+
+8: end for 9: Sample an action a^  A, according to P 10: r  R(s, a^){Calculation on the basis of }
+
+9: end for
+
+11: Append (s, a^, r ) to the tail of E
+
+10: until converge
+
+12: [Z, X , h]  s
+
+11: return 
+
+13: s  Z  {xm(a^)}, X \ {xm(a^)},  (Vxm(a^) + Wh)
+
+14: end for
+
+15: return E = (s0, a0, r1, · · · , sM-1, aM-1, rM )
+
+e gradient of MDP-DIV at time step t is  log  (at |st ; ), which the direction that most increase the probability of repeating
+the action at on future visits to state st , and is de ned as
+
+where Vht-1 can be unrolled in a similar way. At t = 0, Vh0 is:
+
+ log  (at |st ; ) =  f (at |st )-
+
+a At  f (a|st ) exp { f (a|st )} , a At exp { f (a|st )}
+
+(5)
+
+where f (a|st ) = xTm(a)(Uht ), and  f (a|st ) = {U f (a|st ),
+
+Vq f (a|st ), V f (a|st ), W f (a|st ) , where
+
+Vh0 = V (Vq q) = 0K,L,1,K , where 0K,L,1,K  RK ×L×1×K is a tensor of zeros.
+Wht = W (Vxm(at-1) + Wht -1) = diag(ht  (1 - ht )) W(Vxm(at-1) + Wht -1)
+
+U f (a|st ) = xm(a)hTt .
+
+= diag(ht  (1 - ht )) IK,K,K,K ht -1 + (Wht -1) WT ,
+
+As for Vq f (a|st ), V f (a|st ), and W f (a|st ), they can be calculated in a similar way:
+Vq f (a|st ) = Vq ht UT xm(a),
+
+where IK,K,K,K  RK ×K ×K ×K is an identity tensor, and Wht -1 can be unrolled in a similar way. At t = 0, Wh0 is:
+Wh0 = W (Vq q) = 0K,K,1,K ,
+
+V f (a|st ) = (Vht ) UT xm(a), W f (a|st ) = (Wht ) UT xm(a), where Vq ht , Vht , and Wht can be calculated recursively: Vq ht = Vq  (Vxm(at-1) + Wht -1)
+
+where 0K,K,1,K  RK ×K ×1×K is a tensor of zeros. Compared with conventional REINFORCE algorithm, MDP-DIV
+is based on a modi ed MDP model in which the user state of perceived utility is initialized with query and modeled in a recurrent manner. us, in the training phase, MDP-DIV needs to estimate the policy function, as well as the functions for state initialization
+
+= diag(ht  (1 - ht )) Vq (Wht -1) = diag(ht  (1 - ht )) Vq ht -1 WT ,
+
+and state transition. In [16], similar idea was presented for extracting information from images. In this paper we adapt the model for the task of search result diversi cation.
+
+where 1 is an K-dimensional vector of ones, operator "" denotes the element-wise vector product, operator "diag" generates an K ×K diagonal matrix according to the input vector, and Vq ht-1 can be further unrolled in a similar way. At t = 0, Vq h0 is:
+Vq h0 = Vq  (Vq q) = diag(h0  (1 - h0))IK,L,K,Lq, where IK,L,K,L  RK×L×K×L is an identity tensor.
+Vht = V (Vxm(at-1) + Wht -1) = diag(ht  (1 - ht )) V(Vxm(at-1) + Wht -1) = diag(ht  (1 - ht )) IK,L,K,Lxm(at-1) + (Vht -1) WT ,
+
+4.3 Online ranking
+
+In the online ranking, the ranking system receives a user query
+
+q and the associated documents X = {x1, · · · , xM }. Since there exists no human label for calculating the immediate rewards, the
+
+system fully relies on the learned policy  for generating the diverse
+
+ranking, as shown in Algorithm 3. A er initializing with q, the
+
+algorithm makes a sequence of greedy decisions: at each step the
+
+action with the maximal probability is chosen (line 5 of Alglrithm 3),
+
+and the action in return update the state for choosing the next action
+
+(line 7 and line 8 of Algorithm 3).
+
+e time complexity of the online ranking algorithm is of
+
+O
+
+min{K L2 ,
+
+LK
+
+2
+
+}
+
+M
+
+(2+M 4
+
+)
+
++
+
+(M
+
+-
+
+1)(K 2
+
++
+
+KL)
+
+per query.
+
+e rst
+
+539
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Algorithm 3 MDP-DIV online ranking
+Input: Parameters  = {Vq, U, V, W}, query q, documents X Output: Permutation of documents 
+1: Initialize s  [, X ,  (Vq q)]{Equation (1)} 2: M  |X | 3: for t = 0 to M - 1 do 4: A  A(s) {Possible actions according to X in state s} 5: a^  arg maxa A  (a|s; ){Choosing most possible action} 6:  [t + 1]  m(a^){Document xm(a^) is ranked at t + 1} 7: [Z, X , h]  s 8: s  [Z  {xm(a^)}, X \ {xm(a^)},  (Vxm(a^) + Wh)] 9: end for 10: return 
+part corresponds to calculating the policy for all of the possible actions at each iteration and the second part corresponds to updating the state for the next iteration. e term min{KL2, LK2} is for calculating the matrix multiplication xTm(at )U ht in the policy with di erent ways. In most cases L is larger than K. Please note that the online ranking algorithm actually runs M - 1 iterations for ranking M documents, because at the last iteration A(sM-1) contains only one action. Usually, K and L are not very large, e.g, we set K = 5 and L = 100 in our experiments. us, the online ranking algorithm is e cient if the candidate set is not very large. In our experiments, on average it takes about 20 milliseconds for ranking about 200 documents, on a server with 24GB memory and two Intel Xeon E5410 2.33GHz ad-Core processors. Note that in the analysis the time for document embedding is not taken into consideration as the document embeddings can be calculated o ine.
+4.4 eoretical analysis
+e learning phase of MDP-DIV tries to optimize general diversity evaluation measures with reinforcement learning. e measures can be -DCG and S-recall, or any other measures that can be calculated at each of the ranking position. We explain why this is the case.
+In the training, Monte-Carlo stochastic gradient ascent is used to conduct the optimization. Given a query q in the training set, we want to maximize the value V , which is the expected return of the query:
+max V (q) = E G0,
+
+where G0 is the discounted sum of the rewards, starting from position 0, as de ned in Equation (4). Please note G0 is the diversity evaluation measure if  = 1. us, maximizing V (q) is actually maximizing the expected diversity evaluation measure for the query.
+According to the policy gradient theorem presented in [22], chapter 13, the gradient of the performance metric with respect to the parameters  on each query can be calculated as
+V () = Es,a Q (s, a) (a|s),
+where  is the discounted state distribution given a query q and model parameters, which is de ned as:
+
+(s |q; ) =  t -1p(s0  s, t |qn ; ),
+t =1
+
+· · · q
+
+h0 = (Vqq)
+
+T (a0, s0)
+
+s0 = [Z0, X0, h0]
+
+T (aM 2, sM 2) sM 1 = [ZM 1, XM 1, hM 1]
+
+a0
+
+=
+
+arg
+
+max
+a
+
+(a|s0)
+
+xm(a0)
+
+aM
+
+1
+
+=
+
+arg
+
+max
+a
+
+(a|sM
+
+1)
+
+xm(aM 1)
+
+ [1] = m(a0)
+
+···
+
+ [M ] = m(aM 1)
+
+Figure 2: Online document ranking in MDP-DIV.
+
+where p(s0  s, t |qn ; ) is the probability of transitioning from the initial state s0 given the query q in t steps [22]. Q (s, a) is the expected return starting from s, taking the action a and therea er following the policy  :
+Q (s, a) = E [Gt |st = s, at = a].
+
+Monte-Carlo method is used to estimate the gradient. Speci -
+cally, given a sampled episode s0, a0, r1, · · · , sM-1, aM-1, rM and a speci c time step t, the gradient can be estimated as [22]
+
+V () =  sample t
+
+ (a|st )Q (st , a)
+
+a A(st )
+
+= t
+
+ (a|st ) ·
+
+a A(st )
+
+Q
+
+
+
+(st
+
+,
+
+a)
+
+ (a|st  (a|st )
+
+)
+
+=  sample
+
+t
+
+Q
+
+
+
+(st
+
+,
+
+at
+
+)
+
+ (at |st  (at |st )
+
+)
+
+=  sample t Gt  log  (at |st ).
+
+e rst = sample replaces s by its sample st , which is sampled according to ; the second = sample replaces a by its sample at , which is sampled according to  ; and the third = sample replaces the therea er
+
+decision process guided by  with the sampled episode. Note that
+
+E [Gt |st , at ] = Q (st , at ) and  log  (at |st ) =
+
+ 
+
+ (at |st (at |st )
+
+)
+
+.
+
+We can see that the updating rule in Algorithm 1 exactly follows
+
+the estimated gradients presented above. us, we can conclude
+
+MDP-DIV tries to optimize general diversity evaluation measures
+
+with Monte-Carlo stochastic gradient ascent when  = 1.
+
+4.5 Advantages
+MDP-DIV provides an elegant approach to modeling user's dynamic state on the perceived utility during the browsing of the diverse ranking results. More importantly, it is a method that can be justi-
+ed from the theoretical viewpoint, as discussed above. In addition, MDP-DIV has several other advantages when compared with the existing diverse ranking learning methods such as SVM-DIV, R-LTR and PAMM etc.
+First, MDP-DIV can conduct an end-to-end learning of the diverse ranking model, which achieves a model with no need of handcra ing relevance features and novelty features. e inputs to the ranking model are the preliminary representations of the queries and the documents, e.g., the distributed representations learned by the doc2vec model. In contrast, all existing diverse ranking learning methods heavily depend on the handcra ed relevance
+
+540
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+features and/or novelty features. It has been widely observed that high quality features are critical for constructing diverse ranking, while designing the features, especially designing the novelty features, is very di cult in real applications [25]. MDP-DIV solves the issue via learning a ranking model that needs only the preliminary representations of the queries and the documents.
+Second, MDP-DIV utilizes both the immediate rewards and the long-term returns as the supervision information during its training. Speci cally, given an episode, the parameters are updated a er receiving each of the immediate rewards (line 5-8 of Algorithm 1). Meanwhile, the updating rule also utilizes the long-term return Gt , which accumulates all of the future rewards (line 6-7 of Algorithm 1), to re-scale the step size. In contrast, existing methods that directly optimize evaluation measures are only based on a evaluation measure calculated at a xed position [24, 26] on the basis of whole ranking. Our empirical analysis in Section 5.3.2 also showed that training with both the rewards and the returns can achieve be er ranking accuracies.
+ird, MDP-DIV makes use of a uni ed criterion, the additional utility a search user can perceive, for selecting documents at each iteration. In contrast, the criterion adopted by most existing methods, e.g., the marginal relevance, consists of two individual factors: the relevance and the novelty. Heuristic diverse ranking model x AD tried to replace these two factors with "the relevance to the underlying sub-queries", which has shown to be more reasonable and e ective. In this paper, we also showed that under the MDP framework, the document selection criterion can be uni ed to "the perceived utility", which has shown to be simple in concept and be powerful in the real applications.
+5 EXPERIMENTS
+We conducted experiments to test the performances of MDP-DIV using a combination of four TREC benchmark datasets: TREC 2009 Web Track (WT2009), TREC 2010 Web Track (WT2010), TREC 2011 Web Track (WT2011), and TREC 2012 Web Track (WT2012).
+5.1 Experimental settings
+e training of MDP-DIV model need lots of labeled queries because it has a large number of parameters. In experiments, for e ective training of the model parameters, we combined four TREC datasets, achieving a new dataset with 200 queries, and in total about 45,000 labeled documents. Each query includes several subtopics identi ed by the TREC assessors. e document relevance labels are made at the subtopic level and the labels are binary3.
+All the experiments were carried out on the ClueWeb09 Category B data collection4, which is comprised of 50 million English web documents. Porter stemming, tokenization, and stop-words removal (using the INQUERY list) were applied to the documents as preprocessing. For each query, the initial ranking is generated by
+ery-likelihood language model[14]. We conducted 5-fold crossvalidation experiments. We randomly split the queries into ve even subsets. At each fold, three subsets were used for training, one was used for validation, and one was used for testing. e results reported were the average over the ve trials.
+3WT2011 has graded judgements. In this paper we treat them as binary. 4h p://boston.lti.cs.cmu.edu/data/clueweb09
+
+e TREC o cial evaluation metrics for the diversity task were
+
+used in the experiments, including the ERR-IA [3] and -NDCG [4].
+
+ey measure the diversity of a result list by explicitly rewarding
+
+diversity and penalizing redundancy observed at every rank. Follo-
+
+wing the default se ings in o cial TREC evaluation program, the
+
+parameter  in these evaluation measures are set to 0.5. We also
+
+used traditional diversity measures of subtopic recall (denoted as
+
+"S-recall") [29]. All of the measures are computed over the top-k
+
+search results (k = 5 and k = 10).
+
+We compared MDP-DIV with several state-of-the-arts baselines
+
+in search result diversi cation, including the heuristic methods:
+
+MMR [2]: a heuristic approach in which the document is se-
+
+lected according to maximal marginal relevance.
+
+x AD [19]: a representative approach which explicitly models
+
+di erent aspects underlying the original query in the form of sub-
+
+queries.
+
+PM-2 [5]: a method of optimizing proportionality for search
+
+result diversi cation.
+
+We also compared MDP-DIV with the learning methods:
+
+SVM-DIV [27]: a learning approach which utilizes structural
+
+SVMs to optimize the subtopic coverage.
+
+R-LTR [31]: a state-of-the-art learning approach developed in
+
+the relational learning to rank framework. Following the practice
+
+in [31], we used the results of R-LTRmin in which the relation function was de ned as the minimal distance of the candidate
+
+document to the selected documents
+
+PAMM [24]: another learning algorithm under R-LTR frame-
+
+work. PAMM directly optimizes diversity evaluation measure using
+
+structured Perceptron. Following the practice in [24], we con gu-
+
+red the PAMM algorithm to directly optimize -NDCG@10 in our
+
+experiments, and set the number of sampled positive rankings per query  + = 5 and the number of sampled negative rankings per
+query  - = 20.
+
+NTN-DIV: a learning approach which automatically learns no-
+
+velty features based on neural tensor networks. Following the
+
+practice in [25], we con gured the learning of NTN-DIV algorithm
+
+to directly optimize -NDCG@10 and the number of tensor slices
+
+is 7.
+
+MDP-DIV and the baseline of NTN-DIV need preliminary re-
+
+presentations of the queries and the documents as their inputs. In
+
+the experiments, we used the query vector and document vector
+
+generated by the doc2vec [10] to represent the document. Doc2vec
+
+model was trained on all of the documents in Web Track dataset
+
+and the number of vector dimensions were set to 100. For training the model, we used the distributed bag of words (DBOW) model5.
+
+e learning rate is set to 0.025 and the window size is set to 8.
+
+e MDP-DIV also has some parameters. e reward function
+
+in MDP-DIV was set as either R -DCG or RS-recall, denoted as MDPDIV(-DCG) and MDP-DIV(S-recall), respectively. In all of the ex-
+
+periments, the learning rate  is tuned on the basis of the validation
+
+set. We set the discounting parameter  = 1, which means that the
+
+return is the undiscounted sum of the future rewards, which makes
+
+the long term return in Equation (4) becomes Gt =
+
+M -1-t k =0
+
+rt
+
++k +1 .
+
+It makes the training algorithm optimizes the diversity evaluation
+
+measure of -DCG and S-recall.
+
+5h p://radimrehurek.com/gensim/tutorial.html
+
+541
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+5.2 Experimental results
+Table 1 reports the performances of our approach and all of the baseline methods in terms of the six diversity performance metrics, including -NDCG@5, -NDCG@10, S-recall@5, S-recall@10, ERRIA@5, and ERR-IA@10. Boldface indicates the highest score among all runs. From the results we can see that, in terms of the six diversity evaluation metrics, both MDP-DIV(-DCG) and MDPDIV(S-recall) outperformed all of the baseline methods, including the heuristic method of MMR, x AD, PM-2 and learning methods of R-LTR, PAMM(-NDCG), and NTN-DIV(-NDCG). We conducted signi cance testing (t-test) on the improvements of our approaches over the best baseline NTN-DIV(-NDCG). e results indicate that the improvements are signi cant (p-value < 0.05), in terms of all of the evaluation measures.
+Comparing the results of the MDP-DIV(-DCG) and MDP-DIV(Srecall), we can see that MDP-DIV(-DCG) trained with -DCG (se ing -DCG as reward function) performed be er in terms of NDCG@5 and -NDCG@10. Similarly, MDP-DIV(S-recall) trained with S-recall (se ing S-recall as reward function) performed be er in terms of S-recall@5 and S-recall@10. e results indicate that MDP-DIV can indeed enhance diverse ranking performance in terms of a measure by using the measure as reward function in training6. e result agrees well with the theoretical analysis shown in Section 4.4.
+5.3 Discussion
+We conducted experiments to show the reasons that MDP-DIV outperformed the baselines, using the results of MDP-DIV(-DCG) on one trial of the cross validation as examples.
+5.3.1 E ects of modeling user perceived utility. We analyzed how the user state on the perceived utility e ects the selection of documents in MDP-DIV. Speci cally, based on the trained MDP-DIV model, we tracked the online ranking process for query number 93 "ambiguous", which contains ve subtopics. Figure 3 shows the details of the rst three document selection steps, including the transition of the user dynamic state hi , the ranking score f (at |st ) = xTm(at )Uht for each of the actions7, and the constructed document ranking. Due to the space limitation, we only showed the ve top ranked documents d1, · · · , d5, corresponding to the documents of enwp03-28-04544, en0007-80-16124, en0094-80-42411, en0006-08-03878, and en0010-24-38000 in the Clueweb09 collection, respectively. e subtopics covered by each of the documents are shown in the square brackets.
+From Figure 3, we can see that ht was updated a er choosing each action, indicating the changes of the user state a er perceiving the utility provided by the selected document. At step 0, the selected document d2 covered subtopics 3 and 5. At step 1, as the consequence of the action the user state was updated, and the ranking score of d4 (with the covered subtopic 5) was suppressed from 0.46 to 0.35, while the ranking scores of the other three documents (d1, d3, and d5, with uncovered subtopics) were promoted. e results indicate that the user state h1 captured the utility provided
+6Here we consider  -NDCG and  -DCG as "one" measure as the only di erence between them is the normalization factor. 7In the online ranking, the selection of actions can be implemented as directly based on the ranking scores instead of based on the probabilities  (at |st ).
+
+h0
+
+h1
+
+0.50
+
+0.56
+
+0.53
+
+0.53
+
+0.49
+
+0.55
+
+0.40
+
+0.51
+
+q
+
+0.60
+
+doc:subtopics
+
+ranking score
+
+0.61
+
+doc:subtopics
+
+ranking score
+
+{ d1 : [2] 0.51 d2 : [3, 5] 1.19 d3 : [1, 4] 1.05 d4 : [5] 0.46
+
+{ d1 : [2] 0.84 d3 : [1, 4] 1.07 d4 : [5] 0.35 d5 : [1, 4] 1.12
+
+d5 : [1, 4] 1.01
+
+ranking: h
+
+d2 : [3, 5]
+
+d5 : [1, 4]
+
+h2
+
+0.53
+
+0.48
+
+0.51
+
+···
+
+0.42
+
+0.59
+
+doc:subtopics
+
+ranking score
+
+{ d1 : [2] 0.89 d3 : [1, 4] 0.84
+
+d4 : [5] 0.34
+
+d1 : [2]
+
+··· i
+
+Figure 3: e online ranking process for query number 93.
+
+by d2, which made the ranking model focusing on documents that can provide the largest amount of new information. As the result, d5, which contains two new subtopics 1 and 4, was selected at step 1. Similarly, at step 2 state vector h2 captured the utility provided by d2 and d5 and making the model to select d1, which contains a new subtopic 2. In contrast, the ranking scores for d3 and d4, whose subtopics had been covered by the preceding documents, were suppressed. e phenomenon clearly indicates MDP-DIV can e ectively capture the user perceived utility of information in its state, and utilize it for generating diverse rankings.
+5.3.2 E ects of using immediate rewards in training. One advantage of MDP-DIV is that it has the ability of utilizing the immediate rewards as the supervision in training, which makes the training more e ective and e cient. We tried to verify the e ectiveness and e ciency of using the immediate rewards in the training phase. Speci cally, we modi ed the training Algorithm 1 so that the model parameters were updated only at the end of an episode (i.e., se ing the iteration variable t in the line 5 of Algorithm 1 starts from M). In this way, the modi ed algorithm only utilizes the long term return of the whole episode for training, denoted as "MDPDIV(ReturnOnly)". Figure 4 shows the performance curves of MDPDIV(-DCG) and MDP-DIV(ReturnOnly) trained with -DCG, on the test data of one trail in the cross validation. e performances of other baseline methods on the same cross validation trail are also shown in the gure.
+From the results, we can see that MDP-DIV(-DCG) outperformed the MDP-DIV(ReturnOnly) in terms of both convergency rate and the converged performances. e result indicates that utilizing the immediate rewards in MDP-DIV(-DCG) leads to an e ective and e cient training algorithm. Note that in contrast, most existing learning approaches to diverse ranking, including R-LTR, PAMM, and NTN-DIV, can only utilize the accumulated information on the whole ranking as supervision in their training phase. For example, R-LTR uses the likelihood of the whole document rankings, and PAMM uses the prede ned evaluation measure calculated based on the whole ranking. e experimental results showed one reason why MDP-DIV(-DCG) can outperform these baselines.
+We also noticed that the converged MDP-DIV(ReturnOnly) model still outperformed the baseline methods including SVM-DIV, R-LTR, PAMM, and NTN-DIV, indicating that modeling the user's dynamic state on the perceived utility with MDP is e ective.
+
+542
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 1: Performance comparison of all methods on TREC web track datasets.
+
+Method
+MMR x AD PM-2 SVM-DIV R-LTR PAMM( -NDCG) NTN-DIV( -NDCG) MDP-DIV(S-recall) MDP-DIV( -DCG)
+
+ -NDCG@5
+0.2753 0.3165 0.3047 0.3030 0.3498 0.3712 0.3962 0.4156 0.4189
+
+ -NDCG@10
+0.2979 0.3941 0.3730 0.3699 0.4132 0.4327 0.4577 0.4734 0.4762
+
+S-recall@5
+0.4388 0.4933 0.4910 0.5122 0.5397 0.5561 0.5817
+0.6123 0.6102
+
+S-recall@10
+0.5151 0.6043 0.6012 0.6230 0.6511 0.6612 0.6872
+0.7155 0.7117
+
+ERR-IA@5
+0.2005 0.2314 0.2298 0.2268 0.2521 0.2619 0.2773 0.2963 0.2988
+
+ERR-IA@10
+0.2309 0.2890 0.2814 0.2726 0.3011 0.3029 0.3285 0.3477 0.3494
+
+0.55
+
+3
+
+0.45
+
+0.35
+
+0.25
+0.15 0
+
+MDP-DIV(ReturnOnly) NTN-DIV PAMM R-LTR SVM-DIV
+
+500
+
+1000
+
+1500
+
+2000
+
+2500
+
+iteration
+
+Figure 4: e performance curves on the test data for MDPDIV(-DCG), and the modi ed MDP-DIV(-DCG) in which the training only involves the long-term returns. e performances of other baselines are shown as horizontal lines.
+
+2.5
+
+2
+train(sample) train(arg max) test(arg max)
+
+1.5
+
+0
+
+500
+
+1000
+
+1500
+
+2000
+
+2500
+
+iteration
+
+Figure 5: e performance curves in terms of -DCG on the training data ("train(arg max)") and the test data ("test(arg max)"). e average performances of the sampled rankings over all training queries are also shown ("train(sample)").
+
+5.3.3 Analysis of convergence and online ranking criterion. We conducted experiments to test whether the ranking accuracy in terms of the evaluation measure can be continuously improved, as the training of MDP-DIV goes on.
+Speci cally, we tested the MDP-DIV(-DCG) models generated at each of the training iteration in one trail of the cross validation.
+e performances in terms of -DCG at the last position of the whole document ranking is reported. For each model, the average performances over all of the training queries (or the testing queries) are reported. Figure 5 shows the performance curves on the training data (solid red line and denoted as "train(arg max)") and on the test data (dashed yellow line and denoted as "test(arg max)"). For these two curves, the document rankings for the queries are generated by the online ranking Algorithm 3. e document rankings can also be generated through sampling during the training, via the episode sampling Algorithm 2. e average performances of the sampled rankings for all the training queries are also shown in the
+gure (blue dots and denoted as "train(sample)"). From the results shown in Figure 5, we can see that on both of
+the training set and test set, the ranking accuracies of MDP-DIV(DCG) steadily improves, as the training goes on. e experimental
+
+results also showed that the ranking accuracies of the sampled rankings (by Algorithm 2) has an obvious trend of steadily improving with some random noise, as the training goes on.
+Comparing the sampled rankings ("train(sample)") and the ranking generated by the online ranking algorithm ("train(arg max"), we can see that at the beginning of the training phase, the sampled rankings can achieve be er -DCG values than the rankings generated by the online ranking algorithm, on the basis of the training queries. As the training went on and a er about 200 iterations, the online ranking algorithm outperformed the sampling method, and the trend remains to the end of the training. e phenomenon was repeated in other experiments. We analyzed the reasons.
+e online ranking algorithm (Algorithm 3) fully trusts the learned ranking model when generating the document ranking, i.e., a^  arg maxa A  (a|s; ). In contrast, the sampled rankings are generated according to the same ranking model while with some randomness. At the beginning of the training phase, the model parameters are far from their optimal values. In many cases, fully trusting the policy leads to bad decisions and generating rankings with low performances. e sampling method, in contrast, may make be er decisions due to the random natural of sampling. As
+
+543
+
+Session 5A: Retrieval Models and Ranking 3
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+the training goes on, the model parameters gradually converge to nearly optimal values. Fully trusting the learned policy has the advantages of achieving stable and (nearly) optimal decisions in most cases. e sampling method, however, hurts from unstable results due to the random noise. e results clearly indicate that, fully trusting the learned model (as that of in Algorithm 3) in the online ranking phase is a good criterion, given the model is well trained.
+6 CONCLUSION AND FUTURE WORK
+In this paper we have proposed a novel approach to learning diverse ranking model for search result diversi cation, referred to as MDP-DIV. In contrast to existing methods, MDP-DIV explicitly models the dynamic utility the search users perceived during the browsing of the ranking result. e dynamic utility is modeled with a continuous state MDP and the model parameters are estimated with reinforcement learning. MDP-DIV o ers several advantages: no need for handcra ing ranking features, optimizing diversity evaluation measures in training, utilizing both immediate rewards and long-term returns as supervision, and high accuracy in ranking. Experimental results based on the TREC benchmark datasets show that MDP-DIV can signi cantly outperform the baseline methods.
+7 ACKNOWLEDGEMENTS
+e work was funded by the National Key R&D Program of China under Grant No. 2016QY02D0405, 973 Program of China under Grant No. 2014CB340401 and 2012CB316303, the National Natural Science Foundation of China (NSFC) under Grants No. 61232010, 61472401, 61433014, 61425016, and 61203298, the Key Research Program of the CAS under Grant No. KGZD-EW-T03-2, and the Youth Innovation Promotion Association CAS under Grants No. 20144310 and 2016102.
+REFERENCES
+[1] Rakesh Agrawal, Sreenivas Gollapudi, Alan Halverson, and Samuel Ieong. 2009. Diversifying Search Results. In Proceedings of the Second ACM International Conference on Web Search and Data Mining (WSDM '09). ACM, New York, NY, USA, 5­14.
+[2] Jaime Carbonell and Jade Goldstein. 1998. e Use of MMR, Diversity-based Reranking for Reordering Documents and Producing Summaries. In Proceedings of the 21st Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '98). ACM, New York, NY, USA, 335­336.
+[3] Olivier Chapelle, Shihao Ji, Ciya Liao, Emre Velipasaoglu, Larry Lai, and SuLin Wu. 2011. Intent-based Diversi cation of Web Search Results: Metrics and Algorithms. Inf. Retr. 14, 6 (Dec. 2011), 572­592. DOI:h p://dx.doi.org/10.1007/ s10791- 011- 9167- 7
+[4] Charles L.A. Clarke, Maheedhar Kolla, Gordon V. Cormack, Olga Vechtomova, Azin Ashkan, Stefan Bu¨ cher, and Ian MacKinnon. 2008. Novelty and Diversity in Information Retrieval Evaluation. In Proceedings of the 31st Annual International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '08). ACM, New York, NY, USA, 659­666.
+[5] Van Dang and W. Bruce Cro . 2012. Diversity by Proportionality: An Electionbased Approach to Search Result Diversi cation. In Proceedings of the 35th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '12). ACM, New York, NY, USA, 65­74.
+[6] Sreenivas Gollapudi and Aneesh Sharma. 2009. An Axiomatic Approach for Result Diversi cation. In Proceedings of the 18th International Conference on World Wide Web (WWW '09). 381­390.
+[7] Shengbo Guo and Sco Sanner. 2010. Probabilistic Latent Maximal Marginal Relevance. In Proceedings of the 33rd International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '10). ACM, New York, NY, USA, 833­834.
+[8] Jiyin He, Vera Hollink, and Arjen de Vries. 2012. Combining Implicit and Explicit Topic Representations for Result Diversi cation. In Proceedings of the 35th
+
+International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '12). ACM, New York, NY, USA, 851­860. [9] Sha Hu, Zhicheng Dou, Xiaojie Wang, Tetsuya Sakai, and Ji-Rong Wen. 2015. Search Result Diversi cation Based on Hierarchical Intents. In Proceedings of the
+24th ACM International on Conference on Information and Knowledge Management (CIKM '15). ACM, New York, NY, USA, 63­72. [10] oc V. Le and Tomas Mikolov. 2014. Distributed Representations of Sentences and Documents. In Proceedings of the 31th International Conference on Machine Learning, ICML 2014, Beijing, China, 21-26 June 2014. 1188­1196. h p://jmlr.org/ proceedings/papers/v32/le14.html [11] Liangda Li, Ke Zhou, Gui-Rong Xue, Hongyuan Zha, and Yong Yu. 2009. Enhancing Diversity, Coverage and Balance for Summarization rough Structure Learning. In Proceedings of the 18th International Conference on World Wide Web (WWW '09). ACM, New York, NY, USA, 71­80. [12] Zhongqi Lu and Qiang Yang. 2016. Partially Observable Markov Decision Process for Recommender Systems. CoRR abs/1608.07793 (2016). [13] Jiyun Luo, Sicong Zhang, and Hui Yang. 2014. Win-win Search: Dual-agent Stochastic Game in Session Search. In Proceedings of the 37th International ACM
+SIGIR Conference on Research &#38; Development in Information Retrieval (SIGIR '14). ACM, New York, NY, USA, 587­596. [14] Christopher D. Manning, Prabhakar Raghavan, and Hinrich Schu¨tze. 2008. Introduction to Information Retrieval. Cambridge University Press, NY, USA. [15] Lilyana Mihalkova and Raymond Mooney. 2009. Learning to Disambiguate Search eries from Short Sessions. In Machine Learning and Knowledge Discovery in Databases. Lecture Notes in Computer Science, Vol. 5782. Springer. [16] Volodymyr Mnih, Nicolas Heess, Alex Graves, and Koray Kavukcuoglu. 2014. Recurrent Models of Visual A ention. In Proceedings of the 27th International Conference on Neural Information Processing Systems (NIPS'14). MIT Press, Cambridge, MA, USA, 2204­2212. [17] Martin L. Puterman. 2008. Markov Decision Processes. John Wiley & Sons, Inc. [18] Filip Radlinski, Robert Kleinberg, and orsten Joachims. 2008. Learning Diverse Rankings with Multi-armed Bandits. In Proceedings of the 25th International Conference on Machine Learning (ICML '08). ACM, New York, NY, USA, 784­791. [19] Rodrygo L.T. Santos, Craig Macdonald, and Iadh Ounis. 2010. Exploiting ery Reformulations for Web Search Result Diversi cation. In Proceedings of the 19th International Conference on World Wide Web (WWW '10). 881­890. [20] Rodrygo L. T. Santos, Jie Peng, Craig Macdonald, and Iadh Ounis. 2010. Explicit Search Result Diversi cation through Sub-queries. Springer Berlin Heidelberg, Berlin, Heidelberg, 87­99. [21] Guy Shani, David Heckerman, and Ronen I. Brafman. 2005. An MDP-Based Recommender System. J. Mach. Learn. Res. 6 (Dec. 2005), 1265­1295. [22] Richard S. Su on and Andrew G. Barto. 2016. Reinforcement Learning: An Introduction (2nd ed.). MIT Press. [23] Xiaojie Wang, Zhicheng Dou, Tetsuya Sakai, and Ji-Rong Wen. 2016. Evaluating Search Result Diversity Using Intent Hierarchies. In Proceedings of the 39th
+International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '16). ACM, New York, NY, USA, 415­424. [24] Long Xia, Jun Xu, Yanyan Lan, Jiafeng Guo, and Xueqi Cheng. 2015. Learning Maximal Marginal Relevance Model via Directly Optimizing Diversity Evaluation Measures. In Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '15). 113­122. [25] Long Xia, Jun Xu, Yanyan Lan, Jiafeng Guo, and Xueqi Cheng. 2016. Modeling Document Novelty with Neural Tensor Network for Search Result Diversi cation. In Proceedings of the 39th International ACM SIGIR Conference on Research and Development in Information Retrieval (SIGIR '16). 395­404. [26] Jun Xu, Long Xia, Yanyan Lan, Jiafeng Guo, and Xueqi Cheng. 2017. Directly Optimize Diversity Evaluation Measures: A New Approach to Search Result Diversi cation. ACM Trans. Intell. Syst. Technol. 8, 3, Article 41 (Jan. 2017), 26 pages. [27] Yisong Yue and orsten Joachims. 2008. Predicting Diverse Subsets Using Structural SVMs. In Proceedings of the 25th International Conference on Machine Learning (ICML '08). ACM, New York, NY, USA, 1224­1231. [28] Yisong Yue and orsten Joachims. 2009. Interactively Optimizing Information Retrieval Systems As a Dueling Bandits Problem. In Proceedings of the 26th Annual International Conference on Machine Learning (ICML '09). ACM, New York, NY, USA, 1201­1208. [29] Cheng Xiang Zhai, William W. Cohen, and John La erty. 2003. Beyond Independent Relevance: Methods and Evaluation Metrics for Subtopic Retrieval. In
+Proceedings of the 26th Annual International ACM SIGIR Conference on Research and Development in Informaion Retrieval (SIGIR '03). 10­17. [30] Sicong Zhang, Jiyun Luo, and Hui Yang. 2014. A POMDP Model for Contentfree Document Re-ranking. In Proceedings of the 37th International ACM SIGIR Conference on Research &#38; Development in Information Retrieval (SIGIR '14). ACM, New York, NY, USA, 1139­1142. [31] Yadong Zhu, Yanyan Lan, Jiafeng Guo, Xueqi Cheng, and Shuzi Niu. 2014. Learning for Search Result Diversi cation. In Proceedings of the 37th International
+ACM SIGIR Conference on Research & Development in Information Retrieval (SIGIR '14). ACM, New York, NY, USA, 293­302.
+
+544
+
+

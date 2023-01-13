@@ -1,0 +1,570 @@
+ILDA: Interdependent LDA Model for Learning Latent Aspects and their Ratings from Online Product Reviews
+
+Samaneh Moghaddam
+School of Computing Science Simon Fraser University Burnaby, BC, Canada
+sam39@cs.sfu.ca
+ABSTRACT
+Today, more and more product reviews become available on the Internet, e.g., product review forums, discussion groups, and Blogs. However, it is almost impossible for a customer to read all of the different and possibly even contradictory opinions and make an informed decision. Therefore, mining online reviews (opinion mining) has emerged as an interesting new research direction. Extracting aspects and the corresponding ratings is an important challenge in opinion mining. An aspect is an attribute or component of a product, e.g. `screen' for a digital camera. It is common that reviewers use different words to describe an aspect (e.g. `LCD', `display', `screen'). A rating is an intended interpretation of the user satisfaction in terms of numerical values. Reviewers usually express the rating of an aspect by a set of sentiments, e.g. `blurry screen'. In this paper we present three probabilistic graphical models which aim to extract aspects and corresponding ratings of products from online reviews. The first two models extend standard PLSI and LDA to generate a rated aspect summary of product reviews. As our main contribution, we introduce Interdependent Latent Dirichlet Allocation (ILDA) model. This model is more natural for our task since the underlying probabilistic assumptions (interdependency between aspects and ratings) are appropriate for our problem domain. We conduct experiments on a real life dataset, Epinions.com, demonstrating the improved effectiveness of the ILDA model in terms of the likelihood of a held-out test set, and the accuracy of aspects and aspect ratings.
+Categories and Subject Descriptors
+H.3.3 [Information Search and Retrieval]: Text Mining; G.3 [Mathematics of Computing]: Probability and Statistics--statistical computing, multivariate statistics
+General Terms
+Algorithms, Design, Experimentation
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. To copy otherwise, to republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. SIGIR'11, July 24­28, 2011, Beijing, China. Copyright 2011 ACM 978-1-4503-0757-4/11/07 ...$10.00.
+
+Martin Ester
+School of Computing Science Simon Fraser University Burnaby, BC, Canada
+ester@cs.sfu.ca
+Keywords
+opinion mining, probabilistic graphical models, variational methods, aspect identification, rating prediction
+1. INTRODUCTION
+Other people's opinions have always been an important piece of information during the decision-making process when buying a new product [13]. Today people like to make their opinions available to strangers via the Internet. As a result, the Web has become an excellent source for gathering consumer opinions [8]. Amazon, Cnet, ZDnet, Rateitall and Epinions are examples of the most important Web resources containing such opinions. However, reading all product reviews to make a good decision will be a time-consuming job. Therefore, mining online product reviews (opinion mining) has emerged as a new research direction.
+Some of the review websites ask reviewers to express an overall rating (as stars) for the reviewed item. While these ratings can be helpful in decision making, focusing on just overall ratings may not be sufficient for a user to make decisions. Rated aspect summarization addresses this limitation [10]. Providing aspects (also called product-features) and the corresponding ratings of a product does not only help users gain more insight into the quality of the product, but also enables them to compare different products. The problem definition is illustrated in Figure 1.
+Rated aspect summarization consists of two tasks [18]. The first is aspect identification with the goal of finding a set of relevant aspects for the target product. The second task is rating prediction with the goal of providing the user a numeric rating for each aspect. Most of the current works consider aspect identification as main task and treat rating prediction at most as a side task. However, from the user's point of view, having the ratings and aspects together is important in decision making.
+During the last decade, many methods have been proposed to detect product aspects in reviews, including statistical approaches and model based techniques. The existing statistical approaches [7, 9, 12, 14] usually apply some constraints on high-frequency noun phrases to identify product aspects. One of the limitations of these methods is that they may produce too many non-aspects and miss low-frequency aspects and their variations [5]. In addition, statistical approaches require the manual tuning of various parameters which makes them hard to port to another dataset. Existing model based techniques [19, 22, 10, 20] overcome the limitations of statistical approaches by automatically learning the model parameters from the data. However, all of
+
+665
+
+Figure 1: Problem Definition
+the existing models perform aspect identification and rating prediction in separate steps leading to the accumulation of errors. For example, a separate rating prediction algorithm will rate the sentiment `long' equally for the aspects `battery life' and `shutter lag', although `long' expresses a positive opinion for `battery life' but a negative opinion for `shutter lag'.
+Furthermore, most of the current works [19, 18, 11, 5, 20] use the bag-of-words representation of reviews. As shown in [19], representing a document as a mixture of latent topics which generate all words of the document, can mainly be used in document clustering, by finding an overall topic of each document. However, in rated aspect summarization problem, the goal is not to cluster reviews, but to identify aspects and their corresponding ratings. For example, a topic modeling method applied to a collection of digital camera reviews is likely to infer some overall topics for that collection, such as `Sony digital camera', and `reviews of Sony'. Though these are valid topics, they do not represent product aspects. A rated aspect summarization model, on the other hand, tries to infer product aspects, such as `zoom' and `battery life', from the same collection of reviews. A solution that has been proposed in [10] is to first preprocess the reviews (chunk them into opinion phrases containing of a head term and a sentiment) and then learn models that generate only opinion phrases, not all the words of a review.
+In this paper, we propose a series of increasingly sophisticated probabilistic graphical models to jointly identify aspects and predict their ratings from online reviews. The first model is an extension of the PLSI model proposed in [10], and the second model is extending the standard LDA to generate a rated aspect summary of product reviews. We consider these two models as baselines. As our main contribution, we introduce the Interdependent Latent Dirichlet Allocation (ILDA) model. We argue that ILDA is most natural for our problem since the underlying probabilistic assumptions (interdependency between aspects and ratings) are appropriate for the problem domain.
+Since all of our proposed models are based on the opinion phrases representation of reviews, and no benchmark dataset of opinion phrases is publicly available, we crawled the well-known reviewing website Epinions.com and built a new dataset containing 29,609 opinion phrases in 2,483 reviews from 5 categories. This data set has been made
+
+publicly available for research purposes1. We conduct experiments on this real life dataset and evaluate the performance of the proposed models according to various criteria: likelihood of the held-out test set, and accuracy of aspect identification and rating prediction.
+The remainder of the paper is organized as follows. The next section is devoted to related work. Section 3 introduces the problem statement and discusses our contributions. Section 4 presents three probabilistic graphical models for the considered problem. Section 5 describes the inference algorithms for our proposed models. In Section 6 we report the results of our experimental evaluation. Section 7 concludes the paper with a summary and the discussion of future work.
+2. RELATED WORK
+Most of the current works on opinion mining have focused on the aspect identification task, and ignored or treated rating prediction as a side problem. However, there are several lines of related work which we will review in this section. We first review some models based on the bag-of-words representation of reviews and then describe a recent work to learn a model from preprocessed reviews (i.e. from opinion phrases).
+The authors of [22] assume that words in the same context have similar semantic association. They propose two alternative latent semantic association (LaSA) models for identifying aspects from reviews. The first LaSA model groups words into a set of aspects according to their context in the reviews. Given a word ti, its context is defined to be composed of all the context units (adjacent sentiments) around ti in the corpus. The second LaSA model groups words according to their latent semantic structures and context in the review. Given a latent aspect ai, its semantic structure is defined to be composed of the context units of all the words generated by ai.
+Guo et al. [5] present a probabilistic graphical model for modeling the page-independent content information and the page-dependent layout information of text fragments. One characteristic of their model is that an aspect can be discovered based on the layout format. The authors show that content and layout information can collaborate and improve the performance of aspect identification. However, they ignore the rating prediction task.
+In [20] the authors assume that for each review an overall rating and k aspects of the reviewed item are given as input. They first use a boot-strapping algorithm to obtain more related words for each aspect, and then assign each sentence of the review to the aspect whose set of related words has the maximum overlap with that sentence. As their main contribution, they propose a latent rating regression (LRR) model to infer ratings and weights of the given aspects for each review. LRR assumes the overall rating is generated based on the weighted combination of the latent ratings over all the aspects. While they consider the rating prediction task, they do not perform aspect identification and assume that the aspects are given.
+Titov et al. in [19] propose a model, based on LDA, for modeling two types of topics in reviews: global topics and local topics. They assumed global topics correspond to a global property of the product in the review, such as its brand, and local topics correlate with the product aspects.
+1http://www.sfu.ca/sam39/ILDA/
+
+666
+
+However, they conclude that representing a document as a mixture of latent topics which generate all words of the document, is not a good choice for the rated aspect summarization problem since the extracted topics are very general. In [18] the same authors extend their proposed model to find the correspondence between the extracted topics and the product aspects. The second model introduces a set of classifiers (sentiment predictors) for each aspect, which is used to find the correspondence between topics and aspects. Note that none of their models generates the rating of aspects.
+Recently, Lu et al. [10] show that using preprocessed reviews can improve the ability of models in identifying aspects. The authors assume that each review can be parsed into opinion phrases of the format < headterm, sentiment >, and propose a probabilistic model based on PLSI to identifies major aspects of a product by clustering the head terms. Since our proposed models use preprocessed reviews as input, this method will be the only comparison partner for our work.
+There is yet another line of the research in text mining which tries to model the mixture of topics in documents [2, 17, 21]. However, none of these works has tried to model the sentiment related to the topics, thus cannot be applied to our problem. There are also some recent works on sentiment classification which all use some external knowledge (in the form of word lists [23] or training examples [11]) to distinguish positive and negative polarities. Our work is focused more on solving the rated aspect summarization problem in a general way and we propose general models to both decomposing a review into a set of rated aspects and predicting ratings for the identified aspects.
+As we mentioned before, there are also some statistical approaches [7, 9, 12, 14] to detect product aspects in reviews. These approaches usually apply some constraints on highfrequency noun phrases to identify product aspects. The main limitation of these methods is that they may produce too many non-aspects and miss low-frequency aspects and their variations [5].
+3. PROBLEM DEFINITION
+In this section we introduce the problem statement, provide a motivating example for our problem, and discuss our contributions for the considered problem.
+3.1 Problem Statement
+Let P = {P1, P2, ..., Pl} be a set of products which can be from different categories, like `Apple Smartphone', `Canon Powershot digital camera', `Denon DVD player', etc. For each product Pi there is a set of reviews Ri = {d1, d2, ..., dN }. Each review dj consists of a set of opinion phrases, such as `great zoom', `excellent quality', etc. In the following, we define the problem addressed more formally.
+Aspect: An aspect is an attribute or component of the product that has been commented on in a review. For example, `battery life' in the opinion sentence `The battery life of this camera is too short'.
+Rating: A rating is an intended interpretation of the user satisfaction in terms of numerical values. Most of the reviewing websites use ratings (number of stars) in the range from 1 to 5.
+Opinion Phrase: An opinion phrase f =< t, s > is a pair of head term t and sentiment s [10]. Usually the head
+
+term is an aspect, and the sentiment expresses some opinion towards this aspect, e.g. < battery life, short >.
+Review: A review is a bag of opinion phrases dj = {f = < t, s > |f  dj}.
+Problem Definition: Given a set of reviews for product P , the task is to identify the k major aspects of P and to predict the rating of each aspect.
+Since different products in a category share many similar aspects, it would also make sense to identify the k major aspects of a product category. However, many products have some unique aspects which usually play an important role in purchase decisions. In addition, different products will have different ratings for one and the same aspect. To consider the product specific aspects and to be able to predict the ratings of aspects for each product, we treat reviews of each product as a separate dataset and identify aspects for each product separately.
+3.2 A Motivating Example
+A sample rated aspect summary of two camcorders is shown in Table 1. Rated aspect summarization decomposes the review's overall rating into individual ratings for the major aspects so that a user can gain different perspectives towards the target product [10].
+
+Table 1: Rated Aspect Summary of Two Camcorders
+
+Aspects
+
+Camcorder1 Camcorder2
+
+zoom
+
+4
+
+2
+
+sound
+
+1
+
+3
+
+screen
+
+2
+
+4
+
+price
+
+3
+
+3
+
+size
+
+4
+
+2
+
+Overall Rating
+
+3
+
+3
+
+We can see that although two camcorders have the same overall ratings, Camcorder1 has better zooming aspect while Camcorder2 has better screen and sound. This decomposed view of rated aspects clearly provides more detailed information than the overall rating and helps users to make better decisions.
+Rated aspect summary can also be used as input for various computer systems: in summarization systems to find sentences which summarize the review more accurately, in recommendation systems to provide explanations for recommendation, and in opinion-based question answering systems to answer opinion-based questions by comparing aspects and ratings of different products.
+3.3 Our Contributions
+As discussed in the preceding section, our goal is to provide a method to identify aspects and predict their ratings from online product reviews without any human supervision. Therefore, we use probabilistic graphical models, which represent each review as a mixture of latent aspects and ratings. We first extend the proposed model in [10] which is based on Probabilistic Latent Semantic Indexing (PLSI) model [6]. Then we extend the most well-known method for unsupervised modeling of documents, Latent Dirichlet Allocation (LDA) [3] to solve the considered problem. We make simple adaptions on both models for the aspect identification
+
+667
+
+and rating prediction problem and consider them as baseline models. As our main contribution, we propose a novel model, called ILDA, for jointly extracting major product aspects and predicting their ratings from online reviews. Unlike existing graphical models that treat aspect identification and rating prediction as separate tasks [5, 22, 10], ILDA can perform both tasks simultaneously in an unsupervised manner. We argue that considering the interdependency between aspects and ratings improves the performance of the model. To illustrate the importance of this interdependency, consider the following examples: `low LCD resolution' and `low price'. The sentiment `low' expresses a negative opinion for `LCD resolution', while it is a positive opinion for `price'. Treating rating prediction as a separate task, both aspects receive equal ratings. We also present algorithms for approximate inference and parameter estimation for the proposed LDA and ILDA models.
+We have conducted experiments on a real life dataset from Epinions.com from five product categories. The experimental results show that ILDA consistently outperforms the baseline PLSI and LDA models.
+4. PROBABILISTIC GRAPHICAL MODELS
+In this section, we first describe our two baseline probabilistic models of reviews, noting their strengths and limitations: A PLSI model, and a multinomial LDA model. Then we introduce a novel model, ILDA, which models the interdependency between aspects and ratings.
+All of the following models assume that aspects and their ratings can be represented by multinomial distributions and try to cluster head terms into aspects and sentiments into ratings. As a shortcoming of unsupervised models, the correspondence between identified clusters and the actual aspects or ratings is not explicit.
+4.1 PLSI Model
+Probabilistic Latent Semantic Indexing (PLSI) [6] has recently been applied to many text mining problems. Lu et al. applied the PLSI model on opinion phrases to identify aspects from reviews [10]. However, as we described in section 2, they used PLSI only for aspect identification, and their model does not generate ratings for the identified aspects. We extend their PLSI model to identify aspects and predict their ratings simultaneously, as shown in Figure 2. Following the standard graphical model formalism, nodes represent random variables and edges indicate possible dependence. Shaded nodes are observed random variables and unshaded nodes are latent random variables. Finally, a box around groups of random variables is a `plate' which denotes replication. The outer plate represents reviews and the inner plate represents opinion phrases. N and M are the number of product reviews and the number of opinion phrases in each review, respectively. Since M is independent of all the other data generating variables (a and r), its randomness is generally ignored [3].
+To extend the PLSI model in [10] for our problem, we add the second row (dependency of the observed sentiment s to the latent rating r, and the latent rating r to the observed review d). For each product P , a PLSI model is generated to associate unobserved aspect am and rating rm with each observation, i.e., with each opinion phrase fm =< tm, sm > in a review d  R. The adapted generative PLSI model can be defined in the following way:
+
+Figure 2: The PLSI Model of Reviews
+
+1. Select a review d from R with probability P (d).
+2. For each opinion phrase < tm, sm >, m  {1, 2, ..., M } (a) Sample am  P (am|d) and rm  P (rm|d). (b) Sample tm  P (tm|am) and sm  P (sm|rm).
+Translating this process into a joint probability distribution results in the expression:
+
+P (d, a, r, t, s) =
+ M P (d) [P (am|d)P (rm|d)P (tm|am)P (sm|rm)] (1)
+m=1
+An equivalent symmetric version of the model can be obtained by inverting the conditional probabilities P (am|d) = P (d|am)P (am) and P (rm|d) = P (d|rm)P (rm) with the help of Bayes' rule. Adopting the likelihood principle, P (d) and P (a, r|d) can be determined by maximization of the loglikelihood. The standard procedure for maximum likelihood estimation in latent variable models is the Expectation Maximization (EM) algorithm [4]. EM alternates two steps: expectation (E) step which compute the posterior probabilities for latent variables, and maximization (M) step which update the parameters. The E-step equation for the PLSI model is:
+
+P (am, rm|d, tm, sm) =
+
+P (d|am)P (am)P (d|rm)P (rm)P (tm|am)P (sm|rm) (2) a,r P (d|a)P (a)P (d|r)P (r)P (tm|a)P (sm|r)
+
+and the M-step formulas are:
+
+
+
+P (d|am)  P (am, r|d, t, s)n(d, t, s)
+
+(3)
+
+r,t,s
+
+
+
+P (am) 
+
+P (am, r|d, t, s)n(d, t, s)
+
+(4)
+
+d,r,t,s
+
+
+
+P (d|rm)  P (a, rm|d, t, s)n(d, t, s)
+
+(5)
+
+a,t,s
+
+
+
+P (rm) 
+
+P (a, rm|d, t, s)n(d, t, s)
+
+(6)
+
+d,a,t,s
+ P (tm|am)  P (am, r|d, tm, s)n(d, tm, s) (7)
+
+d,r,s
+ P (sm|rm)  P (a, rm|d, t, sm)n(d, t, sm) (8)
+
+d,a,t
+
+668
+
+Figure 3: The LDA Model of Reviews
+
+Figure 4: The ILDA Model of Reviews
+
+where n(d, t, s) denotes the frequency of the phrase < t, s > occurred in review d. The EM algorithm obtains a local maximum of the log-likelihood by alternating E-step (2) with M-steps (3)-(8). It is important to note that d is a multinomial random variable with as many possible values as there are training reviews (i.e a dummy index into the list of reviews in the training set) and the PLSI model learns the P (a, r|d, t, s) only for those reviews on which it is trained. For this reason, PLSI is not a well-defined generative model of reviews [3]. Furthermore, the number of PLSI parameters which must be estimated grows linearly with the number of training reviews which causes overfitting. One reasonable approach to avoid overfitting is assigning probability to previously unseen data by marginalizing over seen data [3]. We use this approach to smooth the parameters of the PLSI model for acceptable predictive performance as follows:
+
+  M 
+
+P (t, s) =
+
+P (d|a, r)p(a, r)P (tm|a)P (sm|r) (9)
+
+d m=1 a,r
+
+4.2 Multinomial LDA
+The Latent Dirichlet Allocation (LDA) model is a generative probabilistic model for collections of discrete data such as text corpora [3]. The basic idea is that each item of a collection is modeled as a finite mixture over an underlying set of latent variables.
+The aspect identification and rating prediction problem can be modeled as an extension of LDA (Figure 3). We make a simple adaption to the basic LDA by adding the second row (dependency among s, r, and ) to the basic LDA model. This model is similar to the GM-LDA model presented in [1] for the annotation of images. In our adapted LDA model a review is assumed to be generated by first choosing a value of , and then repeatedly sampling M opinion phrases < tm, sm > conditional on the chosen value of . Similar to [1], where  represents the image/caption pairs, in our LDA model we can view  as a high-level representation of the collection of aspect/rating pairs. For every pair,  contains the probability of generating that combination of aspect and rating. The variable  is sampled once per review, and is held fixed during the process of generating opinion phrases for that review. After sampling , the latent variables am and rm are sampled independently (conditional independency) and then an opinion phrase < tm, sm > is sampled conditional on the sampled am and rm. Our adapted LDA model assumes the following generative process:
+
+1. Sample   Dir().
+
+2. For each opinion phrase < tm, sm >, m  {1, 2, ..., M }
+(a) Sample am  P (am|) and rm  P (rm|) (b) Sample tm  P (tm|am, 1) and sample
+sm  P (sm|rm, 2)
+P (tm|am, 1) and P (sm|rm, 2) are multinomial distributions conditioned on aspect am and rating rm, respectively. The resulting joint distribution is as follows:
+
+P (a, r, t, s, |, 1, 2) = P (|)
+ M [P (am|)P (rm|)P (tm|am, 1)P (sm|rm, 2)] (10)
+m=1
+The key inferential problem is to compute the posterior distribution of the latent variables given a review < t, s > (collection of M opinion phrases < tm, sm >):
+
+P (a, r, |s, t, , 1, 2)
+
+=
+
+P (a, r, t, s, |, 1, 2) P (t, s|, 1, 2)
+
+(11)
+
+Similar to the basic LDA model, due to the coupling between  and 's, the conditional distribution of latent variables given observed data is intractable to compute. Although the posterior distribution is intractable for exact inference, a wide variety of approximate inference algorithm can be considered for LDA [3]. In this paper, we use variational inference to compute an approximation for the posterior distribution. The variational inference and parameter estimation of the LDA model will be discussed in Section 5.
+The LDA model overcomes both of the PLSI problems (mentioned in Section 4.1) by using a latent random variable  rather than a large set of individual parameters which are explicitly linked to the training reviews [3]. However, conditional on the latent variable , the LDA model generates aspects and ratings independently, and so the dependency between specific aspects and specific ratings is ignored. We will show experimentally that due to the lack of this dependency, the LDA model cannot capture the correspondence between aspects and ratings.
+4.3 Interdependent LDA
+We introduce Interdependent Latent Dirichlet Allocation (ILDA) which models the conditional interdependency between the latent aspects and ratings. As described in section 3.2 and shown in Table 1, different aspects of a product can have different quality and consequently different ratings. As pointed out already, one and the same sentiment word
+
+669
+
+Figure 5: Graphical Model Representation of the Variational Distribution Used to Approximate the Posterior in LDA and ILDA models
+may show different opinions for different aspects, and such methods that model aspects and ratings separately miss this interdependency between aspects and expressed sentiments.
+We present the ILDA model, shown in Figure 4, to overcome this weakness by jointly modeling latent aspects and ratings. ILDA can be viewed as generative process that first generates an aspect and subsequently generates its rating. In particular, for generating each opinion phrase, ILDA first generates an aspect am from an LDA model. Then it generates a rating rm conditioned on the sampled aspect am. Finally, a head term tm and a sentiment sm are drawn conditioned on am and rm, respectively. Formally, the k-factor ILDA model assumes the following generative process for a review (collection of opinion phrases):
+1. Sample   Dir().
+2. For each opinion phrase < tm, sm >, m  {1, 2, ..., M }
+(a) Sample am  M ult() (b) Sample rm  P (rm|am, 3), a multinomial distri-
+bution conditioned on the aspect am. (c) Sample tm  P (tm|am, 1) and sample
+sm  P (sm|rm, 2)
+P (tm|am, 1) and P (sm|rm, 2) are multinomial distributions conditioned on the aspect am and rating rm, respectively. ILDA thus specifies the following joint distribution:
+ M P (a, r, t, s, |, 1, 2, 3) = P (|) [P (am|)
+m=1
+P (rm|am, 3)P (tm|am, 1)P (sm|rm, 2)] (12)
+The dependency assumption of the ILDA model overcomes the lack of correspondence in the LDA model, where the head terms and sentiments are generated independently, conditional on the latent variable . In the ILDA model, the head term is conditional on a generated aspect and the sentiment must be conditional on a rating which is correspondent to that aspect. In fact, the ILDA model captures the phenomenon that the aspect is generated first and then the sentiment rates the aspect.
+5. INFERENCE AND ESTIMATION
+In this section, we describe approximate inference and parameter estimation for the LDA and ILDA models, adopting a variational method.
+
+Algorithm 1 Variational Inference Algorithm for ILDA
+
+1: initialize µ0mi := 1/k for all i and m 2: initialize m 0 j := 1/5 for all j and m 3: initialize i0 := i + M/k for all i
+4: repeat
+
+5: for m = 1 to M do
+
+6: for i = 1 to k do
+
+7:
+
+µtm+i1 := 1ix3iy exp((it))
+
+8: end for
+
+9:
+
+normalize µtm+i1 to sum to 1
+
+10: for j = 1 to 5 do
+
+11:
+
+m t+j1 := 2zj 3wj
+
+12: end for
+
+13:
+
+normalize m t+j1 to sum to 1
+
+14: 15:
+
+end  t+1
+
+for := 
+
++
+
+M
+m=1
+
+µtm+1
+
+16: until convergence
+
+5.1 Variational Inference
+Computing the posterior distribution of the latent variables for both LDA and ILDA models is intractable. A common way to obtain a tractable lower bound is to consider simple modifications of the original graphical model [3]. In particular, we simplify these models into the graphical model shown in Figure 5. This model specifies the following variational distribution on the latent variables:
+
+ M Q(a, r, |µ, , ) = Q(|) [Q(am|µm)Q(rm|m)] (13)
+m=1
+where the Dirichlet parameter  and the multinomial parameters (µ1, ..., µm) and (1, .., m) are free variational parameters.
+To have a good approximation, the KL-divergence between the variational distribution and the true posterior P (a, r, ) needs to be minimized. This minimization can be achieved via an iterative method. Taking derivatives of the KL-divergence with respect to variational parameters and setting them equal to zero, we obtain the update equations. The pseudo-code of the variational inference procedure for the ILDA model is presented in Algorithm 1. These update equations are invoked repeatedly until the change in KL-divergence is small.
+In Algorithm 1, 1ix is P (txm = 1|ai = 1) for the appropriate x. Recall that each tm is a vector with exactly one component equal to one; we can select the unique x such that txm = 1. In the same way 3iy, 2zj , and 3wj are P (m t y = 1|ai = 1), P (szm = 1|rj = 1), and P (µtmw = 1|rj = 1) for the appropriate y,z, and w respectively. With the approximate posterior in hand, we can find a lower bound on the joint probability, P (a, r, ). In the next Section we use this lower bound to estimate the ILDA parameters.
+The variational inference update formulas for the LDA model are as follows2:
+
+µtm+i1 := 1ix exp((it))
+
+(14)
+
+2The detailed derivation of the variational EM algorithm for both LDA and ILDA models is available at http://www.sfu.ca/sam39/ILDA
+
+670
+
+m t+i1 := 2zi exp((it))
+
+(15)
+
+ M
+
+t+1 :=  +
+
+(µtm+1 + m t+1)
+
+m=1
+
+(16)
+
+5.2 Parameter Estimation
+Given a corpus of reviews R = {d1, d2, ..., dN } about product P , we want to find parameters  and 's that maximize the (marginal) log likelihood of the data:
+
+ N (, 1, 2, 3) = log P (ad, rd, d|sd, td, , 1, 2, 3)
+d=1
+(17) As we have described, the computation of the posterior distribution of the latent variable given a review is intractable, and therefore we use variational inference to obtain a tractable lower bound on the log likelihood. We can thus find approximate estimates for the ILDA model via an alternative Variational EM procedure [3]. The variational EM maximizes the lower bound of the log likelihood with respect to the variational parameters, and then for fixed values of the variational parameters, maximizes the lower bound with respect to the model parameters. To maximize with respect to each variational parameter, we take derivatives with respect to it and set it to zero. The derivation yields the following iterative algorithm:
+
+1. (E-step) for each review, find the optimizing values of the variational parameters , µ, and  (using
+Algorithm 1).
+
+2. (M-step) Maximize the resulting lower bound on the log likelihood with respect to the model parameters , 1, 2, and 3.
+
+The variational EM algorithm alternates between these two steps until the bound on the expected log likelihood converges.
+The M-step updates for the conditional multinomial parameters 1 and 2 in both LDA and ILDA models are as follows:
+
+ N  Md
+
+1ij =
+
+µdmi tjdm
+
+d=1 m=1
+
+(18)
+
+ N  Md
+
+2ij =
+
+dmj sidm
+
+d=1 m=1
+
+(19)
+
+The M-step update for 3 in the ILDA model is equal to:
+
+ N  Md
+
+3ij =
+
+dmj µdmi
+
+(20)
+
+d=1 m=1
+
+The M-step update for the Dirichlet parameter  is imple-
+
+mented using an efficient Newton-Raphson method in which
+
+the Hessian is inverted in linear time [3]. The Newton-
+
+Raphson optimization technique finds a stationary point of
+
+a function by iterating:
+
+new = old - H(old)-1g(old)
+
+(21)
+
+where H() and g() are the Hessian matrix and gradient respectively at the point .
+
+5.3 Smoothing
+Overfitting has always been a serious problem when working with conditional distributions [3]. A new review is very likely to contain head terms or sentiments that did not appear in any of the reviews in a training corpus. Maximum likelihood estimate of the multinomial parameters 1 and 2 assign zero probability to such head terms or sentiments, and so zero probability to new reviews. The standard approach to dealing with this problem is smoothing the parameters which are dependent to the observed data, by assigning positive probability to all vocabulary items whether or not they are observed in the training set [3]. We deal with this issue, in both the LDA and ILDA models, by treating 1 and 2, which are dependent to the observed data, as random matrices whose rows are multinomial parameters for the latent variables a and r. Each row is independently drawn from an exchangeable Dirichlet distribution (a Dirichlet distribution with a single scalar parameter). We now extend our inference procedure to treat 1i  Dirichlet(1, 1, ..., 1) and 2i  Dirichlet(2, 2, ..., 2) where 1 and 2 are scalar parameters.
+A variational approach can again be used to find an approximation to this posterior distribution. We adopt a variational approach that places a separable distribution on the random variables 1, 2, , a, and r:
+
+ K Q(a, r, , 1, 2|µ, , , 1, 2) = Dir(1i|1i)
+
+i=1
+
+5
+
+ N
+
+Dir(2i|2i) Qd(ad, rd, d|µd, d, d)
+
+i=1
+
+d=1
+
+(22)
+
+where 1 and 2 are variational Dirichlet parameters for 1 and 2, respectively, and Qd(ad, rd, d|d, µd, d) is the variational distribution defined in Equation (13). The only change to our M-step algorithm (in both LDA and ILDA models) is to replace the maximization with respect to 1 and 2 with the following variational updates:
+
+ N  Md
+
+1ij = 1 +
+
+µdmi tjdm
+
+d=1 m=1
+
+(23)
+
+ N  Md
+
+2ij = 2 +
+
+dmj sidm
+
+d=1 m=1
+
+(24)
+
+Bayesian methods often assume a noninformative prior which means setting 1 = 1 and 2 = 1 [1]. Iterating these equations to convergence yields an approximate posterior distribution on 1, 2, , a, and r.
+
+5.4 Model Selection
+
+To find the optimal number of aspects we compute the Bayesian Information Criterion (BIC) [16]. BIC is a criterion for model selection among a class of parametric models with different numbers of parameters. When estimating model parameters using maximum likelihood estimation, it is possible to increase the likelihood by adding parameters, which may however result in overfitting. The BIC resolves this problem by introducing a penalty term for the number of parameters in the model.
+Let m be the number of opinion phrases in the given test set, k be the number of free parameters to be estimated
+
+671
+
+Figure 6: BIC of ILDA for Different Numbers of Aspects (k)
+
+(number of aspects), and L be the maximized value of the likelihood function for the estimated model. The formula for the BIC is:
+
+BIC = -2 ln(L) + k ln(m)
+
+(25)
+
+Given any two learnt models, the model with the lower value of BIC is the one to be preferred. Hence, lower BIC implies either fewer free parameters, better fit, or both. Figure 6 shows BIC values of the ILDA model for one representative product in the digital camera category. For this product, the BIC value of the model reaches its minimum for k = 14, i.e. ILDA identifies 14 aspect clusters in the given reviews. For each product, we train models for a range of values of k and pick the model with the optimal k, i.e. lowest BIC.
+
+6. EXPERIMENTAL RESULTS
+Since none of the existing benchmark datasets of opinion phrases is publicly available, we had to build a new dataset. We crawled the well-known reviewing website Epinion.com and made the dataset publicly available for research purposes.
+We experimentally compare the three models proposed in this paper, i.e. PLSI, LDA, and ILDA. As pointed out already, most of the current works use the bag-of-words representation of reviews, and so cannot be compared to our proposed model which uses the opinion phrases representation. There is only one recent model using the opinion phrases representation [10]. This model identifies the aspects by clustering the head terms, and a separate statistical method is applied on the sentiments to predict their polarity. Our PLSI model is identical to the model of [10] for aspect identification. We also test a simple multinomial model (ML), that treats the head terms and sentiments as independent multinomials, as a simple baseline method.
+In the next subsections, we first briefly describe our dataset and then present the evaluation of the models in terms of test set likelihood and accuracy of aspect identification and rating prediction.
+6.1 Dataset
+We built a crawler to extract reviews from the well-known reviewing website Epinions.com. The dataset contains 2,483 reviews (29,609 opinion phrases) about 40 products from 5 categories: camcorder, cellular phone, digital camera, DVD player, and Mp3 player. For preprocessing, we adopt the technique proposed in [12] to identify opinion phrases in the form of a pair of head term and sentiment. In Table 2, for
+
+Table 2: Statistics of the Dataset
+
+Category
+Camcorder Cel. Phone Dig. Camera DVD Player Mp3 Player
+Overall
+
+#Reviews
+197 630 707 324 625 2,483
+
+#Opinion Phrases
+1,694 7,642 10,435 3,707 6,131 29,609
+
+#Phrases per Product
+211.77 955.23 1304.41 463.32 766.41 3701.14
+
+each category the number of reviews, opinion phrases, and phrases per product (on average) are shown.
+A standard approach for evaluation of graphical models is comparing the achieved likelihoods of a held-out test set. In this paper we evaluate our main proposed model, ILDA, by comparing its obtained likelihood on a held-out test set with the likelihoods achieved by the comparison partners. However, the accuracy of aspect identification and rating prediction cannot be inferred easily by this evaluation. Therefore, to make the evaluation stronger we compute the accuracy of the model's results using a standard measure of clustering. While accuracy evaluation provides more information about the performance of the learned model, it needs a truly labeled test set which makes it subjective in contrast with the likelihood evaluation approach which is completely objective. To this extent, we manually create a set of true aspects and ratings for each product as gold standard. We asked some judges to label each opinion phrase with a pair of < ga, gr > based on the given head term and corresponding sentiment. ga is a number showing the aspect cluster of the given head term, and gr is the rating of the given sentiment with respect to the given head term (considering the correspondence between head term and sentiment). This gold standard is used in the evaluation of aspect identification and rating prediction.
+6.2 Test Set Likelihood
+We held out 20% of the reviews for testing purposes and used the remaining 80% to learn the model. Our goal is to achieve high likelihood on a held-out test set. Note that, unlike in text modeling problems which learn one model from the whole collection of documents, in rated aspect summarization one independent model is learnt per product. In the following, we present evaluation results for each category which is the average of the results of the products of that category.
+To evaluate how well a model fits the data, we computed the perplexity of the held-out test set on all models for various values of aspects, k. The perplexity is monotonically decreasing in the likelihood of the test data, and a lower perplexity score indicates better performance [3]. More formally, for a test set of N reviews, the perplexity is:
+
+perplexity(Rtest) = exp{- Nd=1 loNd=g1PM(tdd, sd) }
+
+(26)
+
+Figure 7 shows the perplexity of different models for different product categories. As described in sections 4.1 and 5.3, we use smoothing for all models to avoid overfitting. As expected, the latent variable models perform better than the
+
+672
+
+Table 3: Rand Index of Aspect Identification for Different Models
+
+Category
+Camcorder Cellular Phone Digital Camera
+DVD Player Mp3 Player
+Average
+
+PLSI
+0.59 0.64 0.65 0.62 0.63 0.62
+
+LDA
+0.68 0.76 0.79 0.73 0.74 0.74
+
+ILDA
+0.8 0.86 0.88 0.81 0.84 0.83
+
+Table 4: Rand Index of Rating Prediction for Different Models
+
+Category
+Camcorder Cellular Phone Digital Camera
+DVD Player Mp3 Player
+Average
+
+PLSI
+0.41 0.48 0.5 0.44 0.45 0.46
+
+LDA
+0.49 0.56 0.58 0.53 0.56 0.54
+
+ILDA
+0.68 0.74 0.76 0.71 0.74 0.73
+
+simple Multinomial model (ML). LDA, which suffers from neither of the PLSI problems, consistently performs better. Most notably, ILDA performs much better than either LDA or PLSI and provides better fit which indicates that ILDA models the reviews more accurately.
+The major reason for significant performance enhancement of ILDA and LDA compared to PLSI is that they effectively capture the latent semantic association among aspects. Moreover, ILDA consistently outperforms LDA. We believe that this is due to the fact that ILDA captures the interdependency between latent aspects and the sentiments used to rate them. Also, it is notable that all the models perform better when the size of the training dataset is larger (e.g. digital camera category).
+6.3 Accuracy of Aspect Identification
+In this section , we evaluate the accuracy of identifying the k major aspect clusters in the given test set. Since all of the proposed models are soft clustering techniques, for each head term the cluster with the highest probability is selected as its aspect cluster. For each model, the accuracy of identified aspects is evaluated using the Rand Index [15], a standard measure of clustering similarity often used to compare clusterings against a gold standard.
+
+2(x + y)
+
+RandIndex(Pi, Pm) = k × (k - 1)
+
+(27)
+
+where Pi and Pm represent the clustering produced by an algorithm i and manual labeling, respectively. The agreement of Pi and Pm is checked on their k × (k - 1) pairs of aspects, where k is the number of identified aspects. For each two aspects, Pi and Pm either assign them to the same cluster or to different clusters. In the above equation, x is the number of pairs belonging to the same cluster in both partitions, and y is the number of pairs belonging to different clusters in both partitions.
+Table 3 presents the Rand Index (the higher the better) of different models for the optimal numbers of aspects, i.e. for the k with the minimum BIC value for that model. The Rand Index of aspect identification for each category is the average of the Rand Index of its products. Not surprisingly, Table 3 shows that ILDA and LDA achieve better accuracy than PLSI in all of the categories and ILDA clearly outperforms LDA.
+
+6.4 Accuracy of Rating Prediction
+For each model, the accuracy of predicted ratings is evaluated using the Rand Index. The Rand Index scores of different models are shown in Table 4. Note that the number of clusters in rating prediction for all models is known and
+
+fixed (k = 5). Again, for each sentiment the cluster with the highest probability is selected as its rating cluster.
+Again, ILDA and LDA achieve better accuracy than PLSI because of capturing the latent semantic association among ratings. Moreover, by capturing the interdependency between latent ratings and the head terms, ILDA outperforms LDA. Note that the gain of ILDA vs. LDA is much larger than the gain of LDA vs. PLSI. In Table 3 and 4 again, all the models perform better for digital camera category which has the largest training set.
+7. SUMMARY AND FUTURE WORK
+Rated aspect summarization provides very useful information for users to make their purchase decision. However, such summaries are usually unavailable in practice. In this paper we have proposed an unsupervised graphical model, ILDA, that learns a set of product aspects and corresponding ratings from a collection of product reviews that have been preprocessed into a collection of opinion phrases. We performed an experimental evaluation on real life data from the Epinions.com website and compared ILDA against baseline PLSI and LDA models. ILDA clearly outperformed all of the comparison partners in terms of likelihood of the test set, and accuracy of aspect identification and rating prediction. We argue that the major reason for the consistent enhancement is that ILDA better captures the interdependency between latent aspects and ratings.
+One of the shortcomings of unsupervised models is that the correspondence between generated clusters and latent variables are not explicit [18]. As future work we plan to investigate the correspondence between identified clusters and real aspects or ratings. Most of the reviewing websites such as Epinions.com provide some additional information on top of the review text and overall rating, including a set of predefined aspects and their ratings, and a rating guideline which shows the intended interpretation of the numerical ratings. Using this prior knowledge may help in establishing these correspondences.
+8. REFERENCES
+[1] D. M. Blei and M. I. Jordan. Modeling annotated data. In SIGIR '03.
+[2] D. M. Blei and J. D. Lafferty. Correlated topic models, 2006.
+[3] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent Dirichlet Allocation. J. Mach. Learn. Res., 3:993­1022, 2003.
+[4] A. P. Dempster, N. M. Laird, and D. B. Rubin. Maximum likelihood from incomplete data via the EM
+
+673
+
+(a) Camcorder
+
+(b) Cellular Phone
+
+(c) Digital Camera
+
+(d) DVD Player
+
+(e) Mp3 Player
+
+Figure 7: Perplexity Results for Multinomial Model (ML), PLSI, LDA, and ILDA for Different Product Categories
+
+algorithm. Journal of the Royal Statistical Society, series B, 39(1):1­38, 1977. [5] H. Guo, H. Zhu, Z. Guo, X. Zhang, and Z. Su. Product feature categorization with multilevel latent semantic association. In CIKM '09. [6] T. Hofmann. Probabilistic Latent Semantic Indexing. In SIGIR '99. [7] M. Hu and B. Liu. Mining and summarizing customer reviews. In KDD '04. [8] M. Hu and B. Liu. Opinion extraction and summarization on the web. In AAAI'06. [9] B. Liu, M. Hu, and J. Cheng. Opinion observer: analyzing and comparing opinions on the web. In WWW '05. [10] Y. Lu, C. Zhai, and N. Sundaresan. Rated aspect summarization of short comments. In WWW '09. [11] Q. Mei, X. Ling, M. Wondra, H. Su, and C. Zhai. Topic sentiment mixture: modeling facets and opinions in weblogs. In WWW '07. [12] S. Moghaddam and M. Ester. Opinion digger: An unsupervised opinion miner from unstructured product reviews. In CIKM '10. [13] B. Pang and L. Lee. Opinion mining and sentiment analysis. Foundations and Trends in Information Retrieval, 2(1-2):1­135, 2008. [14] A.-M. Popescu and O. Etzioni. Extracting product features and opinions from reviews. In HLT'5.
+
+[15] W. M. Rand. Objective criteria for the evaluation of clustering methods. Journal of the American Statistical Association, 66(336):846­850, 1971.
+[16] G. Schwarz. Estimating the dimension of a model. The Annal of Statistics, 6(2):461­464, 1978.
+[17] E. E. Stephen, S. Fienberg, and J. Lafferty. Mixed membership models of scientific publications. In Proceedings of the National Academy of Sciences, 2004.
+[18] I. Titov and R. McDonald. A joint model of text and aspect ratings for sentiment summarization. In Proceedings of ACL-08: HLT.
+[19] I. Titov and R. McDonald. Modeling online reviews with multi-grain topic models. In WWW '08.
+[20] H. Wang, Y. Lu, and C. Zhai. Latent aspect rating analysis on review text data: a rating regression approach. In KDD '10.
+[21] X. Wang and A. McCallum. Topics over time: a non-markov continuous-time model of topical trends. In KDD '06.
+[22] T.-L. Wong, W. Lam, and T.-S. Wong. An unsupervised framework for extracting and normalizing product attributes from multiple web sites. In SIGIR '08.
+[23] J. Yi, T. Nasukawa, R. Bunescu, and W. Niblack. Sentiment analyzer: Extracting sentiments about a given topic using natural language processing techniques. In ICDM '03.
+
+674
+
+

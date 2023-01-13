@@ -1,0 +1,150 @@
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Event Detection on Curated Tweet Streams
+
+Nimesh Ghelani, Salman Mohammed, Shine Wang, and Jimmy Lin
+David R. Cheriton School of Computer Science University of Waterloo, Ontario, Canada
+{nghelani,salman.mohammed,shine.wang,jimmylin}@uwaterloo.ca
+
+ABSTRACT
+We present a system for identifying interesting social media posts on Twi er and delivering them to users' mobile devices in real time as push noti cations. In our problem formulation, users are interested in broad topics such as politics, sports, and entertainment: our system processes tweets in real time to identify relevant, novel, and salient content. ere are three interesting aspects to our work: First, instead of a empting to tame the cacophony of un ltered tweets, we exploit a smaller, but still sizeable, collection of curated tweet streams corresponding to the Twi er accounts of di erent media outlets. Second, we apply distant supervision to extract topic labels from curated streams that have a speci c focus, which can then be leveraged to build high-quality topic classi ers essentially "for free". Finally, our system delivers content via Twi er direct messages, supporting in situ interactions modeled a er conversations with intelligent agents. ese ideas are demonstrated in an end-to-end working prototype.
+1 INTRODUCTION
+We present a system for identifying interesting social media posts on Twi er and delivering them to users' mobile devices in real time as push noti cations. We assume that users are interested in broad topics such as politics, technology, sports, or entertainment, and wish to keep track of "what's happening" in real time. At a high level, these updates must be relevant (actually related to the appropriate topic), salient (of signi cant interest), novel (not repeating previous messages), and timely (delivered as soon as possible a er the event has occurred).
+Our problem formulation is related to work on prospective information needs, as exempli ed by the Temporal Summarization [2], Microblog [7], and Real-Time Summarization [8] evaluations at recent Text Retrieval Conferences (TRECs). However, our setup is di erent in that these evaluations tackle speci c information needs, akin to topics in traditional ad hoc retrieval, whereas we focus on much broader topical categories of content.
+We present an end-to-end prototype that monitors curated Twitter streams, identi es relevant, salient, and novel content, and delivers updates to users via Twi er direct messages. ere are three interesting aspects to our work:
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'17, August 7­11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3084141
+
+Event detection on curated streams. Although event detection on Twi er is a well-trodden area (e.g., [3, 4, 12]), we take a completely di erent, novel approach: instead of trying to tame the cacophony of un ltered posts by millions of Twi er users, we exploit a smaller, but still sizeable, collection of curated streams corresponding to the accounts of di erent media outlets. Posts in these streams comprise the content from which we select for delivery to users.
+Distant supervision for topic classi cation. Curated streams vary in their topical focus: some accounts have a narrow focus, i.e., they tweet only about entertainment news, while others have broad coverage, i.e., they tweet about anything newsworthy. Since in our problem formulation users "subscribe" only to categories of interest, topic classi ers are needed to further lter the curated streams. We take advantage of a novel distant supervision technique for automatically gathering noisy category labels from topicallyfocused streams. ese can be used to train topic classi ers and applied to topically-di use streams to retain only those tweets that a user might be interested in.
+Native content delivery and interaction support. Inspired by intelligent conversational agents such as Siri and Cortana, our system introduces a novel method for delivering push noti cations to users through direct messages on Twi er itself. Users can interact with our system on the same platform, which also provides a convenient channel for gathering relevance judgments.
+is paper describes an end-to-end working prototype that illustrates the above ideas. alitative evaluation of our system in comparison with trending stories identi ed by the Twi er Moments product shows that our system is e ective in identifying salient tweets before they appear on Twi er Moments.
+2 SYSTEM DESIGN
+e starting point of nearly all event detection work on Twi er is the un ltered torrent of tweets collectively generated by millions of users. In general, researchers try to obtain, by whatever means, as many tweets as possible--the more tweets, the be er. From this cacophony, the system tries to identify events, "trending" topics, or whatever is interesting and "happening". Such a needle-in-ahaystack approach is noisy and prone to manipulation (fake news, "astro-tur ng", etc.).
+Our work adopts a completely di erent approach: we begin with the observation that there already exist many human-curated streams of interesting events, corresponding to the Twi er accounts of various media outlets. e news editors at CNN, for example, tweet breaking news from @cnn and related accounts. Almost every media outlet, large and small, has their own Twi er account. We wonder, why not build event detection on these curated streams? Especially for "head events" of broad interest to large populations of
+
+1325
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Curated Tweet Streams
+
+Topic Classifier
+
+Event Detector
+
+Twi/er API
+
+Database
+
+API Endpoint
+
+Frontend Apps
+No>fica>on delivery
+Web interface
+
+Figure 1: Overall architecture of our system.
+users, such an approach seems intuitive. In addition, this approach skirts many thorny issues in event detection, such as the de nition of an event, which has been the subject of much debate dating back over a decade [1]. To us, an event is simply what the editors of the underlying curated streams deem interesting. Nevertheless, there remains two challenges:
+· First, although our techniques operate on curated streams of tweets, the combined volume of these streams is still beyond what any human can consume. Furthermore, there are many duplicate tweets corresponding to reports by di erent media outlets. us, even over curated streams, we must still identify what the salient and novel tweets are.
+· Second, curated streams vary in their topical focus. Some accounts have a narrow focus, e.g., they tweet only about business news, while others have broad coverage, i.e., they tweet about anything that is newsworthy. Since users are o en only interested in particular topics, we need topic classi ers to properly categorize content.
+Our prototype addresses both challenges with the architecture shown in Figure 1. e Twi er API is used to subscribe to curated streams corresponding to the accounts of various media outlets (more details below). Observed tweets are sorted into di erent categories by the topic classi er and stored in a MongoDB collection.
+e event detector runs a sliding window over tweets from the database: salient and novel tweets are wri en to another database collection. A Flask1 server provides a REST API for frontend applications to query the database. We've implemented two separate frontends that poll this API endpoint: a web-based interface for displaying interesting events and a push noti cation delivery mechanism that takes advantage of the Twi er direct message platform. We detail each of these components below.
+2.1 Topic Classi cation
+Facebook published an article in May 2016 providing an overview of their Trending Topics algorithm [11]. e article provided a list of RSS URLs, mapped to countries and topics, that their algorithm uses to identify breaking events. Most of those URLs correspond to popular media outlets such as CNN and ESPN. We used the Google Search API to nd Twi er accounts associated with the domains of those URLs. Although the Facebook data contained RSS feeds in many languages, in this work we only focus on English. Based on a few simple heuristics and manual veri cation, we obtained a list of 293 Twi er accounts corresponding to media outlets in
+1h p:// ask.pocoo.org/
+
+sports A
+
+business
+
+poli0cs
+
+C
+
+B
+
+Figure 2: Topic grid showing accounts with di erent coverage. Tweets from B provide a source of topic labels "for free".
+
+the Facebook dataset. Tweets from these accounts serve as the input to our system. Note that collectively, these accounts post a volume of tweets that would be impossible for a human to consume directly--over an evaluation period of 21 days from late 2016, we observed an average of around 16,000 tweets per day.
+Our rst challenge is to categorize all of these tweets into topics that users might be potentially interested in: business, politics, health, science, tech, sports, entertainment, and gaming. e streams, however, vary in their topical focus. Some accounts have a narrow focus while others have a broad focus. is is illustrated by the topic grid in Figure 2; here, we see that stream B has a narrow focus on politics, whereas streams A and C have a broader focus. As a speci c example, @espn tweets almost exclusively about sports, whereas @cnn posts about nearly everything.
+For event detection, we bene t from broad coverage accounts for signal, but we must develop topic classi ers to discard tweets that a particular user would not be interested in. We can exploit tweets from narrow accounts to train topic classi ers using distant supervision, which can then be used to classify tweets from broad accounts--thus maximizing both coverage as well as relevance.
+is approach, which builds on previous work applying distant supervision to social media [5, 6, 9, 16], is detailed in a separate paper [10]. As our system simply uses this technique as a component, we refer the reader to the detailed exposition, but here we provide a brief summary: Our classi er gathers distantly-supervised labels as described above to train a logistic regression classi er using scikit-learn, based on tf-idf features from tweet text. To combat topic dri , we reweight the training data, placing higher weights on more recent data. In the current setup, the topic classi er is trained on tweets from the past 30 days and retrained every hour.
+2.2 Event Detection
+Having classi ed tweets into topics, our next two challenges are to discover salient and novel content. We de ne saliency as the property characterizing tweets that are of interest to users. In our formulation, saliency is independent and distinguished from relevance, in that a tweet may be on topic (i.e., about entertainment) but not worth delivering to users as a push noti cation--for example, news about a minor celebrity. At the same time, we must ensure that our system does not push multiple updates that say the same thing, i.e., noti cations must be novel. is is a real concern because breaking news stories are frequently reported by multiple media outlets within a short span of time.
+Our current approach a empts to address both issues simultaneously: our intuition is that an event is salient if we observe similar content from multiple accounts within a short amount of time. at is, if multiple media outlets tweet about the same thing, those tweets are likely to be of interest. At the same time, if we are able to identify multiple tweets that say the same thing, then by
+
+1326
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+de nition we have addressed the novelty problem. In other words, we try to kill two birds with one stone.
+is idea is operationalized in a simple yet e ective algorithm. Event detection is performed on a sliding window over tweets posted within the past 30 minutes (for a particular topic). We consider a tweet to be salient if there are at least K other tweets in the window that are paraphrases of the tweet under consideration (i.e., posted by other media outlets). Two tweets are considered paraphrases of each other if their Jaccard similarity is above some threshold, i.e., simJaccard (tweeta, tweetb ) > T , based on the NLTK Tweet Tokenizer. is algorithm runs every minute.
+A salient tweet is also novel if it is not redundant with respect to any tweet that was pushed within the last 24 hours. Again, we measure redundancy via Jaccard similarity, but the threshold for identifying duplicate content (Q) is di erent from the threshold for identifying a salient tweet (T ).
+Intuitively, our algorithm identi es as a salient tweet the rst post that is "con rmed" by multiple media outlets (as controlled by the K and T parameters). e Q parameter allows us to control how likely we are to report subsequent developments of the same news story. Based on qualitative inspection of output, we set the parameters in our prototype as follows: K = 6,T = 0.35, Q = 0.2.
+2.3 Content Delivery
+Tweets identi ed as salient and novel are stored in our database by topic (see Figure 1). An API endpoint provides a method for frontend applications to access the stored content. Currently, we have built two such applications, described below.
+Direct Messages. Direct messages are private channels in Twi er for multi-party conversations, similar to messaging apps such as Facebook Messenger or WeChat. Users, however, need not be conversing with other humans--in fact, the direct message platform can be used to build so ware agents. e emergence of intelligent conversational agents such as Siri and Cortana, as well as the prevalence of so ware "chatbots", suggests that such forms of interaction are widely accepted today.
+Building on this idea, our system delivers push noti cations to users via a so ware agent, represented by a Twi er account that users follow and sign up for noti cations via direct messages. ere are several advantages to this content delivery approach: Since we are using the Twi er platform itself, this in situ noti cation mechanism presents a seamless user experience. ere is no need for specialized mobile apps (e.g., see [15]) that we would have to write ourselves for multiple mobile operating systems--our noti cation mechanism will run on any platform for which there is already a Twi er client. is tight integration also allows users to have more ne-grained control over how the noti cations are actually rendered on their mobile devices (for example, whether the noti-
+cation is accompanied by an audible chime), and to adjust these se ings accordingly if they do not wish to be disturbed.
+Finally, the direct message platform provides a mechanism for interacting with our system. To initiate communications with the agent, the user can just send an arbitrary message and the agent will reply with a help message describing available commands. e user can subscribe and unsubscribe to topics via the text interface. Furthermore, direct messages provide a channel through which
+
+Figure 3: Delivery of push noti cations and support for interactions via Twitter direct messages.
+Figure 4: Screenshot of the web portal displaying salient and novel tweets for di erent topic categories. users can supply judgments to help us evaluate the quality of the pushed content (cf. [13, 14]). See Figure 3 for example interactions. Web portal. In addition to push noti cation delivery via the Twitter direct message platform, we have also built a web portal that users can visit to browse "what's happening" in multiple topic categories. A screenshot of this interface is shown in Figure 4. Based on users' topic selections, the web portal calls the API endpoint to request the desired information and continues to poll the server to dynamically update the user interface whenever salient and novel tweets are discovered.
+3 CURRENT DEPLOYMENT
+We are currently working on a live deployment of our end-to-end prototype with a group of users to evaluate the system in a rigorous manner. Here, we present an informal qualitative comparison of our system's output against the Twi er Moments product,2 which
+2h ps://twi er.com/i/moments
+
+1327
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Feb 24, 14:10
+
+Feb 25, 01:49 7: 20 8:03 09:24 11:05 11: 09 11:41 12:48
+
+14:40
+
+18: 13
+
+21:24
+Time
+
+Figure 5: Timeline comparing tweets identi ed by our system and stories taken from Twitter Moments on February 25, 2017.
+
+lists curated stories to showcase current trending events on Twi er. "Moments" occupies a tab in the top-level Twi er interface and is divided into ve di erent sections: Today, News, Sports, Entertainment, Fun. e "Today" section is just a summary of prominent stories from the other sections. For our purposes, "News", "Sports", and "Entertainment" are the most relevant since they directly correspond to our topic categories.
+We wrote a script to scrape the Twi er Moments page at ve minute intervals on February 25, 2017 from 00:00 to 23:59 and used these results to qualitatively assess the output of our system. Figure 5 shows a timeline containing a selection of salient and novel tweets (green triangles) identi ed by our system and corresponding stories taken from Twi er Moments (blue circles) for comparison purposes. In these cases, our system identi es the trending tweets a few hours before they appear on Twi er Moments. We noticed, in fact, that our system achieves broader coverage than Twi er Moments for the entertainment category--most likely due to the limited screen real estate in Twi er's interface and the abundance of entertainment content on Twi er in general. Of course, this is not a rigorous evaluation, but overall the simple techniques presented in this paper appear to perform well.
+4 CONCLUSION
+Our work takes a di erent approach to event detection on Twi er compared to most existing techniques: instead of trying to si through as many tweets as possible, we take advantage of humancurated streams created by various media outlets. In a sense, much of the work has already been done for us: each account posts tweets corresponding to what human editors deem interesting, and our system's primary task is to synthesize and aggregate these decisions.
+is problem formulation leads to a di erent set of challenges, to which we present simple yet e ective solutions.
+
+REFERENCES
+[1] James Allan. 2002. Topic Detection and Tracking: Event-Based Information Organization. Kluwer Academic Publishers, Dordrecht, e Netherlands.
+[2] Javed Aslam, Fernando Diaz, Ma hew Ekstrand-Abueg, Richard McCreadie, Virgil Pavlu, and Tetsuya Sakai. 2015. TREC 2015 Temporal Summarization Track Overview. In TREC.
+[3] Farzindar Atefeh and Wael Khreich. 2015. A Survey of Techniques for Event Detection in Twi er. Computational Intelligence 31, 1 (2015), 132­164.
+[4] Hila Becker, Mor Naaman, and Luis Gravano. 2011. Beyond Trending Topics: Real-World Event Identi cation on Twi er. In ICWSM. 438­441.
+[5] Stephanie D. Husby and Denilson Barbosa. 2012. Topic Classi cation of Blog Posts Using Distant Supervision. In Workshop on Semantic Analysis in Social Media. 28­36.
+[6] Sheila Kinsella, Alexandre Passant, and John G. Breslin. 2011. Topic Classi cation in Social Media Using Metadata from Hyperlinked Objects. In ECIR. 201­206.
+[7] Jimmy Lin, Miles Efron, Yulu Wang, Garrick Sherman, and Ellen Voorhees. 2015. Overview of the TREC-2015 Microblog Track. In TREC.
+[8] Jimmy Lin, Adam Roegiest, Luchen Tan, Richard McCreadie, Ellen Voorhees, and Fernando Diaz. 2016. Overview of the TREC 2016 Real-Time Summarization Track. In TREC.
+[9] Walid Magdy, Hassan Sajjad, Tarek El-Ganainy, and Fabrizio Sebastiani. 2015. Distant Supervision for Tweet Classi cation Using YouTube Labels. In ICWSM. 638­641.
+[10] Salman Mohammed, Nimesh Ghelani, and Jimmy Lin. 2017. Distant Supervision for Topic Classi cation of Tweets in Curated Streams. arXiv:1704.06726.
+[11] Justin Osofsky. 2016. Information About Trending Topics. (2016). h p: //newsroom. .com/news/2016/05/information-about-trending-topics/
+[12] Sasa Petrovic´, Miles Osborne, and Victor Lavrenko. 2010. Streaming First Story Detection with Application to Twi er. In HLT/NAACL. 181­189.
+[13] Xin Qian, Jimmy Lin, and Adam Roegiest. 2016. Interleaved Evaluation for Retrospective Summarization and Prospective Noti cation on Document Streams. In SIGIR. 175­184.
+[14] Adam Roegiest, Luchen Tan, and Jimmy Lin. 2017. Online In-Situ Interleaved Evaluation of Real-Time Push Noti cation Systems. In SIGIR.
+[15] Adam Roegiest, Luchen Tan, Jimmy Lin, and Charles L. A. Clarke. 2016. A Platform for Streaming Push Noti cations to Mobile Assessors. In SIGIR. 1077­ 1080.
+[16] Arkaitz Zubiaga and Heng Ji. 2013. Harnessing Web Page Directories for LargeScale Classi cation of Tweets. In WWW Companion. 225­226.
+Acknowledgments. is research was supported in part by the Natural
+Sciences and Engineering Research Council (NSERC) of Canada and by a
+Google Founders Grant.
+
+1328
+
+

@@ -1,0 +1,1407 @@
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Faster BlockMax WAND with Variable-sized Blocks
+
+Antonio Mallia
+University of Pisa, Italy a.mallia@studenti.unipi.it
+
+Giuseppe O aviano
+ISTI-CNR, Italy giuseppe.o aviano@isti.cnr.it
+
+Elia Porciani
+University of Pisa, Italy e.porciani1@studenti.unipi.it
+
+Nicola Tonello o
+ISTI-CNR, Italy nicola.tonello o@isti.cnr.it
+ABSTRACT
+ery processing is one of the main bo lenecks in large-scale search engines. Retrieving the top k most relevant documents for a given query can be extremely expensive, as it involves scoring large amounts of documents. Several dynamic pruning techniques have been introduced in the literature to tackle this problem, such as BlockMaxWAND, which splits the inverted index into constantsized blocks and stores the maximum document-term scores per block; this information can be used during query execution to safely skip low-score documents, producing many-fold speedups over exhaustive methods.
+We introduce a re nement for BlockMaxWAND that uses variablesized blocks, rather than constant-sized. We set up the problem of deciding the block partitioning as an optimization problem which maximizes how accurately the block upper bounds represent the underlying scores, and describe an e cient algorithm to nd an approximate solution, with provable approximation guarantees.
+rough an extensive experimental analysis we show that our method signi cantly outperforms the state of the art roughly by a factor 2×. We also introduce a compressed data structure to represent the additional block information, providing a compression ratio of roughly 50%, while incurring only a small speed degradation, no more than 10% with respect to its uncompressed counterpart.
+1 INTRODUCTION
+Web Search Engines [6, 19] manage an ever-growing amount of Web documents to answer user queries as fast as possible. To keep up with such a tremendous growth, a focus on e ciency is crucial.
+ery processing is one of the hardest challenges a search engine has to deal with, since its workload grows with both data size and query load. Although hardware is ge ing less expensive and more powerful every day, the size of the Web and the number of searches is growing at an even faster rate.
+ery processing in search engines is a fairly complex process; queries in a huge collection of documents may return a large set of
+Author currently at Facebook, USA.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'17, August 7­11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. ISBN 978-1-4503-5022-8/17/08. . . $15.00. DOI: h p://dx.doi.org/10.1145/3077136.3080780
+
+Rossano Venturini
+University of Pisa, Italy
+rossano.venturini@unipi.it
+results, but users are o en interested the most relevant documents, usually a small number (historically, the ten blue links). e relevance of a document can be arbitrarily expensive to compute, which makes it prohibitive to evaluate all the documents that match the queried terms; query processing is thus usually divided in multiple phases. In the rst phase, the query is evaluated over an inverted index data structure [3, 29] using a simple scoring function, producing a medium-sized set of candidate documents, namely the top k scored; these candidates are then re-ranked using more complex algorithms to produce the nal set of documents shown to the user.
+In this work we focus on improving the e ciency of the rst query processing phase, which is responsible for a signi cant fraction of the overall work. In such phase, the scoring function is usually a weighted sum of per-term scores over the terms in the document that match the query, where the weights are a function of the query, and the scores a function of the occurrences of the term in the document. An example of such a scoring function is the widely used BM25 [24].
+An obvious way to compute the top k scored documents is to retrieve all the documents that match at least one query term using the inverted index, and compute the score on all the retrieved documents. Since exhaustive methods like this can be very expensive for large collections, several dynamic pruning techniques have been proposed in the last few years. Dynamic pruning makes use of the inverted index, augmented with additional data structures, to skip documents during iteration that cannot reach a su cient score to enter the top k. us, the nal result is the same as exhaustive evaluation, but obtained with signi cantly less work.
+ese techniques include MaxScore [30], WAND [4], and BlockMaxWAND (BMW) [10].
+We focus our a ention on the WAND family of techniques. WAND augments the posting list of each term with the maximum score of that term among all documents in the list. While processing the query by iterating on the posting lists of its terms, it maintains the top k scores among the documents evaluated so far; to enter the top k, a new document needs to have score larger than the current k-th score, which we call the threshold. WAND maintains the posting list iterators sorted by current docid; at every step, it adds up the maximum scores of the lists in increasing order, until the threshold is reached. It can be seen that the current docid of the rst list that exceeds the threshold is the rst docid that can reach a score higher than the threshold, so the other iterators can safely skip all the documents up to that docid.
+e core principle is that if we can upper-bound the score of a range of docids, and that upper bound is lower than the threshold,
+
+625
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+then the whole range can be safely skipped. As such, WAND computes the upper bounds of document by using the maximum score of the terms appearing in the document. Nevertheless, it should be clear that the pruning e ectiveness is highly dependent on the accuracy of the upper bound: the more precise the upper bound, the more docids we can skip, and, thus, the faster the query processing.
+BMW improves the accuracy of the upper bounds by spli ing the posting lists into constant-sized blocks of postings, and storing the maximum score per block, rather than per list only. is way, the upper bound of a document is the sum of the maximum score of the blocks in which it may belong to. is approach gives more precise upper bounds because the scores of the blocks are usually much smaller than the maximum in their lists. Experiments con rm this intuition, and, indeed, BMW signi cantly outperforms WAND [10].
+However, the coarse partitioning strategy of BMW does not take into consideration regularities or variances of the scores that may occur in the posting lists and their blocks. As an example, consider a posting with a very high score surrounded by postings with much lower scores. is posting alone is responsible for a high inaccuracy in the upper bounds of all its neighbors in the same block. Our main observation is that the use of variable-sized blocks would allow to be er adapt to the distribution of the scores in the posting list.
+e bene ts of variable-sized blocks are apparent in the simple example above, where it is su cient to isolate the highly-scored posting in its own block to improve the upper bounds of several other postings, stored in di erent blocks. More formally, for a block of postings we de ne the block error as the sum of the individual posting errors, i.e., the sum of the di erences between the block maximum score and the actual score of the posting. Our goal is to nd a block partitioning minimizing the sum of block errors among all blocks in the partitioning. Clearly, this corresponds to minimizing the average block error. Na¨ively, the minimum cost partitioning would correspond to blocks containing only a single posting. However, if the blocks are too small, the average skip at query time will be short and, thus, this solution does not carry out any bene t. In this work we introduce the problem of nding a partition of posting lists into variable-sized blocks such that the the sum of block errors is minimized, subject to a constraint on the number of blocks of the partition. en, we will show that an approximately optimal partition can be computed e ciently. Experiments on standard datasets show that our Variable BMW (VBMW) signi cantly outperforms BMW and the other state-ofthe-art strategies.
+Our Contributions. We list here our main contributions.
+(1) We introduce the problem of optimally partitioning the posting lists into variable-sized blocks to minimize the average block error, subject to a constraint on the number of blocks. We then propose a practical optimization algorithm which produces an approximately optimal solution in almost linear time. We remark that existing solutions for this optimization problem run in at least quadratic time, and, thus, they are unfeasible in a practical se ing. Experiments show that this approach is able to reduce the average score error up to 40%, con rming the importance of optimally partitioning posting list into variable-sized blocks.
+
+(2) We propose a compression scheme for the block data structures, compressing the block boundary docids with EliasFano and quantizing the block max scores, obtaining a maximum reduction of space usage w.r.t. the uncompressed data structures of roughly 50%, while incurring only a small speed degradation, no more than 10% with respect to its uncompressed counterpart.
+(3) We provide an extensive experimental evaluation to compare our strategy with the state of the art on standard datasets of Web pages and queries. Results show that VBMW outperforms the state-of-the-art BMW by a factor of roughly 2×.
+2 BACKGROUND AND RELATED WORK
+In the following we will provide some background on index organization and query processing in search engines. We will also summarize and discuss the state-of-the-art query processing strategies with a particular focus on the current most e cient strategy, namely BlockMaxWAND, leveraging block-based score upper bound approximations.
+Index Organization. Given a collection D of documents, each document is identi ed by a non-negative integer called a document identi er, or docid. A posting list is associated to each term appearing in the collection, containing the list of the docids of all the documents in which the term occurs. e collection of the posting lists for all the terms is called the inverted index of D, while the set of the terms is usually referred to as the dictionary. Posting lists typically contain additional information about each document, such as the number of occurrences of the term in the document, and the set of positions where the term occurs [5, 19, 32].
+e docids in a posting list can be sorted in increasing order, which enables the use of e cient compression algorithms and document-at-a-time query processing. is is the most common approach in large-scale search engines (see for example [8]). Alternatively, the posting lists can be frequency-sorted [30] or impactsorted [2], still providing a good compression rates as well as good query processing speed. However, there is no evidence of such index layouts in common use within commercial search engines [21].
+Inverted index compression is essential to make e cient use of the memory hierarchy, thus maximizing query processing speed. Posting list compression boils down to the problem of representing sequences of integers for both docids and frequencies. Representing such sequences of integers in compressed space is a fundamental problem, studied since the 1950s with applications going beyond inverted indexes. A classical solution is to compute the di erences of consecutive docids (deltas), and encode them with uniquelydecodable variable length binary codes; examples are unary codes, Elias Gamma/Delta codes, and Golomb/Rice codes [25]. More recent approaches encode simultaneously blocks of integers in order to improve both compression ratio and decoding speed. e underlying idea is to partition the sequence of integers into blocks of
+xed or variable length and to encode each block separately with di erent strategies (see e.g., [17, 22, 28] and references therein).
+More recently, the Elias-Fano representation of monotone sequences [11, 12] has been applied to inverted index compression [31], showing excellent query performance thanks to its e cient random
+
+626
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+access and search operations. However, it fails to exploit the local clustering that inverted lists usually exhibit, namely the presence of long subsequences of close identi ers. Recently, O aviano and Venturini [23] described a new representation based on partitioning the list into chunks and encoding both the chunks and their endpoints with Elias-Fano, hence forming a two-level data structure.
+is partitioning enables the encoding to be er adapt to the local statistics of the chunk, thus exploiting clustering and improving compression. ey also showed how to minimize the space occupancy of this representation by se ing up the partitioning as an instance of an optimization problem, for which they present a linear time algorithm that is guaranteed to nd a solution at most (1 + ) times larger than the optimal one, for any given   (0, 1). In the following we will use a variation of their algorithm.
+
+ery Processing. In Boolean retrieval a query, expressed as a (multi-)set of terms, can be processed in conjunctive (AND) or
+disjunctive (OR) modes, retrieving the documents that contain respectively all the terms or at least one of them. Top-k ranked retrieval, instead, retrieves the k highest scored documents in the collection, where the relevance score is a function of the querydocument pair. Since it can be assumed that a document which
+does not contain any query term has score 0, ranked retrieval can
+be implemented by evaluating the query in disjunctive mode, and scoring the results. We call this algorithm RankedOR.
+In this work we focus on linear scoring functions, i.e., where the score of a query-document pair can be expressed as follows:
+
+s(q, d) =
+
+wt st,d
+
+t qd
+
+where the wt are query-dependent weights for each query term, and the st,d are scores for each term-document pair. Such scores are usually a monotonic function of the occurrences of the term in the document, which can be stored in the posting list alongside the docid (usually referred to as the term frequency).
+It can be easily seen that the widely used BM25 relevance score [24] can be cast in this framework. In BM25, the weights wt are derived from t's inverse document frequency (IDF) to distinguish between common (low value) and uncommon (high value) words, and the scores st,d are a smoothly saturated function of the term frequency. In all our experiments we will use BM25 as the scoring function.
+e classical query processing strategies to match documents to a query fall in two categories: in a term-at-a-time (TAAT) strategy, the posting lists of the query terms are processed one at a time, accumulating the score of each document in a separate data structure. In a document-at-a-time (DAAT) strategy, the query term postings lists are processed simultaneously keeping them aligned by docid. In DAAT processing the score of each document is fully computed considering the contributions of all query terms before moving to the next document, thus no auxiliary per-document data structures are necessary. We will focus on the DAAT strategy as it is is more amenable to dynamic pruning techniques.
+Solving scored ranked queries exhaustively with DAAT can be very ine cient. Various techniques to enhance retrieval e ciency have been proposed, by dynamically pruning docids that are unlikely to be retrieved. Among them, the most popular are MaxScore [30] and WAND [4]. Both strategies augment the index by
+
+storing for each term its maximum score contribution, thus allow-
+ing to skip large segments of posting lists if they only contain terms
+whose sum of maximum scores is smaller than the scores of the top k documents found up to that point.
+e alignment of the posting lists during MaxScore and WAND processing can be achieved by means of the NextGEQt (d) operator, which returns the smallest docid in the posting list t that is greater than or equal to d. is operator can signi cantly improve the posting list traversal speed during query processing, by skipping
+large amounts of irrelevant docids. e Elias-Fano compression scheme provides an e cient implementation of the NextGEQt (d) operator, which is crucial to obtain the typical subsecond response
+times of Web search engines. Both MaxScore and WAND rely on upper-bounding the con-
+tribution that each term can give to the overall document score,
+allowing to skip whole ranges of docids [18]. However, both employ a global per-term upper bound, that is, the
+maximum score st,d among all documents d which contain the term t. Such maximum score could be signi cantly larger than the typical score contribution of that term, in fact limiting the opportunities
+to skip large amounts of documents. For example, a single outlier
+for an otherwise low-score term can make it impossible to skip any
+document that contains that term.
+To tackle this problem, Ding and Suel [10] propose to augment
+the inverted index data structures with additional information to
+store more accurate upper bounds: at indexing time each posting
+list is split into consecutive blocks of constant size, e.g., 128 postings
+per block. For each block the score upper bound is computed and
+stored, together with largest docid of each block. ese local term upper bounds can then be exploited by adapting
+existing algorithms such as MaxScore and WAND to make use of the additional information. e rst of such algorithms is BlockMaxWAND (BMW) [10]. e authors report an average speedup of BMW against WAND of 2.78 ­ 3.04. Experiments in [9] report a speedup of 3.00 and 1.25 of BMW with respect to WAND and MaxScore, respectively. Several versions of Block-Max MaxScore (BMM), the MaxScore variant for block-max indexes, have been proposed in [7, 9, 26]. In [9], the authors implementation of BMM is 1.25 times slower than BMW on average.
+3 VARIABLE BLOCK-MAX WAND
+As mentioned in the previous section, BMW leverages per-block upper bound information to skip whole blocks of docids during
+query processing (we refer to the original paper [10] for a detailed
+description of the algorithm). e performance of the algorithm
+highly depends on the size of the blocks: if the blocks are too
+large, the likelihood of having at least one large value in each block
+increases, causing the upper bounds to be loose. If they are too
+small, the average skip will be short. In both cases, the pruning
+e ectiveness may reduce signi cantly. A sweet spot can thus be
+determined experimentally. e constant-sized block partitioning of BMW does not take
+into consideration regularities or variances of the scores that may
+occur in the posting lists and their blocks. e use of variable-sized
+blocks allows to be er adapt to the distribution of the scores in the
+posting list.
+
+627
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+8 4
+
+7 7
+
+2
+
+2
+
+2
+
+2 1
+
+3
+
+5 blocks, fixed size 3
+
+5 blocks, variable size
+
+Figure 1: Block errors in constant (le ) and variable (right) block partitioning.
+
+e improvement with this kind of partitioning is apparent from
+the example in Figure 1. e gure shows a sequence of scores
+partitioned in constant-sized blocks and in variable-sized blocks. We de ne the error as the sum of the di erences between each value and its block's upper bound, the shaded area in the gure.
+is example shows that a variable-sized partitioning can produce
+a much lower error, e.g., 28 in constant-sized partitioning (with
+blocks of length 3) versus 10 in variable-sized partitioning.
+Problem de nition. To give a more formal de nition, for a partitioning of the sequence of scores in a posting list of n postings let B be the set of its blocks. Each block B  B is a sequence of consecutive postings in the posting list. We use b = |B| and |B| to denote the number of blocks of the partition and the number of postings in B, respectively. e term-document scores are de ned above as st,d ; however, since in the following we will work on one posting list at a time, we can drop the t, so sd will denote the sequence of scores for each document d in the posting list.
+We de ne the error of a partitioning B as follows:
+
+BB
+
+|B|
+
+max
+d B
+
+sd
+
+-
+
+d B
+
+sd
+
+.
+
+(1)
+
+Here for each block of postings we are accounting for the the sum of its individual posting errors, i.e., the sum of the di erences between the block maximum score and the score of the posting.
+To simplify the formula above we can notice that the right-hand side of the subtraction can be taken out of the sum, since the blocks form a partition of the list, and the resulting term does not depend on B. us, minimizing the error is equivalent to minimizing the following formula, which represents the perimeter of the envelope, for a given number of blocks b = |B|:
+
+B
+
+
+
+B
+
+|B
+
+|
+
+max
+d B
+
+sd
+
+.
+
+(2)
+
+Our goal is to nd a block partitioning that minimizes the sum of block errors among all blocks in the partitioning. Na¨ively, the minimum cost partitioning would correspond to blocks containing only a single posting. Since this solution clearly does not carry out any bene t, we x the number of blocks in the partition to be b. As we will show in Section 5 minimizing the error can signi cantly improve BMW performance over constant-sized blocks.
+
+Existing solutions. e problem of nding a partition that minimizes Equation (2) subject to a constraint b on the number of its blocks can be solved with a standard approach based on dynamic programming. e basic idea is to ll a b × n matrix M where entry M[i][j] stores the minimum error to partition the posting list up to position j with i blocks. is matrix can be lled top-down from le to right. e entry M[i][j] is computed by trying to place the jth posting in the optimal solutions that uses i - 1 blocks. Unfortunately, the time complexity of this solution is (bn2), which is (n3) since, given that the average block size n/b is small (e.g., 32­128), thus, the interesting values of b are (n). is algorithm is clearly unfeasible because n can easily be in the range of millions.
+is optimization problem is similar in nature to the well-studied
+problem of computing optimal histograms (see again Figure 1). e
+complexity of nding the best histogram with a given number of
+bars is the same as above. Several approximate solutions have
+been presented. Halim et al. [16] describe several solutions and
+introduce an algorithm that has good experimental performance
+but no theoretical guarantees. All such solutions are polynomial either in n or in b. Some have complexity O(nb). Guha et al. [15] introduce a (1 + ) approximation with O(n + b3 log n + b2/) time. While these techniques can be useful in cases where b is small, in our case b = (n), which makes these algorithms unfeasible for us. Furthermore, the de nition of the objective function in these
+works is di erent from ours, as it minimizes the variance rather
+than the sum of the di erences.
+
+Our solution. We rst present a practical and e cient algorithm
+
+with weaker theoretical guarantees regarding the optimal solution
+
+than what would be expected. Indeed, xed the required number
+
+of blocks b and an approximation parameter , with 0 <  < 1,
+
+the algorithm nds a partition with b  b blocks whose cost is
+
+at most a factor 1 +  larger than the cost of the optimal partition
+
+with b edges.
+
+is algorithm runs in O(n log1+
+
+1 
+
+log(U n/b)) time,
+
+where U is the largest cost of any block. e weakness is due to
+
+the fact that there is no guarantee on how much b is close to the
+
+requested number of blocks b. Even with this theoretical gap, in all
+
+our experiments the algorithm identi ed a solution with a number
+
+of blocks very close to the desired one. In the last part of the section,
+
+we will ll this gap by showing how to re ne the solution to always identify a 1 +  approximated optimal solution with exactly b edges.
+
+e rst solution is a variation of the approximate dynamic
+
+programming algorithm introduced by O aviano and Venturini [23]
+
+to optimize the partitioning of Elias-Fano indexes.
+
+It is convenient to look at the problem as a shortest path problem
+
+over a directed acyclic graph (DAG). e nodes of the graph corre-
+
+spond to the postings in the list; the edges connect each ordered
+pair i < j of nodes, and represent the possible blocks in the partition. e cost c(i, j) associated to the edge is thus (j - i) maxi d <j sd . In this graph, denoted as G, each path represents a possible
+
+partitioning, and the cost of the path is equal to the cost of the
+
+partitioning as de ned in (2). us, our problem reduces to an instance of constrained shortest path on this graph, that is, nding
+
+the shortest path with a given number of edges [13, 20].
+
+We can compute the constrained shortest path with an approach
+
+similar to the one in [1, 13, 20]. e idea is to reduce the problem
+
+to a standard, unconstrained shortest path by using Lagrangian
+
+628
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+relaxation: adding a xed cost   0 to every edge. We denote the relaxed graph as G . By varying , the shortest path in G will have a di erent number of edges: if  = 0, the solution is the path of n - 1 edges of length one; at the limit  = +, the solution is a single edge of length n. It can be shown that, for any given , if the shortest path in G has edges, then that path is an optimal -constrained shortest path in G. us, our goal is to nd the value of  that give = b edges. However, notice that not every b can be
+found this way, but in practice we can get close enough. us, our
+algorithm performs a binary search to nd the value of  that gives a shortest path with b edges, with b close enough to b. Each step
+of the binary search requires a shortest-path computation.
+Each of these shortest-path computations can be solved in O(|V |+ |E|), where V are the vertices of G and E the edges; for our problem, unfortunately, this is (n2), which is still unfeasible. We can
+however exploit two properties of our cost function to apply the
+algorithm in [23] and obtain a linear-time approximate solution for
+a given value of . ese properties are monotonicity and quasisubadditivity. e monotonicity property is stated as follows.
+
+P
+
+1. (Monotonicity) A function f : V × V  R is said
+
+monotone if for each pair of values i, j  V the following holds:
+
+· f (i, j + 1)  f (i, j), · f (i - 1, j)  f (i, j).
+
+It is easy to verify that our cost function c(i, j) satis es Property 1, because if a block B is contained in a block B , then it follows immediately from the de nition that the cost of B is greater than the cost of B. Monotonicity allows us to perform a rst pruning of G: for any given approximation parameter   (0, 1], we de ne G1 as the graph with the same nodes as G , and all the edges (i, j) of G that satisfy at least one of the following conditions.
+(1) ere exists an integer h such that
+c(i, j)  (1 + )h < c(i, j + 1)
+
+(2) (i, j) is the last outgoing edge from i.
+
+e
+
+number
+
+of
+
+edges
+
+in G1
+
+is
+
+n
+
+log1+
+
+(
+
+U 
+
+)
+
+where U
+
+is
+
+the
+
+maxi-
+
+mum cost of an edge (which is equal to n maxd sd ).
+
+We denote as G the shortest path of the graph G and ex-
+
+tend
+
+c
+
+to
+
+denote
+
+the
+
+cost
+
+of
+
+a
+
+path.
+
+It
+
+can
+
+be
+
+shown
+
+that
+
+c
+
+(G
+
+1 
+
+)
+
+
+
+(1 +  )c(G ), that is, the optimal solution in G1 is a (1 +  ) approximation of the optimal solution in G; see [14] for the proof.
+
+e complexity to nd the shortest path decreases from O(n2) to
+
+O (n
+
+log1+
+
+(
+
+U 
+
+)).
+
+is would be already applicable in many practical
+
+scenarios, but it depends on the value U of the maximum score. We
+
+can further re ne the algorithm in order to decrease the complexity
+and drop the dependency on U by adding an extra approximation function (1 + ) for any given approximation parameter   (0, 1],
+
+by leveraging the quasi-subadditivity property.
+
+P
+
+2. ( asi-subadditivity) A function f : V × V  R is
+
+said -quasi-subadditive if for any i, k and j  V , with 0  i < l <
+
+j < |V | the following holds:
+
+f (i, k) + f (k, j)  f (i, j) + .
+
+It is again immediate to show that c(i, j) satis es Property 2: spli ing a block at any point can only lower the upper bound in
+
+the two resulting sub-blocks, so the only extra cost is the additional
+
+ of the new edge.
+
+is property allows us to prune from G1 all the edges with cost
+
+higher
+
+than
+
+L
+
+=
+
+
+
++
+
+2 
+
+;
+
+we
+
+call
+
+the
+
+resulting
+
+graph
+
+G2 .
+
+e new
+
+graph has O(n log1+
+
+1 
+
+)
+
+=
+
+(n)
+
+edges,
+
+thus
+
+shortest
+
+paths
+
+can
+
+be
+
+computed in linear time. It can be shown (see [23]) that this pruning
+
+incurs an extra (1 + ) approximation; the overall approximation
+
+factor is thus (1 + )(1 + ), which is 1 +  for any   (0, 1] by appropriately xing  =  =  .
+3
+Clearly it is not feasible to materialize the graph G and prune it to obtain G2 , since the dominating cost would still be the initial quadratic phase. It is however possible to visit the graph G2 without
+constructing it explicitly, as described in [23].
+
+By using the above algorithm, every shortest path computation
+
+requires O(n log1+
+
+1 
+
+)
+
+= (n) time and linear space.
+
+Since we are binary searching on , the number of required
+
+shortest path computations depends on the range of possible values
+of . It is easy to see that   0. Indeed, the shortest path in G0 has the largest possible number of edges, n - 1 and the smallest possible cost. We now prove that the shortest path in G with  > U n/(b -1) has less than b edges, where U is the largest cost on G. us, in
+
+the binary search we can restrict our a ention to integer values of
+ in [0, U n/(b - 1)]. e proof is as follows. Consider the optimal path with one edge in G, and let O1 be its cost. By monotonicity, we know that O1 = U . Let Ob be the cost of the best path with b edges in G. For any , the cost of these two paths in G are O1 +  and Ob + b. Observe that if  > U n/b, the former path has a cost
+which is smaller than the cost of the la er. is means that we do
+not need to explore values of  larger than U n/(b - 1) when we are looking for a path with b edges. us, the rst phase of the algorithm needs O(log(U n/b)) shortest path computations to nd the target value of . us, if we restrict our search to integer values of , the number of shortest path computations is O(log(U n/b)).
+
+We can re ne the above solution to nd a provable good approximation of the shortest path with exactly b edges. e re nement
+
+uses the result in [13]. eorem 4.1 in [13] states that, given a DAG G with integer costs which satisfy the monotonicity property, we
+
+can compute an additive approximation of the constrained shortest
+path of G. More precisely, we can compute a path with b edges such that its cost is at most Ob + U , where Ob is the cost of an optimal path with b edges and U is the largest cost on G. e algorithms
+
+works in two phases. In the rst phase, it reduces the problem
+
+to a standard, unconstrained shortest path by using Lagrangian
+
+relaxation as we have done in our rst solution. us, the rst
+phase binary searches for the value of  for which the shortest path on G with the least number of edges has at most b edges, while the one with the most edges has at least b edges. If one of these two paths has exactly b edges, this is guaranteed to be an optimal
+
+solution and we are done. Otherwise, we start the second phase
+of the algorithm. e second phase is called path-swapping and its goal is to combine these two paths to nd a path with b edges
+
+whose cost is worse than the optimal one by at most an additive term A, which equals the largest cost in the graph. We refer to [1]
+
+and [13] for more details.
+
+629
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+We cannot immediately apply the above optimization algorithm
+
+because of two important issues. In the following we will introduce
+
+and solve both of them.
+
+e rst issue is that the above optimization algorithm assumes that the costs in G are integers, while in our case are not. e
+
+idea is to obtain a new graph with integer costs by rescaling and
+rounding the original costs of G. More precisely, we can obtain a new graph by replacing any cost c(i, j) with c(i, j)/ , where   (0, 1] is an approximation parameter. We can prove that this
+
+operation slightly a ects the cost of the optimal path. Indeed, let
+Ob the cost of the shortest path with b edges in G, the shortest path on the new graph as cost O~b which is Ob  O~b  Ob + b. Due to space limitations, we defer the proof of this inequality to
+
+the journal version of the paper. Even if in general we cannot
+
+bound the additive approximation b in terms of Ob , in practice
+
+the approximation is negligible because Ob is much larger that b.
+
+Notice
+
+that
+
+this
+
+approximation
+
+increases U
+
+to
+
+U 
+
+.
+
+e second issue to address is the fact that additive approxima-
+
+tion term A in the result of [13] is the largest edge cost U . In our
+
+problem this additive approximation term is the cost of the edge from 1 to n, which equals the cost of the worst possible path. is
+
+means that the obtained approximation would be trivial. However,
+
+we observe that, due to the approach of the previous paragraph,
+
+the
+
+largest
+
+cost
+
+on
+
+the
+
+approximated
+
+graph
+
+G
+
+2 
+
+is
+
+L
+
+=
+
+
+
++
+
+2 
+
+and
+
+we know that   U n/b. us, the additive approximation term A
+
+is
+
+O(
+
+Un b
+
+),
+
+which
+
+is
+
+negligible
+
+in
+
+practice.
+
+us, we obtained the following theorem.
+
+T
+
+3.1. Given a sequence of scores S[1, n] and a xed num-
+
+ber of blocks b, we can compute a partition of S into b blocks whose
+
+cost
+
+is
+
+at
+
+most
+
+(1+
+
+)Ob
+
++O
+
+(
+
+Un b
+
+)
+
++b
+
+in
+
+O
+
+(n
+
+log1+
+
+1 
+
+log(
+
+Un b
+
+))
+
+time
+
+and linear space, where Ob is the cost of the optimal partition with
+
+b blocks, U =
+
+n i =1
+
+S
+
+[i
+
+],
+
+and , 
+
+
+
+(0, 1]
+
+are
+
+the
+
+two
+
+approximation
+
+parameters.
+
+4 REPRESENTING THE UPPER BOUNDS
+BlockMaxWAND is required to store additional information about the block upper bounds. is additional information must be stored together with the traditional inverted index data structures, and while these upper bounds can improve the time e ciency of query processing, they introduce a serious space overhead problem.
+e additional information required by BlockMaxWAND can be seen as two aligned sequences: the sequence of block boundaries, that is, the largest docid in each block, and the score upper bound for each block.
+In the original implementation, the sequences are stored uncompressed, using constant-width encodings (for example, 32-bit integers for the boundaries and 32-bit oats for the upper bounds), and are usually interleaved to favor cache locality. We can however use more e cient encodings to reduce the space overhead.
+First, we observe that the sequence of block boundaries is monotonic, so it can be e ciently represented with Elias-Fano. In addition to saving space, Elias-Fano provides an e cient NextGEQ operation that can be used to quickly locate the block containing the current docid at query execution time.
+Second, as far as the upper bounds are concerned, we can reduce space use by approximating their value. e only requirement to
+
+preserve the correctness of the algorithm is that each approximate
+
+value is an upper bound for all the scores in its block. us, we
+
+can use the following quantization. First, we partition the score
+
+space into xed size buckets. Any score is represented with the
+
+identi er of its bucket. Let us assume that the score space is [0, U ]
+
+and that we partition it into w buckets. en, instead of storing a
+
+block upper bound with value s  [0, U ], we store the identi er i
+
+such
+
+that
+
+iU w
+
+<s 
+
+(i +1)U w
+
+.
+
+At
+
+query
+
+time,
+
+the
+
+actual
+
+score
+
+s
+
+will
+
+be approximated with the largest possible value in its bucket, i.e.,
+
+(i +1)U
+w . Clearly, the representation of any score requires
+
+log w + 1
+
+bits, a large space saving with respect to the 32 bits of the oat
+
+representation. Obviously, the value of w can be chosen to trade
+
+o the space usage and the quality of the approximation.
+
+A simple optimization to speed up access is to interleave the two
+sequences, by modifying of the Elias-Fano data structure. EliasFano stores a monotonic sequence by spli ing each value into its low bits, and the remaining high bits. e value of a constant for
+
+the sequence. While the high bits are encoded with variable-length,
+
+the low bits are encoded verbatim in exactly bits per element, thus the low bits of the i-th element are at the position i of the low
+
+bitvector. We can then interleave the low bits and the quantized score by using a bitvector of ( + w)-bit entries, so that when the
+
+block is located, its quantized upper bound is already in cache.
+
+5 EXPERIMENTAL RESULTS
+In this section we analyze the performance of VBMW with an extensive experimental evaluation in a realistic and reproducible se ing, using state-of-the-art baselines, standard benchmark text collections, and a large query log.
+Testing details. All the algorithms are implemented in C++11 and compiled with GCC 5.4.0 with the highest optimization se ings.
+e tests are performed on a machine with 8 Intel Core i7-4770K Haswell cores clocked at 3.50GHz, with 32GiB RAM, running Linux 4.4.0. e indexes are saved to disk a er construction, and memorymapped to be queried, so that there are no hidden space costs due to loading of additional data structures in memory. Before timing the queries we ensure that the required posting lists are fully loaded in memory. All timings are measured taking the results with minimum value of ve independent runs. All times are reported in milliseconds.
+e source code is available at h ps://github.com/rossanoventurini/ Variable-BMW for the reader interested in further implementation details or in replicating the experiments.
+Datasets. We performed our experiments on the following standard datasets.
+· ClueWeb09 is the ClueWeb 2009 TREC Category B collection, consisting of 50 million English web pages crawled between January and February 2009.
+· Gov2 is the TREC 2004 Terabyte Track test collection, consisting of 25 million .gov sites crawled in early 2004; the documents are truncated to 256 kB.
+For each document in the collection the body text was extracted using Apache Tika1, the words lowercased and stemmed using the
+
+1h p://tika.apache.org
+
+630
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 1: Basic statistics for the test collections
+
+Documents Terms Postings
+
+ClueWeb09
+50,131,015 92,094,694 15,857,983,641
+
+Gov2
+24,622,347 35,636,425 5,742,630,292
+
+Porter2 stemmer; no stopwords were removed. e docids were
+assigned according to the lexicographic order of their URLs [27].
+Table 1 reports the basic statistics for the two collections. If not
+di erently speci ed, the inverted index is compressed by using partitioned Elias-Fano (PEF) [23] in the ds2i library2.
+eries. To evaluate the speed of query processing we use Trec05 and Trec06 E ciency Track topics, drawing only queries whose terms are all in the collection dictionary and having more than 128
+postings. ese queries are, respectively, the 90% and 96% of the total Trec05 and Trec06 queries for the Gov2 collection and the 96% and 98% of the total Trec05 and Trec06 queries for the ClueWeb09 collection. From those sets of queries we randomly select 1 000
+queries for each length.
+Processing strategies. To test the performance on query strategies that make use of the docids and the occurrence frequencies we perform BM25 top 10 queries using 5 di erent algorithms: RankedOR, which scores the results of a disjunctive query, WAND [4], MaxScore [30], BlockMaxWAND (BMW) [10], and the proposed Variable BMW (VBMW) in its uncompressed and compressed variants.
+We use BMWx to indicate that the xed block size in BMW is x postings, while we use VBMWx to indicate that the average block size in VBMW is x postings. e compressed version of VBMW as described in Section 4 is denoted as C-VBMWx.
+Validating our BMW implementation. We implemented our version of BMW because the source code of the original implementation was not available. To test the validity of our implementation we
+compared its average query time with the ones reported in [10]. We replicated their original se ing by using the same dataset (Gov2), by compressing postings with the same algorithm (PForDelta), by using queries from the same collections (Trec05 and Trec06), and by using BMW64. However, since we are using a di erent faster machine, we cannot directly compare query times, but, instead, we compare the improving factors with respect to RankedOR, which is an easy-to-implement baseline.
+Table 2 shows the query times reported in the original paper
+(top) and the ones obtained with our implementation (bo om).
+Results show that the two implementations are comparable, with
+ours which is generally faster. For example, it is faster by a factor larger than 2.4 on queries with more than three terms in Trec06.
+e e ect of the block size in BMW. Although the most commonly used block sizes for BMW are 64 and 128, a more careful experimental evaluation shows that the best performance in terms of
+query time is obtained with a block size of 40 postings. Table 3 shows the average query time of BMW with respect to
+Trec05 and Trec06 on both Gov2 and ClueWeb09, by varying the
+2h ps://github.com/ot/ds2i
+
+Table 2: ery times (in ms) of RankedOR and BMW64 on Gov2 with queries in Trec05 and Trec06 as reported by Ding and Suel [10] (top) and the ones obtained with our implementation (bottom), for di erent query lengths.
+
+Number of query terms
+
+2
+
+3
+
+4
+
+5
+
+6+
+
+Trec05 (from [10])
+
+RankedOR 62.1 (x17.7) 238.9 (x18.8) 515.2 (x20.4) 778.3 (x25.9) 1,501.4 (x14.4)
+
+BMW64 3.5
+
+12.7
+
+25.2
+
+30.0
+
+104.0
+
+Trec06 (from [10])
+
+RankedOR 60.0 (x14.7) 159.2 (x13.8) 261.4 (x7.8) 376.0 (x6.9)
+
+BMW64 4.1
+
+11.5
+
+33.6
+
+54.5
+
+Trec05
+
+646.4 (x5.7) 114.2
+
+RankedOR 15.5 (x13.2) 51.3 (x17.3) 100.3 (x22.6) 158.0 (x22.7)
+
+BMW64 1.2
+
+3.0
+
+4.5
+
+7.0
+
+Trec06
+
+275.1 (x17.3) 15.9
+
+RankedOR 15.5 (x14.7) 57.6 (x16.9) 117.6 (x19.7) 178.0 (x18.5) 311.2 (x13.8)
+
+BMW64 1.1
+
+3.4
+
+6.0
+
+9.6
+
+22.5
+
+block size. We select the block size in the set {32, 40, 48, 64, 96, 128}. It is clear that in all cases, the best average query time is achieved with blocks size 40. BMW40 is 10% faster, on average, than BMW128.
+Table 3 also reports the space usage of the (uncompressed) additional information stored by BMW, namely the largest score in the block (as oat) and the last posting in the block (as unsigned
+int). Posting lists with fewer postings than the block size do not
+store any additional information. e size of the inverted index of the Gov2 and ClueWeb09 collections (compressed with PEF) is 4.32 GiB and 14.84 GiB respectively. us, the space of the additional information required by BMW is not negligible, since it ranges between 15% and 42% of the compressed inverted index space on both Gov2 and ClueWeb09. As we will see later, this space usage can be reduced signi cantly by compressing the additional information.
+e e ect of the block size in VBMW. Now, we proceed by analyzing the behavior of VBMW. Instead of adopting the more sophisticated approximation approach detailed in Section 3, we use
+the simpler optimization algorithm which has no theoretical guar-
+antees on the nal number of blocks. us, we cannot choose an exact block size for our partitioning but we binary search for the  in the parameter space that gives an average block size close to the values in {32, 40, 48, 64, 96, 128}.
+Table 4 reports the average block sizes and score errors for different block sizes w.r.t. BMW and VBMW on Gov2 and ClueWeb09, and optimal values for the Lagrangian relaxation parameter . Note that for BMW, the average block size is not perfectly identical to the desired block size due to the length of the last block in the
+posting lists, which may be smaller than the desired block size.
+Our optimization algorithm is able to nd an average block size for VBMW within 3% of the average block size for BMW. us, the weaker optimization algorithm of Section 3 su ces in practice
+to obtain the desired average block sizes. More importantly, the
+
+631
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 3: Space usage of the additional data required by BMW and average query times with queries in Trec05 and Trec06 on Gov2 and ClueWeb09, by varying the block size.
+
+Table 5: Average query times of VBMW with queries in Trec05 and Trec06 on Gov2 and ClueWeb09, by varying the block size.
+
+Block size 32 40 48 64 96 128
+
+Additional space (GiB)
+
+Gov2
+
+1.83 1.55 1.38 1.15 0.92 0.85
+
+ClueWeb09 5.04 4.14 3.62 3.04 2.40 2.24
+
+ery time (ms) on Trec05
+
+Gov2
+
+3.6 3.6 3.7 3.8 3.9 4.2
+
+ClueWeb09 12.8 12.6 12.6 12.8 13.3 13.9
+
+ery time (ms) on Trec06
+
+Gov2
+
+8.3 8.2 8.3 8.5 8.9 9.2
+
+ClueWeb09 26.4 26.3 26.5 27.0 28.0 29.4
+
+Table 4: Average block sizes and score errors for di erent block sizes w.r.t. BMW and VBMW on Gov2 and ClueWeb09, and optimal values for the Lagrangian relaxation parameter.
+
+Block Size
+
+32 40 48 64 96 128
+
+Gov2
+
+Average Block Size
+
+BMW 31.94 39.90 47.87 63.74 95.35 127.14 VBMW 31.32 39.63 47.09 63.60 98.40 126.30
+
+Average Score Error
+
+BMW VBMW
+
+1.47 0.82
+
+1.55 0.91
+
+1.61 0.98
+
+1.70 1.09
+
+1.83 1.26
+
+1.92 1.35
+
+
+
+VBMW 12.0 15.2 18.0 24.0 35.1 45.9
+
+ClueWeb09
+
+Average Block Size
+
+BMW 31.96 39.94 47.91 63.83 95.65 127.29 VBMW 30.24 39.54 48.03 63.29 97.43 127.72
+
+Average Score Error
+
+BMW VBMW
+
+1.94 1.20
+
+2.05 1.34
+
+2.15 1.45
+
+2.29 1.60
+
+2.49 1.83
+
+2.63 1.98
+
+
+
+VBMW 16.0 21.0 25.5 33.4 50.3 64.5
+
+average score error for VBMW is sensibly smaller than the average score error for BMW, with a reduction ranging from 40% for small blocks up to 25% for large blocks. is con rms the importance of
+partitioning the posting lists with variable-sized blocks. In Table 5 we can see that VBMW reaches the best average query
+times with approximatively 32 - 40 elements per block, similar to the best block size for BMW reported in Table 3, i.e., 40 postings per block. As shown in Figure 2, the trade-o in choosing this block
+size w.r.t. average query time is that we use more space to store
+block information, as reported in Table 3.
+e e ect of compression in VBMW. Figure 2 shows how the choice of w a ects both query time and space usage of C-VBMW when the average number of blocks is xed to 40 elements. We
+xed the number of buckets w to quantize the scores to the powers
+
+Block size 32 40 48 64 96 128
+
+ery time (ms) on Trec05
+
+Gov2
+
+2.1 2.1 2.1 2.2 2.5 2.8
+
+ClueWeb09 7.2 7.2 7.4 8.1 9.7 11.0
+
+ery time (ms) on Trec06
+
+Gov2
+
+4.6 4.7 4.8 5.3 6.1 6.9
+
+ClueWeb09 14.7 15.2 16.1 17.8 21.2 23.7
+
+of two from 32 to 512 and we reported the query time and the
+space of the additional information on both datasets with both set
+of queries. For comparison, we also plot the results of the plain version of VBMW by varying the average size of the blocks.
+e rst conclusion is that the compression approach is very effective. Indeed, C-VBMW improves space usage by roughly a factor 2 with respect to VBMW40. We also notice that the compression approach is more e ective than simply increasing the block size in the uncompressed VBMW. Indeed, for example, C-VBMW with w = 32 uses almost the same space as VBMW128 but is faster by 20% - 40%.
+e second conclusion is that compression does not decrease
+query time which actually sometimes even improves. For example, C-VBMW with w = 512 and w = 256 is faster that its uncompressed version (VBMW40) on both datasets with Trec05. is e ect may be the results to a be er cache usage resulting from the smaller size of additional information in C-VBMW.
+We observe that there are small di erences (less than 10%) in e ciency between the di erent values of w. us, for the next experiments we will x w to 512 to obtain the best time e ciency.
+Overall comparison. To carefully evaluate the performance of C-VBMW w.r.t. other processing strategies, we measured the query times of di erent query processing algorithms for di erent query
+lengths, from 2 terms queries to more than 5 terms queries, as well
+as the overall average processing times and the space use of any
+required additional data structure with respect the whole inverted indexes represented with PEF.
+In Table 6, next to each timing is reported in parenthesis the relative speedup of C-VBMW40 with respect to this strategy. Table 6 also reports, in GiB, the additional space usage required by the di erent query processing strategies. Next to each size mea-
+sure is reported in parenthesis the relative percentage against the
+data structures used to compress posting lists storing docids and frequencies only, as used by RankedOR.
+Not very surprisingly, RankedOR is always at least 34 times slower than C-VBMW40, while both MaxScore and WAND are from 1.4 to 11 times slower than C-VBMW40. e maximum speedup of C-VBMW40 is achieved with queries of two terms where it ranges from 6.5 to 11. Space usage of MaxScore and WAND plainly store the score upper bounds for each term using the 4% - 5% of the inverted index.
+
+632
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Figure 2: Space consumed vs. average query times of VBMW with di erent block sizes and C-VBMW with block size 40 by varying w for 32 to 512 with queries in Trec05 and Trec06 on Gov2 and ClueWeb09.
+
+All block-based strategies report a minimal variance of query
+times among di erent query lengths. For both the most common
+block size (128 postings per block) and the most e cient one (40 postings per block), VBMW strategies process queries faster than BMW strategies, with the same space occupancies. e corresponding compressed versions, C-VBMW128 and C-VBMW40, sensibly reduce the space occupancies (by 6% and 17% respectively) but while C-VBMW128 never processes queries faster than the corresponding uncompressed VBMW128, C-VBMW40 does not show relevant performance losses with respect to VBMW128, but exhibits some cache-dependent bene ts for short queries.
+With respect to the current state-of-the-art processing strategy BMW128, our best strategy in terms of query times is C-VBMW40, able to improve the average query time by a factor of roughly 2×, e ectively halving the query processing times for all query lengths, with a relative 3% - 5% gain in space occupancy. If space occupancy is the main concern, our best strategy is C-VBMW128, able to reduce the space by a relative 30% against BMW128, while still boosting the query times by a factor of roughly 1.5×.
+6 CONCLUSIONS
+We introduced Variable BMW, a new query processing strategy built on top of BlockMaxWAND. Our strategy uses variable-sized blocks, rather than constant-sized. We formulated the problem of
+partitioning the posting lists of a inverted index into variable-sized
+blocks to minimize the average block error, subject to a constraint
+on the number of blocks, and described an e cient algorithm to nd
+an approximate solution, with provable approximation guarantees.
+We also introduced a compressed data structure to represent the additional block information. Variable BMW signi cantly improves the query processing times, by a factor of roughly 2× w.r.t. the best state-of-the-art competitor. Our new compression scheme for the
+block data structures, compressing the block boundary docids with
+Elias-Fano and quantizing the block max score, provides a maximum
+reduction of space usage w.r.t. the uncompressed data structures of
+roughly 50%, while incurring only a small speed degradation, no
+more than 10% with respect to its uncompressed counterpart.
+Future work will focus on exploring the di erent space-time
+trade-o s that can be obtained by varying the quantization scheme
+exploited in the compression of the additional data structures.
+
+ACKNOWLEDGMENTS
+is work was partially supported by the EU H2020 Program under
+the scheme INFRAIA-1-2014-2015: Research Infrastructures, grant agreement #654024 SoBigData: Social Mining & Big Data Ecosystem.
+REFERENCES
+[1] Alok Aggarwal, Baruch Schieber, and Takeshi Tokuyama. 1994. Finding a
+Minimum-Weight k-Link Path Graphs with the Concae Monge Property and Applications. Discrete & Computational Geometry 12 (1994), 263­280. [2] Vo Ngoc Anh, Owen de Kretser, and Alistair Mo at. 2001. Vector-space ranking with e ective early termination. In SIGIR. 35­42. [3] Nima Asadi and Jimmy Lin. 2013. E ectiveness/E ciency Tradeo s for Candidate Generation in Multi-stage Retrieval Architectures. In SIGIR. 997­1000. [4] Andrei Z. Broder, David Carmel, Michael Herscovici, Aya So er, and Jason Y.
+Zien. 2003. E cient query evaluation using a two-level retrieval process. In CIKM. 426­434. [5] Stefan Bu¨ cher, Charles L.A. Clarke, and Gordon V. Cormack. 2010. Information retrieval: implementing and evaluating search engines. MIT Press. [6] Stefan Bu¨ cher and Charles L. A. Clarke. 2007. Index compression is good, especially for random access. In CIKM. 761­770. [7] Kaushik Chakrabarti, Surajit Chaudhuri, and Venkatesh Ganti. 2011. Intervalbased Pruning for Top-k Processing over Compressed Lists. In ICDE. 709­720. [8] Je rey Dean. 2009. Challenges in building large-scale information retrieval systems: invited talk. In WSDM. [9] Constantinos Dimopoulos, Sergey Nepomnyachiy, and Torsten Suel. 2013. Optimizing Top-k Document Retrieval Strategies for Block-max Indexes. In WSDM. 113­122.
+[10] Shuai Ding and Torsten Suel. 2011. Faster top-k document retrieval using blockmax indexes. In SIGIR. 993­1002.
+[11] Peter Elias. 1974. E cient Storage and Retrieval by Content and Address of Static Files. J. ACM 21, 2 (1974), 246­260.
+[12] Robert M. Fano. 1971. On the number of bits required to implement an associative memory. Memorandum 61, Computer Structures Group, MIT, Cambridge, MA (1971).
+[13] Andrea Farruggia, Paolo Ferragina, Antonio Frangioni, and Rossano Venturini. 2014. Bicriteria data compression. In SODA. 1582­1595.
+[14] Paolo Ferragina, Igor Ni o, and Rossano Venturini. 2011. On Optimally Partitioning a Text to Improve Its Compression. Algorithmica 61, 1 (2011), 51­74.
+[15] Sudipto Guha, Nick Koudas, and Kyuseok Shim. 2006. Approximation and Streaming Algorithms for Histogram Construction Problems. ACM Trans. Database Syst. 31, 1 (2006), 396­438.
+[16] Felix Halim, Panagiotis Karras, and Roland H.C. Yap. 2009. Fast and E ective Histogram Construction. In CIKM. 1167­1176.
+[17] Daniel Lemire and Leonid Boytsov. 2015. Decoding Billions of Integers Per Second rough Vectorization. So w. Pract. Exper. 45, 1 (2015), 1­29.
+[18] Craig Macdonald, Iadh Ounis, and Nicola Tonello o. 2011. Upper-bound approximations for dynamic pruning. ACM Trans. Inf. Syst. 29, 4 (2011), 17.
+[19] Christopher D. Manning, Prabhakar Raghavan, and Hinrich Schu¨lze. 2008. Introduction to Information Retrieval. Cambridge University Press.
+[20] Kurt Mehlhorn and Mark Ziegelmann. 2000. Resource Constrained Shortest Paths. In ESA. 326­337.
+[21] Alistair Mo at, William Webber, Justin Zobel, and Ricardo Baeza-Yates. 2007. A pipelined architecture for distributed text query evaluation. Inf. Retr. 10, 3 (2007), 205­231.
+[22] Giuseppe O aviano, Nicola Tonello o, and Rossano Venturini. 2015. Optimal Space-time Tradeo s for Inverted Indexes. In WSDM. 47­56.
+[23] Giuseppe O aviano and Rossano Venturini. 2014. Partitioned Elias-Fano Indexes. In SIGIR. 273­282.
+
+633
+
+Session 5C: Efficiency and Scalability
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Table 6: ery times (in ms) of di erent query processing strategies for di erent query lengths, average query times (Avg, in ms) and additional space (Space, in GiB) w.r.t. Trec05 and Trec06 on Gov2 and ClueWeb09.
+
+Number of query terms
+
+Avg Space
+
+2
+
+3
+
+4
+
+5
+
+6+
+
+Gov2 Trec05
+
+RankedOR 23.6 (x32.89)
+
+WAND
+
+5.1 (x7.11)
+
+MaxScore
+
+4.7 (x6.61)
+
+BMW40 VBMW40 C-VBMW40 BMW128 VBMW128 C-VBMW128
+
+1.2 (x1.62) 0.8 (x1.10) 0.7 1.4 (x1.99) 1.0 (x1.42) 1.1 (x1.53)
+
+76.5 (x44.39) 147.9 (x59.74) 235.4 (x60.47)
+
+5.9 (x3.43) 7.0 (x2.82) 8.8 (x2.27)
+
+6.0 (x3.45) 7.1 (x2.86) 9.2 (x2.37)
+
+2.9 (x1.65) 4.3 (x1.72) 6.7 (x1.72)
+
+1.7 (x1.01) 2.4 (x0.97) 3.8 (x0.97)
+
+1.7
+
+2.5
+
+3.9
+
+3.5 (x2.01) 4.8 (x1.93) 7.2 (x1.85)
+
+2.4 (x1.40) 3.2 (x1.30) 4.9 (x1.26)
+
+2.5 (x1.47) 3.4 (x1.37) 5.1 (x1.32)
+
+Gov2 Trec06
+
+418.7 (x50.18) 106.7 (x50.88) 0.00
+
+17.8 (x2.13) 7.0 (x3.36) 0.22 (5%)
+
+14.2 (x1.70) 6.6 (x3.14) 0.22 (5%)
+
+14.8 (x1.78)
+
+3.6
+
+1.55 (x1.74)
+
+(36%)
+
+8.1 (x0.97)
+
+2.1
+
+1.55 (x1.00)
+
+(36%)
+
+8.3
+
+2.1
+
+0.82 (19%)
+
+15.9 (x1.90)
+
+4.2
+
+0.85 (x1.98)
+
+(20%)
+
+10.7 (x1.28)
+
+2.8
+
+0.85 (x1.34)
+
+(20%)
+
+11.3 (x1.36)
+
+3.0
+
+0.58 (x1.42)
+
+(13%)
+
+RankedOR 23.1 (x34.72)
+
+WAND
+
+4.7 (x7.12)
+
+MaxScore
+
+4.5 (x6.78)
+
+BMW40 VBMW40 C-VBMW40 BMW128 VBMW128 C-VBMW128
+
+1.1 (x1.58) 0.8 (x1.12) 0.7 1.2 (x1.88) 0.9 (x1.39) 1.0 (x1.48)
+
+83.3 (x42.20) 169.1 (x52.34) 261.3 (x52.20)
+
+8.0 (x4.06) 9.3 (x2.86) 12.4 (x2.47)
+
+7.8 (x3.97) 9.2 (x2.83) 11.7 (x2.34)
+
+3.2 (x1.62) 5.5 (x1.70) 8.7 (x1.74)
+
+2.0 (x1.02) 3.2 (x0.98) 4.9 (x0.98)
+
+2.0
+
+3.2
+
+5.0
+
+3.9 (x1.98) 6.5 (x2.01) 10.1 (x2.03)
+
+3.1 (x1.56) 4.7 (x1.45) 7.3 (x1.46)
+
+3.2 (x1.64) 4.8 (x1.50) 7.6 (x1.52)
+
+ClueWeb09 Trec05
+
+470.7 (x37.56) 212.0 (x44.41) 0.00
+
+26.3 (x2.10) 12.9 (x2.69) 0.22 (5%)
+
+19.4 (x1.55) 11.3 (x2.37) 0.22 (5%)
+
+22.1 (x1.76)
+
+8.2
+
+1.55 (x1.73)
+
+(36%)
+
+12.3 (x0.98)
+
+4.7
+
+1.55 (x0.98)
+
+(36%)
+
+12.5
+
+4.8
+
+0.82 (19%)
+
+23.8 (x1.90)
+
+9.2
+
+0.85 (x1.93)
+
+(20%)
+
+17.3 (x1.38)
+
+6.9
+
+0.85 (x1.43)
+
+(20%)
+
+18.4 (x1.47)
+
+7.2
+
+0.58 (x1.51)
+
+(13%)
+
+RankedOR 77.9 (x36.01) 228.3 (x42.15) 429.3 (x55.20) 659.7 (x50.14) 1,214.0 (x41.72) 312.6 (x43.76) 0.00
+
+WAND
+
+23.8 (x10.98) 29.2 (x5.40) 25.7 (x3.31) 29.1 (x2.21) 57.1 (x1.96) 28.7 (x4.01) 0.53 (4%)
+
+MaxScore 19.3 (x8.91) 22.9 (x4.23) 22.7 (x2.92) 28.1 (x2.14) 42.2 (x1.45) 23.4 (x3.28) 0.53 (4%)
+
+BMW40 VBMW40 C-VBMW40 BMW128 VBMW128 C-VBMW128
+
+4.2 (x1.93) 2.7 (x1.23) 2.2 3.9 (x1.80) 3.1 (x1.43) 3.3 (x1.53)
+
+10.2 (x1.89) 5.7 (x1.06) 5.4 11.2 (x2.06) 8.9 (x1.63) 9.6 (x1.77)
+
+14.7 (x1.89) 7.8 (x1.01) 7.8 16.3 (x2.10) 12.0 (x1.55) 12.8 (x1.65)
+
+22.5 (x1.71) 12.7 (x0.96) 13.2 25.6 (x1.94) 19.2 (x1.46) 20.4 (x1.55)
+
+49.7 (x1.71) 27.8 (x0.96) 29.1 54.0 (x1.85) 42.2 (x1.45) 45.4 (x1.56)
+
+12.6
+
+4.14 (x1.76)
+
+(28%)
+
+7.2
+
+4.14 (x1.01)
+
+(28%)
+
+7.1
+
+2.12 (14%)
+
+13.9
+
+2.24 (x1.94)
+
+(15%)
+
+11.0
+
+2.24 (x1.54)
+
+(15%)
+
+12.0
+
+1.48 (x1.67)
+
+(10%)
+
+ClueWeb09 Trec06
+
+RankedOR 60.6 (x33.63) 215.9 (x37.04) 439.1 (x41.46) 686.5 (x40.57) 1,270.5 (x32.81) 542.5 (x34.56) 0.00
+
+WAND
+
+14.2 (x7.86) 23.1 (x3.96) 27.3 (x2.58) 37.3 (x2.20) 73.8 (x1.91) 37.2 (x2.37) 0.53 (4%)
+
+MaxScore 12.7 (x7.04) 21.3 (x3.66) 27.1 (x2.56) 33.9 (x2.00) 55.0 (x1.42) 32.3 (x2.06) 0.53 (4%)
+
+BMW40 VBMW40 C-VBMW40 BMW128 VBMW128 C-VBMW128
+
+3.2 (x1.77) 2.1 (x1.15) 1.8 3.6 (x1.99) 2.7 (x1.49) 2.9 (x1.59)
+
+10.0 (x1.72) 6.0 (x1.02) 5.8 12.0 (x2.06) 10.0 (x1.71) 10.6 (x1.83)
+
+17.5 (x1.65) 10.3 (x0.97) 10.6 20.9 (x1.97) 16.8 (x1.58) 18.0 (x1.69)
+
+28.1 (x1.66) 16.2 (x0.96) 16.9 32.5 (x1.92) 25.9 (x1.53) 28.0 (x1.65)
+
+65.9 (x1.70) 37.0 (x0.96) 38.7 71.0 (x1.83) 56.6 (x1.46) 61.0 (x1.58)
+
+26.3
+
+4.14 (x1.68)
+
+(28%)
+
+15.2
+
+4.14 (x0.96)
+
+(28%)
+
+15.7
+
+2.12 (14%)
+
+29.4
+
+2.24 (x1.87)
+
+(15%)
+
+23.6
+
+2.24 (x1.50)
+
+(15%)
+
+25.2
+
+1.48 (x1.60)
+
+(10%)
+
+[24] Stephen E. Robertson and Karen S. Jones. 1976. Relevance weighting of search terms. Journal of the Am. Soc. for Information science 27, 3 (1976), 129­146.
+[25] David Salomon. 2007. Variable-length Codes for Data Compression. Springer. [26] Dongdong Shan, Shuai Ding, Jing He, Hongfei Yan, and Xiaoming Li. 2012.
+Optimized Top-k Processing with Global Page Scores on Block-max Indexes. In WSDM. 423­432. [27] Fabrizio Silvestri. 2007. Sorting Out the Document Identi er Assignment Problem. In ECIR. 101­112.
+
+[28] Fabrizio Silvestri and Rossano Venturini. 2010. VSEncoding: E cient Coding and Fast Decoding of Integer Lists via Dynamic Programming. In CIKM. 35­42.
+[29] Nicola Tonello o, Craig Macdonald, and Iadh Ounis. 2013. E cient and E ective Retrieval Using Selective Pruning. In WSDM. 63­72.
+[30] Howard Turtle and James Flood. 1995. ery evaluation: Strategies and optimizations. Information Processing & Management 31, 6 (1995), 831­850.
+[31] Sebastiano Vigna. 2013. asi-succinct indices. In WSDM. 83­92. [32] Justin Zobel and Alistair Mo at. 2006. Inverted les for text search engines.
+ACM Comput. Surv. 38, 2 (2006).
+
+634
+
+

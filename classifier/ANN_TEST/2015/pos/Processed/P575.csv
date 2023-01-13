@@ -1,0 +1,788 @@
+,sentence,label,data,regex
+0,Learning to Reweight Terms with Distributed Representations,0,,False
+1,Guoqing Zheng,0,,False
+2,School of Computer Science Carnegie Mellon University,0,,False
+3,"5000 Forbes Avenue Pittsburgh, PA 15213, USA",0,,False
+4,gzheng@cs.cmu.edu,0,,False
+5,ABSTRACT,0,,False
+6,"Term weighting is a fundamental problem in IR research and numerous weighting models have been proposed. Proper term weighting can greatly improve retrieval accuracies, which essentially involves two types of query understanding: interpreting the query and judging the relative contribution of the terms to the query. These two steps are often dealt with separately, and complicated yet not so effective weighting strategies are proposed. In this paper, we propose to address query interpretation and term weighting in a unified framework built upon distributed representations of words from recent advances in neural network language modeling. Specifically, we represent term and query as vectors in the same latent space, construct features for terms using their word vectors and learn a model to map the features onto the defined target term weights. The proposed method is simple yet effective. Experiments using four collections and two retrieval models demonstrates significantly higher retrieval accuracies than baseline models.",1,ad,True
+7,Categories and Subject Descriptors,0,,False
+8,H.3.3 [Information Search and Retrieval]: Retrieval models,0,,False
+9,General Terms,0,,False
+10,"Algorithms, Experimentation",0,,False
+11,Keywords,0,,False
+12,"Query term weighting, distributed representations, word vectors",1,Query,True
+13,1. INTRODUCTION,1,DUC,True
+14,"Performance of text search engines relies heavily on query understanding, of which one important problem is how to",0,,False
+15,"Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for profit or commercial advantage and that copies bear this notice and the full citation on the first page. Copyrights for components of this work owned by others than ACM must be honored. Abstracting with credit is permitted. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior specific permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'15, August 09 - 13, 2015, Santiago, Chile.",1,ad,True
+16,c 2015 ACM. ISBN 978-1-4503-3621-5/15/08 ...$15.00.,0,,False
+17,DOI: http://dx.doi.org/10.1145/2766462.2767700.,0,,False
+18,Jamie Callan,0,,False
+19,School of Computer Science Carnegie Mellon University,0,,False
+20,"5000 Forbes Avenue Pittsburgh, PA 15213, USA",0,,False
+21,callan@cs.cmu.edu,0,,False
+22,"weight the contribution of each individual term to the retrieval score1. When proper weights (such as ground truth term recall weights [22]) are used, they can boost retrieval accuracies by up to 30% given relevance judgments. Properly setting the query term weights requires accurately interpreting and properly representing the query first. This is no easy task as query intent understanding itself is a diffcult problem in IR research [7].",0,,False
+23,"In this paper, we attempt to address query interpretation and term weighing from a different angle, with a unified framework built upon recent advances in neural network language modeling [13, 3]. Recent research in the application of neural network to text problems exploits the cooccurrence of words to represent words by multidimensional vectors. Distributed representations learned from neural network based models [13, 3] are designed and shown to be effective for measuring semantic similarity among words and identifying similar neighbors for a given word. The mapping from words to vectors gives the ability to not only measure word-word similarity but also ways to represent the query in the same vector space from word vectors from its terms (such as taking the average of the word vectors of all terms as the vector representation for the query).",1,ad,True
+24,"As proper query term weights reflects the relative importance of the term with respect to the query, specifically we propose to construct features from word vectors representations of terms and the query and to learn the relationship between the feature vectors and target term weight (such as the term recall weight [22] estimated from relevance judgments). A regularized linear regression problem from the feature vectors onto term weights is formulated and the predicted term weights are used for both bag-of-words queries and term dependency queries. We demonstrate the effectiveness of our method using two popular retrieval models, four standard test collections, word vectors developed from a variety of sources, and three baseline methods.",0,,False
+25,"The contributions of our work are three fold. First, we join the work of distributed word vectors to the prediction of query term weights in IR, and propose a simple yet effective framework to predict effective term weights. Second, we observe significant improvement over the baseline mod-",0,,False
+26,"1People use ""term weight"" to describe two different settings: one is the matching score a retrieval function assigns to a term and a document pair; the other is the relative importance of the term to the query. The first setting is handled by the retrieval model while the query model deals with the second one; in this paper, we refer ""term weight"" or ""term reweighting"" to that in the second setting.",0,,False
+27,575,0,,False
+28,"els with two retrieval models over four standard collections when using predicted term recall as term weights. Third, the proposed method is much more efficient than previous work on query term weight prediction, i.e., term recall weight, which requires an initial retrieval and a local SVD for every new incoming query to obtain features for predicting term recall [22]. The proposed framework derives feature vectors directly from precomputed distributed word vectors; simple computations are sufficient for predicting term weights for new queries.",0,,False
+29,"The remainder of this paper is organized as follows: Section 2 introduces prior research related to query term weighting and term recall weight. Section 3 discusses the preliminaries for term recall prediction and distributed word vectors. Section 4 formally presents our approach in term weight modeling and estimation. Section 5 describes the data sets and the experimental settings. Experimental results as well as data analysis are presented in Section 6. At last, we conclude the paper and discuss some future work in Section 7.",0,,False
+30,2. RELATED WORK,0,,False
+31,"Query term weighting has been extensively studied in IR literature and a retrieval model reflects its choice of query term weights used. Conceptually, any retrieval model can be abstracted as the following scoring function:",1,Query,True
+32,"Score(q, D) ,",0,,False
+33,"w(t)f (t, D)",0,,False
+34,(1),0,,False
+35,tqD,0,,False
+36,"where f (t, D) is the matching score of term t and document",0,,False
+37,"D (for example, term frequency), and w(t), the query term",0,,False
+38,"weight, which doesn't specifically depend on D (for example,",0,,False
+39,"inverse term frequency), is the quantity we are interested",0,,False
+40,"in this paper. By formulating this way, existing retrieval",0,,False
+41,models make different choices about term weight. The most,0,,False
+42,"commonly used query term weights in the literature is idf,",0,,False
+43,"for example, the vector space model, language model [21],",0,,False
+44,"BM25, etc. Another well known term weight, the term recall weight,",0,,False
+45,"is closely related to idf and also attracts broad attention. It is originally captured by the Binary Independence Model (BIM)[16] to emphasize the importance of query term weights, as shown below:",1,ad,True
+46,"Score(q, D) ",0,,False
+47,log,0,,False
+48,ti qD,0,,False
+49,1,0,,False
+50,P(ti |Rq ) - P(ti|Rq),0,,False
+51,×,0,,False
+52,1,0,,False
+53,- P(ti|R¯q) P(ti |R¯q ),0,,False
+54,(2),0,,False
+55,"where Rq is the set of relevant documents, R¯q is the set of non-relevant documents, d is a document to be ranked, q is the query, and ti is a query term. The probability P(t|Rq) provides one way to weight query terms, known as the RSJ term weight, to improve retrieval performance. However, due to involvement of the relevant set of documents of query q, it is hard to give a reliable estimation of P(t|Rq) when relevance information is unavailable. Indeed, researchers recognized that the use of term recall weight could lead to huge retrieval gain as P(t|Rq) is actually the only term about relevance in the ranking function [22], and proposed several ways to predict it.",1,ad,True
+56,"Croft and Harper [5] modeled the query term weight as a tuned constant (the Croft/Harper Combination Match model). Greiff [6] tried to predict term weight and P(t|R¯q) with a linear function of idf. His experiments showed some improvement over the BIM model. More recently, Metzler",0,,False
+57,"[12] modeled term weight as a linear function of document frequency. The above modeling of term weight only used df or idf features. The predictions were inadequate as they did not reflect the insight that P(t|Rq) is a query dependent quantity and that query dependent features are needed to estimate term weight. Recently, Zhao et al. [22] proposed a framework to construct features for query terms from pseudo relevance feedback [20] and use them to predict term weight.",1,ad,True
+58,"Retrieval models that capture term dependencies have attracted research attention and also demonstrated their retrieval effectiveness compared to unigram query models. One widely used model is the sequential dependency model (SD) [10], which features three types of query concepts: terms, bigrams and proximity expression. An example of a sequential dependency query in the Indri query language for the bag-of-words query apple pie recipe is:",0,,False
+59,#weight( 0.8 #combine( apple pie recipe ),0,,False
+60,0.1 #combine( #1(apple pie),0,,False
+61,#1(pie recipe) ),0,,False
+62,0.1 #combine( #uw8(apple pie),0,,False
+63,#uw8(pie recipe) ),0,,False
+64,),0,,False
+65,#1(apple pie) matches when apple and pie form a bigram. #uw8(apple pie) matches when apple and pie occur in any order within a window of 8 words. And #combine is a probabilistic AND operator.,0,,False
+66,"The sequential dependence model provides basic weighting for different types of query concepts. Broad empirical results have validated the effectiveness of SD over the unweighted bag-of-words query model [1, 2, 10]. However, concepts of the same type share the same weight, which is not optimal. Recent research proposed to predict term weights for each concept using features computed from collection statistics, an adaptive model, and an optimization goal of maximizing an evaluation metric such as Mean Average Precision (MAP) [1, 2]. Term weighting strategy emphasizing query aspects is also proposed [23].",1,ad,True
+67,Our approach differs from the above methods in that we represent terms and queries using distributed word vectors in a semantic vector space learnt from a global corpus and we construct novel feature vectors from the distributed representations to automatically learn term weights for efficient retrieval.,0,,False
+68,3. PRELIMINARIES,0,,False
+69,"In this section, we briefly introduce recent work on distributed representations learning from neural network language models and also defines the target term weights we use in our framework.",0,,False
+70,3.1 Distributed word vectors,0,,False
+71,"Neural network based language models aim to learn the word vector representations and a statistical language model for the underlying text. These models can be mainly attributed to two categories. Models from the first category try to learn the word vector representations and the language model jointly. One example is the neural network language model (NNLM) [3], where a linear projection layer and a non-linear hidden layer are adopted to form a feedforward neural network. Models in the second category learn the word vector representations first and then train the language model with the word vectors. For example, Mikolov,",1,LM,True
+72,576,0,,False
+73,"et al. [14] used one neural network with a single hidden layer to learn word vector representations and then trained an Ngram language model on the word vectors. Typically the simple structure of the neural networks used by the second approach makes it less computationally expensive, thus we confine the discussion to this type of system.",0,,False
+74,"Recently, Mikolov et al. [13] proposed two new models, the Continuous Bag-of-Words model (CBOW) and the Continuous Skip-gram model, that have greater training efficiency. CBOW tries to maximize classification of a word by building a log-linear classifier with word vectors of several history words and future words around that location as input, while the Continuous Skip-gram model tries to predict words within a range before and after the current word given the word vector of the current word. Both CBOW and the Continuous Skip-gram model have only one projection layer between the input and output layer without any hidden layer, which significantly reduces the computational cost caused by the non-linear hidden layers in prior neural network based language models. Negative sampling is used to learn the CBOW and the Continuous Skip-gram models [15]. Word vector representations on a Google News corpus with 100 billion words for a vocabulary of 3 million words can be learned in less than one day using modest hardware.",0,,False
+75,Word vectors learned by both models have performed well in several semantic related task evaluations [13]. Mikolov et al. released the software for training CBOW and Continuous Skip-gram models and a set of pre-trained 300-dimensional word vector representations on the above mentioned Google News corpus2. Table 1 presents an example of the 10 closest words to `Chinese river' in terms of cosine similarity in the word vector representation space.,0,,False
+76,Table 1: Example of closest n-gram terms to the,0,,False
+77,phrase `Chinese river'.,0,,False
+78,Word,0,,False
+79,Cosine similarity,0,,False
+80,Yangtze_River,0,,False
+81,0.667376,0,,False
+82,Yangtze,0,,False
+83,0.644091,0,,False
+84,Qiantang_River,0,,False
+85,0.632979,0,,False
+86,Yangtze_tributary 0.623527,0,,False
+87,Xiangjiang_River 0.615482,0,,False
+88,Huangpu_River,0,,False
+89,0.604726,0,,False
+90,Hanjiang_River,0,,False
+91,0.598110,0,,False
+92,Yangtze_river,0,,False
+93,0.597621,0,,False
+94,Hongze_Lake,0,,False
+95,0.594108,0,,False
+96,Yangtse,0,,False
+97,0.593442,0,,False
+98,"It can be seen that the neighbors given by word vectors are indeed semantically related to the input. Also, in this example, unlike Yangtze_River, the phrase Chinese_river does not belong to the vocabulary of the model; there is no word vector representation for Chinese_river. Instead, word vectors for both Chinese and river are fetched and averaged to represent Chinese_river in the search for the closest neighbors, which yields meaningful results. A recent analysis [8] justifies the above results by showing that the learning of distributed representations is essentially factorizing a word-context matrix which ensures that words sharing similar context (thus similar meaning) will have similar vector representations.",1,ad,True
+99,This word vector addition property is the key moti-,1,ad,True
+100,vation to represent query and terms as word vectors and,0,,False
+101,thus to derive term features from them to predict target term,0,,False
+102,2https://code.google.com/p/word2vec/,0,,False
+103,"weights. See [15] for more examples of word vector addition property. In this paper, we adopt the CBOW framework to learn word vectors and use them to build a term weight prediction framework. The proposed framework can also be applied to word vectors learned by the Continuous Skipgram model, which we leave as future work.",1,ad,True
+104,3.2 Target term weights,0,,False
+105,"As discussed in Section 1, proper query term weights re-",0,,False
+106,flects the relative importance of a term to a query and should,0,,False
+107,also help improve retrieval performance. We choose term re-,0,,False
+108,call weight as our target term weight to predict in our frame-,0,,False
+109,work for its simplicity to compute and also great potential,0,,False
+110,to improve retrieval performance [22]. Given relevance judg-,0,,False
+111,"ments,",0,,False
+112,it,0,,False
+113,can,0,,False
+114,be,0,,False
+115,estimated,0,,False
+116,as,0,,False
+117,P(t|Rq ),0,,False
+118,",",0,,False
+119,"|Rq,t | |Rq |",0,,False
+120,",",0,,False
+121,where,0,,False
+122,Rq,0,,False
+123,"is the set of relevant documents to q and Rq,t  Rq is the",0,,False
+124,subset of relevant documents that contain term t.,0,,False
+125,3.3 Term weights and retrieval models,0,,False
+126,"In this section, we present how true or estimated target term weights can be integrated into different retrieval models.",0,,False
+127,3.3.1 Probabilistic language model,0,,False
+128,"One commonly used retrieval model in IR is the language model, often together with Dirichlet smoothing as shown in Eq. (3),",0,,False
+129,"Score(q, D) ,",0,,False
+130,log,0,,False
+131,"tft,D",0,,False
+132,+,0,,False
+133,µ,0,,False
+134,cft |C|,0,,False
+135,(3),0,,False
+136,tqD,0,,False
+137,|D| + µ,0,,False
+138,"where tft is the term frequency of term t in document D,",0,,False
+139,"cft is the collection frequency of t, |D| is the length of doc-",0,,False
+140,"ument D, |C| is the total length of the collection and µ is",0,,False
+141,the smoothing parameter. True term recall weight or term recall weight estimates,0,,False
+142,"can used by a language model in similar fashion as [9], as shwon in Eq. (4).",0,,False
+143,"Score(q, D) ,",0,,False
+144, P(t|R),0,,False
+145,·,0,,False
+146,log,0,,False
+147,"tft,D",0,,False
+148,+,0,,False
+149,µ,0,,False
+150,cft |C|,0,,False
+151,(4),0,,False
+152,tqD,0,,False
+153,|D| + µ,0,,False
+154,The term recall weighted language model shown above is equivalent to the relevance model under the assumption of binary term occurrences and uniform document length [22].,0,,False
+155,3.3.2 BM25,0,,False
+156,"Another widely adopted retrieval model is BM25, as shown in Eq. (5)",1,ad,True
+157,"Score(q, D) ,",0,,False
+158,log,0,,False
+159,tqD,0,,False
+160,N - dft + 0.5 dft + 0.5,0,,False
+161,·,0,,False
+162,"tft,D",0,,False
+163,"tft,D · (k1 + 1)",0,,False
+164,+,0,,False
+165,k1(1,0,,False
+166,-,0,,False
+167,b,0,,False
+168,+,0,,False
+169,b,0,,False
+170,|D| avgdl,0,,False
+171,),0,,False
+172,(5),0,,False
+173,"where dft is the document frequency of term t, avgdl is the average document length over the collection and k1 and b are free parameters. BM25 is actually more directly connected",0,,False
+174,"to term recall weight, as the above original BM25 model is an extension of the BIM [16]. By inserting the recall weight estimates to BM25, we get the recall-enhanced BM25 as",0,,False
+175,shown in Eq. (6).,0,,False
+176,"Score(q, D) ,",0,,False
+177,log P(t|R) · N - dft + 0.5,0,,False
+178,tqD,0,,False
+179,1 - P(t|R) dft + 0.5,0,,False
+180,·,0,,False
+181,"tft,D",0,,False
+182,"tft,D · + k1(1",0,,False
+183,(k1 -b,0,,False
+184,+ +,0,,False
+185,1),0,,False
+186,b,0,,False
+187,|D| avgdl,0,,False
+188,),0,,False
+189,.,0,,False
+190,(6),0,,False
+191,577,0,,False
+192,4. TERM WEIGHTS LEARNING WITH,0,,False
+193,DISTRIBUTED WORD VECTORS,0,,False
+194,"In this section, we present our model for estimating term weights with distributed word vectors.",0,,False
+195,Table 2: Notations M number of queries N total number of terms in all M queries ni number of terms in the ith query qi the ith query tij the jth term of the ith query rij true term weight for tij p dimension of distributed word vector wij distributed word vector for tij xij feature vector for tij X feature matrix y regression labels vector  regularization parameter  feature weights vector,0,,False
+196,"Suppose we have a set of M queries Q ,"" {q1, q2, ..., qM }""",0,,False
+197,"and each query qi has ni terms for i ,"" 1, 2, ..., M . Let""",0,,False
+198,"tij represent the jth term of query qi for j ,"" 1, 2, ..., ni,""",0,,False
+199,rij denote the true term weight estimated from relevance,0,,False
+200,"judgments for tij, hence rij  [0, 1] and N ,",0,,False
+201,"M i,1",0,,False
+202,ni,0,,False
+203,denote,0,,False
+204,the total number of query terms. (Refer to Table 2 for a,0,,False
+205,summary of notations.),0,,False
+206,Let wij  Rp denote the continuous distributed word vec-,0,,False
+207,"tor representation for term tij, where p is the dimension of",0,,False
+208,"the word vector. In this paper, we propose to directly con-",0,,False
+209,struct the feature vector xij for term tij from the distributed,0,,False
+210,word vector representations of term tij and other terms in,0,,False
+211,the same query qi as,0,,False
+212,"xij , wij - wqi",0,,False
+213,(7),0,,False
+214,where,0,,False
+215,wqi,0,,False
+216,",",0,,False
+217,1 ni,0,,False
+218,ni,0,,False
+219,wik,0,,False
+220,k,0,,False
+221,(8),0,,False
+222,"is the mean of all word vectors of terms in qi. Hence, the feature vectors have the same dimension as the word vectors. An naive example of feature vector construction with p , 2 is illustrated in Figure 1.",0,,False
+223,"Intuitively, proper term weights measures the relative importance of a term w.r.t. the whole query (hence w.r.t. the other terms in the same query). In other words, a term with a higher term weight means that it's more important for the term to represent the meaning of the query. Meanwhile, the feature vector of a term defined above is the difference of the term to the center of distributed representations for all terms in the query, which also serves as the vector representation for the entire query (by applying the word vector addition properties). Hence, the feature vector measures the semantic difference of a term to the whole query. Believing that the above two measures are somewhat related, we propose to construct features above and learn a model to map from the feature vectors to term weight labels.",1,ad,True
+224,"As a side note, we can see that the above constructed feature vectors are hence query dependent, which is also necessary in that term weight, from its definition, is also query dependent. As we will see in the experiments, the above construction is simple and yet effective.",0,,False
+225,"Having defined the features, we now turn to formulate the model to map from feature to term weight labels. As the",0,,False
+226,6,0,,False
+227,5.5,0,,False
+228,5,0,,False
+229,4.5,0,,False
+230,4,0,,False
+231,3.5,0,,False
+232,3,0,,False
+233,2.5,0,,False
+234,2,0,,False
+235,1.5,0,,False
+236,1,0,,False
+237,0,0,,False
+238,1,0,,False
+239,2,0,,False
+240,3,0,,False
+241,4,0,,False
+242,5,0,,False
+243,6,0,,False
+244,7,0,,False
+245,8,0,,False
+246,9,0,,False
+247,10,0,,False
+248,"Figure 1: Demonstration of transforming global 2dimensional word vectors into feature vectors local to the query. In the graph, blue solid circles represent terms in one query and green diamonds represent terms in another query. Note that the two queries share one common term located at (3, 4). The red solid circle represents the center for the circles, and the red diamond represents the center for the diamonds. The dashed and solid arrows are then the transformed feature vectors for all the terms.",0,,False
+249,"adopted target term weight is a probability, we first map it from (0, 1) onto the real line R with a logit function to avoid numerical issues, as shown below.",1,ad,True
+250,yij,0,,False
+251,",",0,,False
+252,logit(rij ),0,,False
+253,",",0,,False
+254,log,0,,False
+255,1,0,,False
+256,rij - rij,0,,False
+257,(9),0,,False
+258,"We then formulate the ""transformed"" term weight y as a linear function of the term feature vectors defined above, that is y ,"" x, and employ 1-norm regularization to learn the feature weights  (We also tried 2-norm regularization and 1-norm regularization works a little better). Formally, the optimization problem is""",0,,False
+259,^,0,,False
+260,",",0,,False
+261,arg,0,,False
+262,min,0,,False
+263,Rp,0,,False
+264,1 2,0,,False
+265,M,0,,False
+266,ni,0,,False
+267,(yij - xij )2 +   1,0,,False
+268,"i,1 j,1",0,,False
+269,(10),0,,False
+270,"where   0 is the regularization parameter controlling the balance between prediction error on training data and model complexity, and needs to be tuned by cross validation. In matrix form, the above optimization problem can be expressed as",0,,False
+271,^,0,,False
+272,",",0,,False
+273,arg,0,,False
+274,min,0,,False
+275,Rp,0,,False
+276,1 2,0,,False
+277,y - X,0,,False
+278,2 2,0,,False
+279,+,0,,False
+280,1,0,,False
+281,(11),0,,False
+282,where y  RN is,0,,False
+283,"y ,"" (y11, y12, ..., y1n1 , y21, y22, ...y2n2 , ..., yM1, yM2, ..., yMnM ) (12)""",0,,False
+284,"is target term weight vector with term weights of all terms in the training queries stacked, and X  RN×p is",0,,False
+285,"X ,"" (x11, x12, ..., x1n1 , x21, x22, ...x2n2 , ..., xM1, xM2, ..., xMnM ) (13)""",0,,False
+286,It is easy to verify that optimization problem (11) is equivalent to (10) and is of standard form of LASSO regression [19].,0,,False
+287,578,0,,False
+288,"Specifically, the subgradient of the objective function w.r.t  in problem (11) is",1,ad,True
+289,f () ,0,,False
+290,",",0,,False
+291,X  (X ,0,,False
+292,- y),0,,False
+293,+ s,0,,False
+294,(14),0,,False
+295,where,0,,False
+296,si ,0,,False
+297,"sign(i) [-1, 1]",0,,False
+298,"if i , 0 if i , 0",0,,False
+299,(15),0,,False
+300,"Efficient gradient based methods can be applied to solve the above problem and after we get the optimum ^, when a new query term t with feature vector x arrives, we predict its term weight as",1,ad,True
+301,"P(t|R) , sigmoid",0,,False
+302,^x,0,,False
+303,exp ^x,0,,False
+304,", 1 + exp",0,,False
+305,^x,0,,False
+306,(16),0,,False
+307,We refer to the above proposed method as DeepTR for it using distributed representations of words to model term weights.,1,DeepTR,True
+308,"DeepTR is a very efficient method of predicting term weights, which enables it to be used in online services where latency (the time required to respond to a query) must be kept low. The word vectors and the regression model are trained offline. Predicting P(tij|R) for a new query involves loading the word vectors for the query terms, transforming them into feature vectors (averaging and subtraction), an inner product with the learned feature weights, and a sigmoid function. This is far more efficient than some prior methods that were effective but computationally complex (e.g., [22]).",1,DeepTR,True
+309,"After we gain estimates of the term weights, we construct the following query model variations in Indri query language (with the above apple pie recipe keyword query as an example):",0,,False
+310,· DeepTR-BOW:,1,DeepTR,True
+311,#weight( P(apple|R) apple P(pie|R) pie P(recipe|R) recipe ),0,,False
+312,),0,,False
+313,· DeepTR-SD:,1,DeepTR,True
+314,#weight( 0.8 #weight( P(apple|R) apple,0,,False
+315,P(pie|R) pie P(recipe|R) recipe 0.1 #combine(#1(apple pie) #1(pie recipe) ) 0.1 #combine( #uw8(apple pie) #uw8(pie recipe) ) ),0,,False
+316,"Note that in DeepTR-SD, we mainly focus on reweighting the unigrams, as unigram reweighting plays a much more significant role than bigrams and proximity expressions in improving retrieval accuracies, which is also confirmed by previous studies [22, 1, 2]. The proposed framework can be directly extended to bigrams, proximity expressions and other query concepts that can be represented by a standard inverted list containing positions, however the training data",1,DeepTR,True
+317,"are more sparse for more complex concepts, thus we leave that for future study.",0,,False
+318,"The two query model variations proposed above can be used with language modeling and BM25 retrieval models; in the next section, we present experiments with both types of retrieval model.",0,,False
+319,5. EXPERIMENTAL METHODOLOGY,0,,False
+320,"This section describes how we evaluated our work experimentally. We conduct experiments on 4 TREC test collections consisting of one Robust track dataset and three Web Track datasets. The document collections differ in size, from a small and traditional TREC Robust Track collection to large Web Track collections of web documents. The dataset sizes and the queries used with each dataset are shown in Table 3. The first three datasets are standard datasets used without change. The ClueWeb09B dataset is the standard ClueWeb09 Category B dataset after spam documents are removed. The Waterloo Fusion spam scores3 were used, and the filtering threshold was set to 70%.",1,TREC,True
+321,Table 3: Collections and topics. Spam documents,0,,False
+322,were removed from the ClueWeb09 Category B,1,ClueWeb,True
+323,"dataset (Waterloo Fusion spam scores, 70% thresh-",0,,False
+324,old).,0,,False
+325,Collection # Docs # Words TREC Topics,1,TREC,True
+326,ROBUST04,0,,False
+327,528K,0,,False
+328,"253M 351-450, 601-700",0,,False
+329,WT10g,1,WT,True
+330,"1,692K",0,,False
+331,"1,076M",0,,False
+332,451-550,0,,False
+333,GOV2,0,,False
+334,"25,205K 24,007M",0,,False
+335,701-850,0,,False
+336,"ClueWeb09B 29,038K 23,890M",1,ClueWeb,True
+337,1-200,0,,False
+338,"We use the Indri search engine4 to index the corpus. The Krovetz stemmer was used on queries and documents. A standard list of English stop words is maintained for query processing. Additionally, for thee web track datasets, anchor texts from in-links is treated as part of the document and hence is indexed. We use descriptions of the TREC topics as queries stopped by a list of standard stop words and several stop phrases such as ""find information"".",1,TREC,True
+339,"We use DeepTR-BOW to denote the re-weighted keyword queries and DeepTR-SD to denote the re-weighted sequential dependency queries. All of the above query models can be expressed in the Indri query language. When constructing the sequential dependency model queries, we use weights 0.8, 0.1 and 0.1 for terms, bigrams and unordered windows, respectively as they have shown to be effective in prior research and practical applications [10, 11].",1,DeepTR,True
+340,"For retrieval, we use a language model with Dirichlet smoothing [21] and BM25 to test both types of weighted queries. Although sequential dependency model queries are not typically used with the BM25 retrieval model, they are not incompatible with BM25. It is straightforward to calculate the tf and df statistics that BM25 needs in order to calculate scores for bigrams (#1(apple pie)) and proximity expressions (#uw8(apple pie)) [2]. We show the results for these query concepts with BM25 to demonstrate the effectiveness of our method. A minor change is made to Indri to allow for the insertion of term weight estimates to the BM25 retrieval model, as shown in Eqn. (6). Retrieval parameters are all set to Indri default values, which is µ , 2500 for language model and k1 ,"" 1.2, b "", 0.75 for BM25.",1,ad,True
+341,3http://plg.uwaterloo.ca/~gvcormac/clueweb09spam 4http://lemurproject.org/indri/,0,,False
+342,579,0,,False
+343,"For DeepTR, we use several sets of distributed word vector representations. The first one is the pre-trained 300dimensional vectors released by Google, which is trained on a Google News corpus of about 100 billion words.5 The second set of word vectors was trained on a subset of the ClueWeb09 Category B corpus.6 Spam documents were removed, as described above; the remaining documents were processed by Boilerpipe7 to remove the ""unimportant"" parts of each page. Mikolov's Continuous Bag-of-Words Model software [13, 15] was used to learn the word vectors with 100, 300, 500 dimensions, repectively. We also trained word vectors on the ROBUST04 and WT10g collections with 300 dimensions to enable comparison of corpus-specific word vectors trained from small datasets with corpus-independent word vectors trained on larger web datasets.",1,DeepTR,True
+344,"We train DeepTR on the set of queries with 5-fold cross validation and report the averaged performance. That is, we divide the queries to 5 folds and on each fold, we train the model using three of them, validates the performance on one fold of them as development set to pick the regularization parameter  from {0, 0.0001, 0.001, 0.01, 0.1, 1, 10, 100} and report the performance on the rest fold as testing data. After the model is trained on each fold, term weights for queries in the testing fold are predicted and retrieval performances for the reweighted queries are reported.",1,DeepTR,True
+345,"We use the trec_eval8 tool provided by TREC to assess the retrieval results. We focus mainly on the Mean Average Precision (MAP) and Precision at 10 (P@10) metrics. For web collections such as GOV2 and ClueWeb09B, where graded relavence judgments are available, we also report Normalized Discounted Cumulative Gain (NDCG) at 20 and Expected Reciprocal Rank (ERR)[4] at 20 values using the gdeval.pl9 tool provided by TREC. Statistical significance of model differences in terms of retrieval performance is judged by a two-sided paired randomization test with  < 0.05 rather than the Wilcoxon signed rank test that was used in prior research [1], which is prone to type I errors and considered not reliable for ad hoc IR [17, 18].",1,trec,True
+346,"We compare the retrieval performance of DeepTR to three baseline query models. The first is the unstructured bag-ofwords query model (BOW). The second is the original sequential dependency model (SD) [10]. The third is the weighted sequential dependence model (WSD) [1], which is the state of the art model for query reweighting. For WSD, we implemented the model with coordinate ascent [11] to directly optimize MAP on the training queries for WSD. However, we got slightly worse results than reported in [1, 2], possibly due to that we didn't have the MSN query log feature used in the original paper. As we use an overlapping set of collections and set of queries, and our BOW and SD baseline results are very close to the ones reported in the WSD paper, we decide to show and compare with the performance numbers of WSD reported in the original paper [1, 2]. We also implemented the method proposed by Zhao et al. [22] to predict term recall, but the experimental results on our datasets were worse than our unweighted bag-of-words query baselines, thus we omit the comparison from this paper.",1,DeepTR,True
+347,5https://code.google.com/p/word2vec/ 6http://lemurproject.org/clueweb09/ 7https://code.google.com/p/boilerpipe/ 8http://trec.nist.gov/trec_eval/trec_eval_latest. tar.gz 9http://trec.nist.gov/data/web/10/gdeval.pl,1,trec,True
+348,6. EXPERIMENTAL RESULTS,0,,False
+349,"This section presents the results of experiments that compare the DeepTR method of setting term weights in two retrieval models (language models, BM25) to three baseline methods (unweighted queries, sequential dependency models, weighted sequential dependency models); the effects of word vectors of varying dimensionality; and the effects of word vectors trained from different types of data.",1,DeepTR,True
+350,6.1 Retrieval results with Language Model,0,,False
+351,"The first experiment compared query term weights provided by DeepTR in the language model retrieval model to three baseline methods (unweighted queries, sequential dependency models, weighted sequential dependency models). Experimental results are shown in Table 4 for both DeepTR-BOW and DeepTR-SD. In this experiment, we fix the dimension of word vectors to be 300 and compare the performances of the proposed models with different sources of word vectors.",1,DeepTR,True
+352,"DeepTR-BOW term weights perform better than the unweighted bag-of-words query model (BOW) over all collections, significantly outperforming BOW on ROBUST04 and GOV2 in terms of MAP and on ROBUST 04 in terms of P@10. DeepTR-BOW even achieves higher MAP than the sequential dependency model (SD) on WT10g, however the results are not statistically significant. DeepTR-BOW gains comparable MAPs to WSD in ROBUST04, WT10g and ClueWeb09B. This suggests that DeepTR-BOW which models no bigrams and proximity expressions is able to achieve comparable retrieval performances with the sequential dependency models (both unweighted and weighted).",1,DeepTR,True
+353,"The DeepTR-SD query model performs better than the standard sequential dependency model over all collections with all sources of word vectors. Particularly, significant differences are observed on ROBUST04, WT10g and GOV2 with all sets of word vectors; DeepTR-SD with word vectors trained on the Google News corpus achieves significantly higher MAPs over BOW and SD on all four collections. The significant gains of DeepTR-SD with respect to SD range from 4.2% to 12.1% in MAP. Similar significant improvements for P@10 are also observed. While we cannot draw statistical significance conclusions as we have no performance on individual query of WSD, on ROBUST04 and WT10g, DeepTR-SD attains better MAPs than WSD. This validates the effectiveness of using distributed representations of words as feature sources to predict term weights in improving both overall retrieval performance and top-rank results over the baseline models.",1,DeepTR,True
+354,6.2 Retrieval results with BM25,0,,False
+355,"We also show the retrieval results with BM25 in Table 5 for bothDeepTR-BOW and DeepTR-SD to demonstrate the boost in retrieval performance with different retrieval models. Prior research on weighted sequential dependency models [1] did not publish results for BM25, so we are unable to compare against that baseline in this experiment.",1,DeepTR,True
+356,"DeepTR-BOW term weights perform better than the unweighted bag-of-words query model (BOW) over all collections, significantly outperforming BOW for MAP over all data sets and all word vector variations except for ClueWeb09B with the Google word vectors; although not statistically significant, DeepTR-BOW also performs better than SD with all word vectors settings on ROBUST04, WT10g and GOV2.",1,DeepTR,True
+357,580,0,,False
+358,"Table 4: Retrieval performance of DeepTR-BOW using language model retrieval. In the first column, the paren-",1,DeepTR,True
+359,"thesis indicates the word vector source. Other parentheses show improvements over BOW and SD, respectively.",0,,False
+360,"(For WSD, there were no P@10 values reported and no results on ClueWeb09B were reported in [2])",1,ClueWeb,True
+361,Query Model,1,Query,True
+362,ROBUST04 P@10 MAP,1,MAP,True
+363,WT10g P@10 MAP,1,WT,True
+364,GOV2 P@10 MAP,1,MAP,True
+365,ClueWeb09B P@10 MAP,1,ClueWeb,True
+366,BOW,0,,False
+367,SD WSD (Table 7 in [2]),0,,False
+368,0.4245 0.4414 -,0,,False
+369,0.2512 0.2643 0.2749,0,,False
+370,0.3290 0.3400 -,0,,False
+371,0.1943 0.2032 0.2260,0,,False
+372,0.5054 0.5342 -,0,,False
+373,0.2488 0.2688 0.2946,0,,False
+374,0.2667 0.2798 -,0,,False
+375,0.0702 0.0745 -,0,,False
+376,DeepTR-BOW (Corpus-specific 300),1,DeepTR,True
+377,DeepTR-BOW (GOV2 300),1,DeepTR,True
+378,DeepTR-BOW (ClueWeb09B 300),1,DeepTR,True
+379,DeepTR-BOW (Google 300),1,DeepTR,True
+380,0.4430b 0.4430b 0.4454b 0.4450b,0,,False
+381,0.2591b (+3.2/-1.9) 0.2650b (+5.5/+0.3) 0.2657b (+5.8/+0.5) 0.2673b (+6.4/+1.2),0,,False
+382,0.3280 0.3330 0.3270 0.3380,0,,False
+383,0.2103 (+8.2/+3.5) 0.2111b (+8.7/+3.9),0,,False
+384,0.2129 (+9.6/+4.8) 0.2122b (+9.3/+4.5),0,,False
+385,0.5208 0.5208 0.5121 0.5221,0,,False
+386,0.2646b (+6.3/-1.6) 0.2646b (+6.3/-1.6) 0.2685b (+7.9/-0.1) 0.2630b (+5.7/-2.2),0,,False
+387,0.2682 0.2667 0.2682 0.2667,0,,False
+388,0.0718 (+2.2/-3.6),0,,False
+389,0.0741 (+5.6/-0.5),0,,False
+390,0.0718 (+2.2/-3.6),0,,False
+391,0.0732 (+4.2/-1.8),0,,False
+392,DeepTR-SD (Corpus-specific 300),1,DeepTR,True
+393,DeepTR-SD (GOV2 300),1,DeepTR,True
+394,DeepTR-SD (ClueWeb09B 300),1,DeepTR,True
+395,DeepTR-SD (Google 300),1,DeepTR,True
+396,0.4558bs 0.4610bs 0.4659bs 0.4627bs,0,,False
+397,0.2754bs (+9.6/+4.2),0,,False
+398,0.3510,0,,False
+399,0.2182bs (+12.3/+7.4),0,,False
+400,0.5490b,0,,False
+401,0.2781bs,0,,False
+402,0.3700bs 0.2223bs,0,,False
+403,(+10.7/+5.2),0,,False
+404,(+14.4/+9.4),0,,False
+405,0.5490b,0,,False
+406,0.2810bs,0,,False
+407,0.3610bs 0.2279bs,0,,False
+408,0.5597bs,0,,False
+409,(+11.9/+6.3),0,,False
+410,(+17.3/+12.1),0,,False
+411,0.2842bs,0,,False
+412,0.3560,0,,False
+413,(+13.1/+7.5),0,,False
+414,0.2256bs,0,,False
+415,0.5497b,0,,False
+416,(+16.1/+11.0),0,,False
+417,b : Statistically significant difference with BOW,0,,False
+418,s : Statistically significant difference with SD,0,,False
+419,0.2831bs (+13.8/+5.3) 0.2831bs (+13.8/+5.3) 0.2890bs (+16.2/+7.5) 0.2814bs (+13.1/+4.7),0,,False
+420,0.2879b 0.2854 0.2879b 0.2869,0,,False
+421,0.0748 (+6.5/+0.5) 0.0806bs (+14.8/+8.2),0,,False
+422,0.0748 (+6.5/+0.5) 0.0780bs (+11.0/+4.7),0,,False
+423,"The DeepTR-SD query model performs better than unweighted queries and the standard sequential dependency model, delivering significantly higher MAPs over all collections and all sources of word vectors except for ClueWeb09B with the Google word vectors. The significant gains of DeepTR-SD over SD range from 1.9% to 7.3%. Similar trends over P@10 are also observed. DeepTR-SD with word vectors trained on ClueWeb09B achieves significantly higher P@10 than SD on ROBUST04, WT10g and GOV2.",1,DeepTR,True
+424,6.3 Word vector dimensionality,0,,False
+425,"Word vectors of different dimensionality provide different levels of granularity that may or may not be useful for setting term weights; they may also require different amounts of training data. Our third experiment investigates the effects of word vectors containing 100, 300, and 500 dimensions on term weights produced for language models. The ClueWeb09B corpus is used for these experiments due to its size, availability, and strong performance in the experiments above. Experimental results for DeepTR-BOW and DeepTR-SD are shown d together in Table 6.",1,ClueWeb,True
+426,"Word vectors of 100 dimensions work best for unstructured BOW queries on ROBUST04, WT10g and ClueWeb09B, while the best MAP for GOV2 is achieved with word vectors of 300 dimensions. Similar trends are observed for the DeepTR-SD query model. Notably, DeepTR-SD with word vectors of 100 dimensions attains a significant 7.9% MAP improvement over SD on ROBUST04, and a significant 16.8% MAP improvement over SD on WT10g. On GOV2, word vectors of 300 dimensions help DeepTR-SD significantly improve over SD by 7.5%; last on ClueWeb09B, word vectors of 500 dimensions achieve the best result over all three dimensions, by a 4.9% over SD. We also observe similar results on P@10 when varying the dimensionality of word vectors. We also evaluated the effects of word vector dimensionality on term weights for BM25 retrieval and trends are similar to those for language model retrieval; the results are omitted due to space constraints.",1,WT,True
+427,Our results suggest that 100 dimensions is sufficient for estimating very effective term weights.,0,,False
+428,6.4 Corpus effects,0,,False
+429,"We turn back to Tables 4 and 5 to compare retrieval results obtained with corpus-specific word vectors and word vectors trained from larger, more general, and external corpora (GOV2, ClueWeb09B, and Google News).",1,corpora,True
+430,"DeepTR-BOW performed about equally well with all three external corpora; the differences among them were too small and inconsistent to support any conclusion about which is best. However, although no external corpus was best for all datasets, the language model and BM25 retrieval models agreed on which source of word vectors was best for a particular corpus. This agreement suggests that the learned term weights are independent of a particular retrieval model, which was the purpose of training with term weight values.",1,DeepTR,True
+431,"The corpus-specific word vectors were never best in these experiments, even for GOV2 and ClueWeb09, which are large and provided `best' performance for other datasets. However, given the wide range of training data sizes ­ varying from 250 million words to 100 billion words ­ it is striking how little correlation there is between search accuracy and the amount of training data.",1,ClueWeb,True
+432,Similar trends are observed for the DeepTR-SD query models.,1,DeepTR,True
+433,6.5 Robustness analysis,1,Robust,True
+434,"Figure 2 presents the detailed number of queries improved or hurt by proposed method using word vectors trained from various sources compared to the LM baseline. It's clear that for all methods using the predicted term weights, the numbers of improved queries are significantly larger than that of hurt queries. Moreover, when compared to sequential dependency model (SD), all the methods using the estimated weights help more and hurt fewer queries than sequential dependency model (SD), especially in the [-20%, 0) range as shown in the figure.",1,LM,True
+435,581,0,,False
+436,"Table 5: Retrieval performance of DeepTR-BOW and DeepTR-SD using BM25 retrieval. In the first column, the",1,DeepTR,True
+437,parenthesis indicates the word vector source. (No WSD results are reported as no BM25 experiments are,0,,False
+438,conducted in [2]),0,,False
+439,Query Model,1,Query,True
+440,ROBUST04 P@10 MAP,1,MAP,True
+441,WT10g P@10 MAP,1,WT,True
+442,GOV2 P@10 MAP,1,MAP,True
+443,ClueWeb09B P@10 MAP,1,ClueWeb,True
+444,BOW,0,,False
+445,0.4189 0.2460,0,,False
+446,0.3330 0.1783,0,,False
+447,0.4926 0.2334,0,,False
+448,0.2030 0.0566,0,,False
+449,SD,0,,False
+450,0.4394 0.2546,0,,False
+451,0.3350 0.1817,0,,False
+452,0.5215 0.2409,0,,False
+453,0.2030 0.0600,0,,False
+454,DeepTR-BOW (Corpus-specific 300),1,DeepTR,True
+455,DeepTR-BOW (GOV2 300),1,DeepTR,True
+456,DeepTR-BOW (ClueWeb09B 300),1,DeepTR,True
+457,DeepTR-BOW (Google 300),1,DeepTR,True
+458,0.4341b 0.4390b 0.4426b 0.4382b,0,,False
+459,0.2566b (+4.3/+0.8) 0.2561b (+4.1/+0.6) 0.2590b (+5.3/+1.8) 0.2600b (+5.7/+2.1),0,,False
+460,0.3280 0.3340 0.3390 0.3450,0,,False
+461,0.1903b (+6.7/+4.7) 0.1910b (+7.1/+5.1) 0.1932b (+8.3/+6.3) 0.1922b (+7.8/+5.7),0,,False
+462,0.5107 0.5107 0.5081 0.5181b,0,,False
+463,0.2430b (+4.1/+0.9) 0.2430b (+4.1/+0.9) 0.2462b (+5.5/+2.2) 0.2449b (+4.9/+1.7),0,,False
+464,0.2086 0.2136b 0.2086 0.2091,0,,False
+465,0.0593b (+4.7/-1.2) 0.0596b (+5.3/-0.7) 0.0593b (+4.7/-1.2),0,,False
+466,0.0584 (+3.1/-2.7),0,,False
+467,DeepTR-SD (Corpus-specific 300),1,DeepTR,True
+468,DeepTR-SD (GOV2 300),1,DeepTR,True
+469,DeepTR-SD (ClueWeb09B 300),1,DeepTR,True
+470,DeepTR-SD (Google 300),1,DeepTR,True
+471,0.4406b 0.4450b 0.4486bs 0.4458b,0,,False
+472,0.2595bs,0,,False
+473,0.3470s 0.1944bs,0,,False
+474,0.5356bs,0,,False
+475,(+5.5/+1.9),0,,False
+476,(+9.0/+7.0),0,,False
+477,0.2609bs,0,,False
+478,0.3500s 0.1941s,0,,False
+479,0.5356bs,0,,False
+480,(+6.1/+2.5),0,,False
+481,(+8.8/+6.8),0,,False
+482,0.2630bs,0,,False
+483,0.3510s 0.1951bs,0,,False
+484,0.5349bs,0,,False
+485,(+6.9/+3.3),0,,False
+486,(+9.4/+7.3),0,,False
+487,0.2627bs,0,,False
+488,0.3510s 0.1938s,0,,False
+489,0.5322b,0,,False
+490,(+6.8/+3.2),0,,False
+491,(+8.7/+6.7),0,,False
+492,b : Statistically significant difference with BOW,0,,False
+493,s : Statistically significant difference with SD,0,,False
+494,0.2478bs (+6.1/+2.9) 0.2478bs (+6.1/+2.9) 0.2502bs (+7.2/+3.9) 0.2461b (+5.4/+2.2),0,,False
+495,0.2066 0.2091 0.2066 0.2030,0,,False
+496,0.0613bs (+8.2/+2.1) 0.0616bs (+8.8/+2.6) 0.0613bs (+8.2/+2.1),0,,False
+497,0.0604 (+6.8/+0.7),0,,False
+498,Table 6: Retrieval performance of DeepTR-BOW and DeepTR-SD using language model retrieval. In the first,1,DeepTR,True
+499,"column, the parenthesis indicates the word vector source. (For WSD, there were no P@10 values reported and",0,,False
+500,no results on ClueWeb09B were reported in [2]),1,ClueWeb,True
+501,Query Model,1,Query,True
+502,ROBUST04 P@10 MAP,1,MAP,True
+503,WT10g P@10 MAP,1,WT,True
+504,GOV2 P@10 MAP,1,MAP,True
+505,ClueWeb09B P@10 MAP,1,ClueWeb,True
+506,BOW,0,,False
+507,SD WSD (Table 7 in [2]),0,,False
+508,0.4245 0.4414 -,0,,False
+509,0.2512 0.2643 0.2749,0,,False
+510,0.3290 0.3400 -,0,,False
+511,0.1943 0.2032 0.2260,0,,False
+512,0.5054 0.5342 -,0,,False
+513,0.2488 0.2688 0.2946,0,,False
+514,0.2667 0.2798 -,0,,False
+515,0.0702 0.0745 -,0,,False
+516,DeepTR-BOW (ClueWeb09B 100),1,DeepTR,True
+517,DeepTR-BOW (ClueWeb09B 300),1,DeepTR,True
+518,DeepTR-BOW (ClueWeb09B 500),1,DeepTR,True
+519,0.4410b 0.4454b 0.4398b,0,,False
+520,0.2681b (+6.7/+1.4) 0.2657b (+5.8/+0.5) 0.2679b (+6.6/+1.4),0,,False
+521,0.3440 0.3270 0.3480,0,,False
+522,0.2239b (+15.3/+10.2),0,,False
+523,0.2129 (+9.6/+4.8) 0.2179b (+12.1/+7.2),0,,False
+524,0.5228 0.5121 0.5054,0,,False
+525,0.2667b (+7.2/-0.8) 0.2685b (+7.9/-0.1) 0.2655b (+6.7/-1.2),0,,False
+526,0.2727 0.2682 0.2707,0,,False
+527,0.0727 (+3.6/-2.4),0,,False
+528,0.0718 (+2.2/-3.6),0,,False
+529,0.0726 (+3.4/-2.5),0,,False
+530,DeepTR-SD (ClueWeb09B 100),1,DeepTR,True
+531,DeepTR-SD (ClueWeb09B 300),1,DeepTR,True
+532,DeepTR-SD (ClueWeb09B 500),1,DeepTR,True
+533,0.4711bs 0.4659bs 0.4606bs,0,,False
+534,0.2851bs,0,,False
+535,0.3700bs 0.2373bs,0,,False
+536,0.5557bs 0.2848bs,0,,False
+537,(+13.5/+7.9),0,,False
+538,(+22.1/+16.8),0,,False
+539,(+14.4/+5.9),0,,False
+540,0.2810bs,0,,False
+541,0.3610bs 0.2279bs,0,,False
+542,0.5597bs 0.2890bs,0,,False
+543,(+11.9/+6.3),0,,False
+544,(+17.3/+12.1),0,,False
+545,(+16.2/+7.5),0,,False
+546,0.2817bs,0,,False
+547,0.3660bs 0.2306bs,0,,False
+548,0.5550b 0.2860bs,0,,False
+549,(+12.2/+6.6),0,,False
+550,(+18.7/+13.5),0,,False
+551,(+14.9/+6.4),0,,False
+552,b : Statistically significant difference with BOW,0,,False
+553,s : Statistically significant difference with SD,0,,False
+554,0.2874b 0.2879b 0.2894b,0,,False
+555,0.0778bs (+10.8/+4.5),0,,False
+556,0.0748 (+6.5/+0.5) 0.0781bs (+11.3/+4.9),0,,False
+557,6.6 Query length,1,Query,True
+558,"We investigate how DeepTR-SD performs on queries with different lengths. We divide the queries into three groups: with no more than 3 terms (Len -3), 4 to 5 terms (Len 4-5) and 6 terms or more (Len 6+). Figure 3 shows the relative gains of SD and DeepTR-SD (using vectors pre-trained from Google News) over BOW. It's clear that DeepTR-SD works significantly better than SD on mid-range and long queries (Len 4-5 and Len 6+) on all collections. It's worth noting that SD performs worse than BOW for long queries on WT10g, while in contrast DeepTR-SD improves BOW by 14%. For short queries (Len -3), DeepTR-SD outperforms SD over 3 out of 4 collections, which also renders DeepTR-SD a better alternative for SD.",1,DeepTR,True
+559,6.7 Graded relevance,1,ad,True
+560,Our final experiment investigates retrieval quality using the graded relevance judgments that are available for web,1,ad,True
+561,"collections such as GOV2 and ClueWeb09B. Table 7 presents the experimental results using the NDCG@20 and ERR@20 metrics that have been widely used in web search scenarios. Similar to prior experiments, we see that DeepTR-SD produces more accurate rankings than BOW and SD on both GOV2 and ClueWeb09.",1,ClueWeb,True
+562,7. CONCLUSIONS AND FUTURE WORK,0,,False
+563,"In this paper, we present a novel framework for learning term weights using distributed representations of words from the deep learning literature. We motivate the framework by adopting the word vectors to represent terms and further to represent the query due to the ability to represent things semantically of word vectors. Therefore we propose to construct features for terms directly from the word vectors and model the target term weight as a regression problem.",1,ad,True
+564,"We conducted experiments with two retrieval models, the language model and BM25, over four text collections of vary-",0,,False
+565,582,0,,False
+566,Number of queries,0,,False
+567,90,0,,False
+568,ROBUST04,0,,False
+569,SD,0,,False
+570,DeepTR-SD (trec7),1,DeepTR,True
+571,80,0,,False
+572,DeepTR-SD (wt10g),1,DeepTR,True
+573,DeepTR-SD (gov2),1,DeepTR,True
+574,70,0,,False
+575,DeepTR-SD (clueweb100),1,DeepTR,True
+576,DeepTR-SD (clueweb300),1,DeepTR,True
+577,DeepTR-SD (clueweb500),1,DeepTR,True
+578,60,0,,False
+579,DeepTR-SD (google300),1,DeepTR,True
+580,50,0,,False
+581,40,0,,False
+582,30,0,,False
+583,20,0,,False
+584,10,0,,False
+585,0,0,,False
+586,"<-1[-0100%0%, -8[0-%80)%, -6[0-%60) %, -4[0-%40)%, -20%) [-20%, 0)",0,,False
+587,0,0,,False
+588,"(0,",0,,False
+589,"20%[2) 0%,",0,,False
+590,"40%[4) 0%,",0,,False
+591,"60%[6) 0%,",0,,False
+592,"80%) [80%,",0,,False
+593,100%],0,,False
+594,>100%,0,,False
+595,Relative gain,0,,False
+596,60,0,,False
+597,GOV2,0,,False
+598,SD,0,,False
+599,DeepTR-SD (trec7),1,DeepTR,True
+600,DeepTR-SD (wt10g),1,DeepTR,True
+601,50,0,,False
+602,DeepTR-SD (gov2),1,DeepTR,True
+603,DeepTR-SD (clueweb100),1,DeepTR,True
+604,DeepTR-SD (clueweb300),1,DeepTR,True
+605,DeepTR-SD (clueweb500),1,DeepTR,True
+606,40,0,,False
+607,DeepTR-SD (google300),1,DeepTR,True
+608,30,0,,False
+609,20,0,,False
+610,10,0,,False
+611,0,0,,False
+612,"<-1[-0100%0%, -8[0-%80)%, -6[0-%60) %, -4[0-%40)%, -20%) [-20%, 0)",0,,False
+613,0,0,,False
+614,"(0,",0,,False
+615,"20%[2) 0%,",0,,False
+616,"40%[4) 0%,",0,,False
+617,"60%[6) 0%,",0,,False
+618,"80%) [80%,",0,,False
+619,100%],0,,False
+620,>100%,0,,False
+621,Relative gain,0,,False
+622,Number of queries,0,,False
+623,Number of queries,0,,False
+624,35,0,,False
+625,WT10g,1,WT,True
+626,SD,0,,False
+627,DeepTR-SD (trec7),1,DeepTR,True
+628,30,0,,False
+629,DeepTR-SD (wt10g),1,DeepTR,True
+630,DeepTR-SD (gov2),1,DeepTR,True
+631,DeepTR-SD (clueweb100),1,DeepTR,True
+632,DeepTR-SD (clueweb300),1,DeepTR,True
+633,25,0,,False
+634,DeepTR-SD (clueweb500),1,DeepTR,True
+635,DeepTR-SD (google300),1,DeepTR,True
+636,20,0,,False
+637,15,0,,False
+638,10,0,,False
+639,5,0,,False
+640,0,0,,False
+641,"<-1[-0100%0%, -8[0-%80)%, -6[0-%60) %, -4[0-%40)%, -20%) [-20%, 0)",0,,False
+642,0,0,,False
+643,"(0,",0,,False
+644,"20%[2) 0%,",0,,False
+645,"40%[4) 0%,",0,,False
+646,"60%[6) 0%,",0,,False
+647,"80%) [80%,",0,,False
+648,100%],0,,False
+649,>100%,0,,False
+650,Relative gain,0,,False
+651,45,0,,False
+652,ClueWeb09B,1,ClueWeb,True
+653,SD,0,,False
+654,DeepTR-SD (trec7),1,DeepTR,True
+655,40,0,,False
+656,DeepTR-SD (wt10g),1,DeepTR,True
+657,DeepTR-SD (gov2),1,DeepTR,True
+658,35,0,,False
+659,DeepTR-SD (clueweb100),1,DeepTR,True
+660,DeepTR-SD (clueweb300),1,DeepTR,True
+661,DeepTR-SD (clueweb500),1,DeepTR,True
+662,30,0,,False
+663,DeepTR-SD (google300),1,DeepTR,True
+664,25,0,,False
+665,20,0,,False
+666,15,0,,False
+667,10,0,,False
+668,5,0,,False
+669,0,0,,False
+670,"<-1[-0100%0%, -8[0-%80)%, -6[0-%60) %, -4[0-%40)%, -20%) [-20%, 0)",0,,False
+671,0,0,,False
+672,"(0,",0,,False
+673,"20%[2) 0%,",0,,False
+674,"40%[4) 0%,",0,,False
+675,"60%[6) 0%,",0,,False
+676,"80%) [80%,",0,,False
+677,100%],0,,False
+678,>100%,0,,False
+679,Relative gain,0,,False
+680,Figure 2: Robustness analysis over all data sets in terms of MAP over LM (best viewed in color),1,Robust,True
+681,Number of queries,0,,False
+682,"ing sizes to demonstrate the effectiveness of the proposed framework. Specifically, the proposed framework predicts term weight for query terms that can be used to weight unstructured bag-of-words queries and queries that are a slight variant of the sequential dependency model. We observed significant improvements at high precision and throughout the rankings over the unweighted bag-of-words queries and the original unweighted sequential dependency model queries.",0,,False
+683,"The proposed method is time efficient. Once the word vectors are trained in an offline step (that is itself relatively efficient), online prediction of term weight for new query terms involves only a simple inner product with the learned feature weights.",0,,False
+684,"There are several promising directions for further research. One can extend the method from creating vectors for bigrams and proximity terms by averaging the word vectors of their constituents to a direct modeling of bigrams and proximity terms; although one might expect sparse training data for these query terms to be a problem, our results with small corpora suggest that it may not be necessary to have massive amounts of information for each term. Word vec-",1,corpora,True
+685,tors may also be useful for identifying terms that should be the focus of query expansion or terms that would be good expansion terms.,0,,False
+686,Acknowledgements,0,,False
+687,This work is supported by National Science Foundation under grant IIS-1018317. We thank the anonymous reviewers for their helpful comments.,0,,False
+688,8. REFERENCES,0,,False
+689,"[1] M. Bendersky, D. Metzler, and W. B. Croft. Learning concept importance using a weighted dependence model. In Proceedings of the third ACM international conference on Web search and data mining, pages 31­40. ACM, 2010.",0,,False
+690,"[2] M. Bendersky, D. Metzler, and W. B. Croft. Parameterized concept weighting in verbose queries. In SIGIR, pages 605­614, 2011.",0,,False
+691,"[3] Y. Bengio, R. Ducharme, P. Vincent, and C. Janvin. A neural probabilistic language model. Journal of Machine Learning Research, 3:1137­1155, 2003.",0,,False
+692,"[4] O. Chapelle, D. Metlzer, Y. Zhang, and P. Grinspan. Expected reciprocal rank for graded relevance. In CIKM, pages 621­630, 2009.",1,ad,True
+693,583,0,,False
+694,Table 7: Retrieval performance of DeepTR-SD using graded relevance judgments. Parenthesis indicates the,1,DeepTR,True
+695,word vector source. Query Model,1,Query,True
+696,Language Model Retrieval,0,,False
+697,GOV2,0,,False
+698,ClueWeb09B,1,ClueWeb,True
+699,NDCG@20 ERR@20 NDCG@20 ERR@20,0,,False
+700,BM25 Retrieval GOV2 NDCG@20 ERR@20,0,,False
+701,ClueWeb09B NDCG@20 ERR@20,1,ClueWeb,True
+702,BOW,0,,False
+703,0.3732,0,,False
+704,0.1493,0,,False
+705,0.1597,0,,False
+706,0.1253,0,,False
+707,0.3789,0,,False
+708,0.1487,0,,False
+709,0.1188,0,,False
+710,0.1075,0,,False
+711,SD,0,,False
+712,0.4059,0,,False
+713,0.1607,0,,False
+714,0.1694,0,,False
+715,0.1243,0,,False
+716,0.3940,0,,False
+717,0.1554,0,,False
+718,0.1294,0,,False
+719,0.1059,0,,False
+720,DeepTR-SD (GOV2 300) DeepTR-SD (ClueWeb09B 300) DeepTR-SD (Google 300),1,DeepTR,True
+721,0.4121b 0.4146b 0.4112b,0,,False
+722,0.1626b 0.1614b,0,,False
+723,0.1600,0,,False
+724,0.1743b 0.1663 0.1698,0,,False
+725,0.1312s 0.1255 0.1302,0,,False
+726,0.4008bs 0.4033bs 0.4010bs,0,,False
+727,b : Statistically significant difference with BOW,0,,False
+728,s : Statistically significant difference with SD,0,,False
+729,0.1590bs 0.1587bs 0.1586s,0,,False
+730,0.1307 0.1305 0.1298,0,,False
+731,0.1068 0.1067 0.1050,0,,False
+732,Relative improvement over LM,1,LM,True
+733,ROBUST04 0.25,0,,False
+734,SD DeepTR-SD,1,DeepTR,True
+735,0.2,0,,False
+736,0.15,0,,False
+737,0.1,0,,False
+738,0.05,0,,False
+739,0 Len -3 (7%) 0.25,0,,False
+740,0.2,0,,False
+741,Len 4-5 (27%) Len 6+ (66%) GOV2,0,,False
+742,SD DeepTR-SD,1,DeepTR,True
+743,0.15,0,,False
+744,0.1,0,,False
+745,0.05,0,,False
+746,0 Len -3 (11%) Len 4-5 (41%) Len 6+ (48%),0,,False
+747,Relative improvement over LM,1,LM,True
+748,Relative improvement over LM,1,LM,True
+749,WT10g 0.25,1,WT,True
+750,SD DeepTR-SD 0.2,1,DeepTR,True
+751,0.15,0,,False
+752,0.1,0,,False
+753,0.05,0,,False
+754,0,0,,False
+755,Len -3 (26%) 0.25,0,,False
+756,0.2,0,,False
+757,Len 4-5 (39%) Len 6+ (35%) ClueWeb09B,1,ClueWeb,True
+758,SD DeepTR-SD,1,DeepTR,True
+759,0.15,0,,False
+760,0.1,0,,False
+761,0.05,0,,False
+762,0 Len -3 (26%) Len 4-5 (40%) Len 6+ (34%),0,,False
+763,Relative improvement over LM,1,LM,True
+764,Figure 3: Performance gains of SD and DeepTR-SD over BOW w.r.t to query length. Y-axis shows the relative gain in MAP over BOW and parentheses in X-axis present the percentage of queries in each group. All retrievals are performed using LM. (best viewed in color),1,DeepTR,True
+765,"[5] W. B. Croft and D. J. Harper. Using probabilistic models of document retrieval without relevance information. Journal of Documentation, 35:285­295, 1979.",0,,False
+766,"[6] W. R. Greiff. A theory of term weighting based on exploratory data analysis. In Proceedings of the 21st Annual International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 11­19. ACM Press, 1998.",0,,False
+767,"[7] B. J. Jansen, D. L. Booth, and A. Spink. Determining the user intent of web search engine queries. In Proceedings of the 16th International Conference on World Wide Web, Banff, Alberta, Canada, May 8-12, 2007, pages 1149­1150, 2007.",1,ad,True
+768,"[8] O. Levy and Y. Goldberg. Neural word embedding as implicit matrix factorization. In Advances in Neural Information Processing Systems 27: Annual Conference on Neural Information Processing Systems 2014, December 8-13 2014, Montreal, Quebec, Canada, pages 2177­2185, 2014.",1,ad,True
+769,"[9] D. Metzler and W. B. Croft. Combining the language model and inference network approaches to retrieval. Inf. Process. Manage., 40(5):735­750, 2004.",0,,False
+770,[10] D. Metzler and W. B. Croft. A markov random field model for term dependencies. In Proceedings of the 28th annual international ACM SIGIR conference on Research and,0,,False
+771,"development in information retrieval, pages 472­479. ACM, 2005.",0,,False
+772,"[11] D. Metzler and W. B. Croft. Linear feature-based models for information retrieval. Information Retrieval, 10(3):257­274, 2007.",0,,False
+773,"[12] D. Metzler, V. Lavrenko, and W. B. Croft. Formal multiple-bernoulli models for language modeling. In Proceedings of the 27th annual international ACM SIGIR conference on Research and development in information retrieval, pages 540­541. ACM, 2004.",0,,False
+774,"[13] T. Mikolov, K. Chen, G. Corrado, and J. Dean. Efficient estimation of word representations in vector space. CoRR, abs/1301.3781, 2013.",1,ad,True
+775,"[14] T. Mikolov, J. Kopecky´, L. Burget, O. Glembek, and J. Cernocky´. Neural network based language models for highly inflective languages. In ICASSP, pages 4725­4728, 2009.",0,,False
+776,"[15] T. Mikolov, I. Sutskever, K. Chen, G. S. Corrado, and J. Dean. Distributed representations of words and phrases and their compositionality. In NIPS, pages 3111­3119, 2013.",1,ad,True
+777,"[16] S. E. Robertson and K. S. Jones. Relevance weighting of search terms. Journal of the American Society for Information science, 27(3):129­146, 1976.",0,,False
+778,"[17] M. Sanderson and J. Zobel. Information retrieval system evaluation: Effort, sensitivity, and reliability. In Proceedings of the 28th Annual International ACM SIGIR Conference on Research and Development in Information Retrieval, SIGIR '05, pages 162­169, New York, NY, USA, 2005. ACM.",0,,False
+779,"[18] M. D. Smucker, J. Allan, and B. Carterette. A comparison of statistical significance tests for information retrieval evaluation. In Proceedings of the Sixteenth ACM Conference on Conference on Information and Knowledge Management, CIKM '07, pages 623­632, New York, NY, USA, 2007. ACM.",0,,False
+780,"[19] R. Tibshirani. Regression shrinkage and selection via the lasso. Journal of the Royal Statistical Society, Series B, 58:267­288, 1994.",0,,False
+781,"[20] J. Xu and W. B. Croft. Query expansion using local and global document analysis. In In Proceedings of the 19th Annual International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 4­11, 1996.",1,Query,True
+782,"[21] C. Zhai and J. Lafferty. A study of smoothing methods for language models applied to ad hoc information retrieval. In Proceedings of SIGIR, pages 334­342. ACM, 2001.",1,ad,True
+783,"[22] L. Zhao and J. Callan. Term necessity prediction. In Proceedings of the 19th ACM International Conference on Information and Knowledge Management, pages 259­268. ACM, 2010.",0,,False
+784,"[23] W. Zheng and H. Fang. Query aspect based term weighting regularization in information retrieval. In Advances in Information Retrieval, 32nd European Conference on IR Research, ECIR 2010, Milton Keynes, UK, March 28-31, 2010. Proceedings, pages 344­356, 2010.",1,Query,True
+785,584,0,,False
+786,,0,,False

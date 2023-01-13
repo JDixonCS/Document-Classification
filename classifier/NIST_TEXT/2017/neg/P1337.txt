@@ -1,0 +1,305 @@
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Computing Web-scale Topic Models using an Asynchronous Parameter Server
+
+Rolf Jagerman
+University of Amsterdam Amsterdam, e Netherlands
+rolf.jagerman@uva.nl
+
+Carsten Eickho
+ETH Zu¨rich Zu¨rich, Switzerland carsten.eickho @inf.ethz.ch
+
+Maarten de Rijke
+University of Amsterdam Amsterdam, e Netherlands
+derijke@uva.nl
+
+ABSTRACT
+Topic models such as Latent Dirichlet Allocation (LDA) have been widely used in information retrieval for tasks ranging from smoothing and feedback methods to tools for exploratory search and discovery. However, classical methods for inferring topic models do not scale up to the massive size of today's publicly available Web-scale data sets. e state-of-the-art approaches rely on custom strategies, implementations and hardware to facilitate their asynchronous, communication-intensive workloads.
+We present APS-LDA, which integrates state-of-the-art topic modeling with cluster computing frameworks such as Spark using a novel asynchronous parameter server. Advantages of this integration include convenient usage of existing data processing pipelines and eliminating the need for disk writes as data can be kept in memory from start to nish. Our goal is not to outperform highly customized implementations, but to propose a general highperformance topic modeling framework that can easily be used in today's data processing pipelines. We compare APS-LDA to the existing Spark LDA implementations and show that our system can, on a 480-core cluster, process up to 135× more data and 10× more topics without sacri cing model quality.
+CCS CONCEPTS
+·Information systems Document representation; Document topic models;
+ACM Reference format: Rolf Jagerman, Carsten Eickho , and Maarten de Rijke. 2017. Computing Web-scale Topic Models using an Asynchronous Parameter Server. In Proceedings of SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan, , 4 pages. DOI: h p://dx.doi.org/10.1145/3077136.3084135
+1 INTRODUCTION
+Probabilistic topic models are a useful tool for discovering a set of latent themes that underlie a text corpus [2, 6]. Each topic is represented as a multinomial probability distribution over a set of words, giving high probability to words that co-occur frequently and small probability to those that do not.
+Permission to make digital or hard copies of all or part of this work for personal or classroom use is granted without fee provided that copies are not made or distributed for pro t or commercial advantage and that copies bear this notice and the full citation on the rst page. Copyrights for components of this work owned by others than the author(s) must be honored. Abstracting with credit is permi ed. To copy otherwise, or republish, to post on servers or to redistribute to lists, requires prior speci c permission and/or a fee. Request permissions from permissions@acm.org. SIGIR '17, August 07-11, 2017, Shinjuku, Tokyo, Japan © 2017 Copyright held by the owner/author(s). Publication rights licensed to ACM. 978-1-4503-5022-8/17/08. . . $15.00 DOI: h p://dx.doi.org/10.1145/3077136.3084135
+
+Parameter Server 1
+
+Parameter Server 2
+
+Parameter Server 3
+
+Spark Worker
+
+Spark Worker
+
+Spark Worker
+
+Spark Worker
+
+Spark Driver
+
+Figure 1: High-level overview of the Glint parameter server architecture and its interaction with Spark. e parameter servers provide a distributed and concurrently accessed parameter space for the model being learned.
+Recent information retrieval applications o en require very large-scale topic modeling to boost their performance [13], where many thousands of topics are learned from terabyte-sized corpora. Classical inference algorithms for topic models do not scale well to very large data sets. is is unfortunate because, like many other machine learning methods, topic models would bene t from a large amount of training data.
+When trying to compute a topic model on a Web-scale data set in a distributed se ing, we are confronted with a major challenge:
+How do individual machines keep their model synchronized?
+To address this issue, various distributed approaches to LDA have been proposed. e state-of-the-art approaches rely on custom strategies, implementations and hardware to facilitate their asynchronous, communication-intensive workloads [3, 12, 13]. ese highly customized implementations are di cult to use in practice because they are not easily integrated in today's data processing pipelines.
+We propose APS-LDA, a distributed version of LDA that builds on a widely used cluster computing framework, Spark [14]. e advantages of integrating model training with existing cluster computing frameworks include convenient usage of existing data-processing pipelines and eliminating the need for intermediate disk writes since data can be kept in memory from start to nish [10]. However, Spark is bound to the typical map-reduce programming paradigm. Common inference algorithms for LDA, such as collapsed Gibbs sampling, are not easily implemented in such a paradigm because they rely on a large mutable parameter space that is updated concurrently. We address this by adopting the parameter server model [9], which provides a distributed and concurrently accessed parameter space for the model being learned (see Fig. 1).
+
+1337
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+2 DISTRIBUTED LDA
+We present APS-LDA, our distributed version of LDA, which builds on the LightLDA algorithm [13]; it uses an asynchronous version of the parameter server, as we will detail in Section 3.
+
+2.1 LightLDA
+LightLDA performs a procedure known as collapsed Gibbs sampling, which is a Markov Chain Monte-Carlo type algorithm that assigns a topic z  {1, . . . , K } to every token in the corpus. It then repeatedly re-samples the topic assignments z. e LightLDA algorithm provides an elegant method for re-sampling the topic assignments in O(1) time by using a Metropolis-Hastings sampler. is is important because sampling billions of tokens is computationally infeasible if every sampling step would use O(K ) operations, where K is a potentially large number of topics.
+To re-sample the topic assignments z, the algorithm needs to keep track of the statistics nk , nwk and ndk :
+· nk : Number of times any word was assigned topic k · nwk : Number of times word w was assigned topic k · ndk : Number of times a token in document d was assigned
+topic k It is clear that the document-topic counts ndk are document-speci c and thus local to the data and need not be shared across machines. However, the word-topic counts nwk and topic counts nk are global and require sharing. e parameter server provides a shared interface to these values in the form of a distributed matrix storing nwk , and a distributed vector storing nk .
+
+2.2 APS-LDA: A Re-design of LightLDA
+
+Despite its a ractive properties, LightLDA has an important short-
+
+coming. It uses a stale-synchronous parameter server in which
+
+push requests are batched together and sent once when the algo-
+
+rithm nishes processing its current partition of the data. is
+
+architecture uses a xed network thread and may cause a stale
+
+model, where individual machines are unable to see updates from
+
+other machines for several iterations.
+
+In contrast, our approach sends push requests asynchronously
+
+during the compute stage. ese more frequent but smaller updates
+
+have a number of essential advantages:
+
+(1) It decreases the staleness of the model while it is computing.
+
+With our approach it is possible to see updates from other
+
+machines within the same iteration over the data, something
+
+that is not possible with the standard parameter server.
+
+(2) It makes mitigating network failure easier as small messages
+
+can be resent more e ciently.
+
+(3) It enables the algorithm to take advantage of more dynamic
+
+threading mechanisms such as fork-join pools and cached thread
+
+pools [11].
+
+e move from such a xed threaded design to a fully asynchro-
+
+nous one requires a re-design of LightLDA. Algorithm 1 describes
+
+the APS-LDA method. At the start of each iteration, the algorithm
+
+performs a synchronous pull on each processor p to get access to
+
+the global topic counts nk . It then iterates over the vocabulary
+
+terms, and asynchronously pulls the word-topic counts nwk (line 6).
+
+ese asynchronous requests call back the R
+
+procedure
+
+when they complete. e R
+
+procedure (line 12) starts by
+
+Algorithm 1 APS-LDA: Asynchronous Parameter Server LDA.
+1: P  Set of processors, 2: D  Collection of documents, 3: V  Set of vocabulary terms
+
+4: for p  P in parallel do
+
+5: Dp  D
+6: nk  S P ({nk | k = 1 . . . K }) 7: for w  V do
+
+8:
+
+on A P ({nwk | k = 1 . . . K })
+
+9:
+
+call R
+
+(Dp , nwk , nk )
+
+10: end for
+
+11: end for
+
+12: procedure R
+
+(Dp , nwk , nk )
+
+13: a  AliasTable(nwk )
+
+14: for (w, zold)  d  Dp do
+
+15:
+
+znew  MetropolisHastingsSampler(a, d, w, zold, nk , nwk )
+
+16:
+
+A P ({nwk  nwk + 1}) for k = znew
+
+17:
+
+A P ({nk  nk + 1}) for k = znew
+
+18:
+
+A P ({nwk  nwk - 1}) for k = zold
+
+19:
+
+A P ({nk  nk - 1}) for k = zold
+
+20: end for
+
+21: end procedure
+
+computing an alias table on the available word-topic counts nwk . is alias table is a datastructure that can sample from a categorical
+probability distribution in amortized O(1) time. e algorithm then iterates over the local partition of the data Dp where it resamples every (token, topic) pair using LightLDA's O(1) Metropolis-Hastings sampler, which requires the earlier mentioned alias table. Changes to the topic counts are pushed asynchronously to the parameter server while it is computing (Lines 16 to 19)
+Note that all of our push requests either increment or decrement the counters nwk and nk . e parameter server exploits this fact by aggregating these updates via addition, which is both commutative and associative. is eliminates the need for complex locking schemes that are typical in key-value storage systems. Instead, the updates can be safely aggregated through an atomic integer structure that is easy to implement.
+In the next section, we will discuss the asynchronous parameter server that makes the implementation of this algorithm possible.
+3 PARAMETER SERVER ARCHITECTURE
+e traditional parameter server architecture [8] is a complete machine learning framework that couples task scheduling, a distributed (key, value) store for the parameters and user-de ned functions that can be executed on workers and servers. As a result, there is considerable complexity in the design, setup and implementation of a working parameter server, making it di cult to use in practice.
+We present Glint,1 an open-source asynchronous parameter server implementation. Our implementation is easily integrated with the cluster computing framework Spark, which allows us to leverage Spark features such as DAG-based task scheduling, straggler mitigation and fault tolerance. is integration is realized
+1h ps://github.com/rjagerman/glint/
+
+1338
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+by decoupling the components of the traditional parameter server architecture and removing the dependency on task scheduling. is is accomplished by simplifying the parameter server interface to a set of two operations: (1) Asynchronously `Pull' data from the servers.
+is will query parts of the matrix or vector. (2) Asynchronously `Push' data to the servers.
+is will update parts of the matrix or vector. e goal of our parameter server implementation is to store a large distributed matrix and provide a user with fast queries and updates to this matrix. In order to achieve this, it will partition and distribute the matrix to multiple machines. Each machine only stores a subset of rows. Algorithms interact with the matrix through the pull and push operations, unaware of the physical location of the data.
+3.1 Pull action
+Whenever an algorithm wants to retrieve entries from the matrix it will call the pull method. is method triggers an asynchronous pull request with a speci c set of row and column indices that should be retrieved. e request is split up into smaller requests based on the partitioning of the matrix such that there will be at most one request per parameter server.
+Low-level network communication provides an `at-most-once' guarantee on message delivery. is is problematic because it is impossible to know whether a message sent to a parameter server is lost or just takes a long time to compute. However, since pull requests do not modify the state of the parameter server, we can safely retry the request multiple times until a successful response is received. To prevent ooding the parameter server with too many requests, we use an exponential back-o timeout mechanism. Whenever a request times out, the timeout for the next request is increased exponentially. If a er a speci ed number of retries there is still no response, we consider the pull operation failed.
+3.2 Push action
+In contrast to pull requests, a push request will modify the state on the parameter servers. is means we cannot na¨ively resend requests on timeout because if we were to accidentally process a push request twice it would result in a wrong state on the parameter server. We created a hand-shaking protocol to guarantee `exactlyonce' delivery on push requests.2 e protocol rst a empts to obtain a unique transaction id for the push request. Data is transmi ed together with the transaction id, allowing the protocol to later acknowledge receipt of the data. A timeout and retry mechanism is only used for messages that are guaranteed not to a ect the state of the parameter server. e result is that pushing data to the parameter servers happens exactly once.
+3.3 LDA implementation
+We have implemented the APS-LDA algorithm using Spark and the asynchronous parameter server. A general overview of the implementation is provided in Fig. 2. e Spark driver distributes the Resilient Distributed Dataset (RDD) of documents to di erent workers. Each worker pulls parts of the model from the parameter
+2h ps://github.com/rjagerman/glint/blob/master/src/main/scala/glint/models/client/ async/PushFSM.scala
+
+Parameter Server 1
+
+Parameter Server 2
+
+Parameter Server 3
+
+Dataset RDD
+
+Worker
+
+20 10 0 12 31
+
+Resample tokens using Metropolis-Hastings
+
+Push changes asynchronously to parameter servers
+
+Figure 2: Overview of the implementation. A dataset is split into di erent partitions by Spark. Tokens in each partition are resampled by the Metropolis-Hastings algorithm. Updates are pushed asynchronously to the parameter server.
+server and constructs corresponding alias tables. e worker then iterates over its local partition of the data and resamples the tokens using the Metropolis-Hastings algorithm. Updates are pushed asynchronously to the parameter server while the algorithm is running.
+4 EXPERIMENTS
+ere is no point in optimizing and scaling inference if the quality of the trained model should su er. For this reason, we want to validate that the e ectiveness of the trained model remains the same. It should be noted that our goal is not to outperform highly customized implementations such as LightLDA.
+Instead, we aim to integrate state-of-the-art topic modeling with Spark such that large topic models can be e ciently computed in modern data processing pipelines. To this end, we compare our implementation against existing Spark implementations on the same hardware and con guration. We compare APS-LDA to two existing state-of-the-art LDA algorithms provided by Spark's MLLib: e EM algorithm [1] and the online algorithm [5]. We run our experiments on a compute cluster with 30 nodes, with a total of 480 CPU cores and 3.7TB RAM. e nodes are interconnected over 10Gb/s ethernet. e ClueWeb12 [7] corpus, a 27-terabyte Web crawl that contains 733 million Web documents, is used as the data set for our experiments.
+To validate that our methods do not sacri ce the quality of the trained model we will compare the three algorithms on small subsets of ClueWeb12. We vary either the number of topics (20­80) or the size of the data set (50GB­200GB) to measure how the di erent systems scale with those variables and use perplexity as an indicator for topic model quality. Due to the large size of the data, a hyperparameter sweep is computationally prohibitively expensive and we set the LDA hyperparameters  = 0.05 and  = 0.001 which we found to work well on the ClueWeb12 data set. We split the data in a 90% training set and a 10% test set and measure perplexity on the test set. Fig. 3 shows the results of the experiments. We observe that, barring some variations, the perplexity is roughly equal for all algorithms. However, our implementation has a signi cantly be er runtime. We use a log-scale for the runtime in minutes.
+
+1339
+
+Demonstration Paper
+
+SIGIR'17, August 7-11, 2017, Shinjuku, Tokyo, Japan
+
+Perplexity 104 204 304 404 504
+
+Perplexity
+
+5000
+
+Runtime (minutes)
+
+0
+
+APS-LDA
+
+102
+
+EM Online
+
+101 50GB 100GB 150GB 200GB 200GB 200GB 200GB K=20 K=20 K=20 K=20 K=40 K=60 K=80
+Figure 3: Performance of APS-LDA compared to the EM [1] and Online [5] algorithms for di erent data set sizes (50GB­ 200GB) and di erent numbers of topics K (20­80).
+
+When a empting to increase the data set size beyond 200GB, the default Spark implementations cause numerous failures due to an increase in runtime and/or shu e write size. Our implementation is able to e ortlessly scale far beyond these limits and compute an LDA model on the full ClueWeb12 data set (27TB) with 1,000 topics in roughly 80 hours (see Fig. 4). is is an increase of nearly two orders of magnitude, both in terms of dataset size and number of topics, using identical hardware and con guration. We have made the nal 1,000-topic LDA model publicly available in CSV format.3
+5 CONCLUSION
+We have presented APS-LDA, a distributed method for computing topic models on Web-scale data sets. It uses an asynchronous parameter server that is easily integrated with the cluster computing framework Spark. We conclude our work by revisiting the challenge that was presented in the introduction:
+How do individual machines keep their model synchronized?
+e asynchronous parameter server solves this by providing a distributed and concurrently accessed parameter space for the model being learned. e asynchronous design has several advantages over the traditional parameter server model: it prevents model staleness, makes mitigating network failure easier and enables the system to use more dynamic threading mechanisms.
+Our proposed algorithm APS-LDA, is a thorough re-design of LightLDA that takes advantage of the asynchronous parameter server model. We have implemented this algorithm and the asynchronous parameter server using Spark, a popular cluster computing framework. e resulting architecture allows for the computation of topic models that are several orders of magnitude larger, in both dataset size and number of topics, than what was achievable using existing Spark implementations. e code of APS-LDA is available as open source (MIT licensed) and we are also sharing a 1,000-topic LDA model trained on ClueWeb 12.
+Finally, there are two promising directions for future work: (1) Large-scale information retrieval tasks o en require machine learning methods such as factorization machines and deep learning, which are known to bene t from the parameter server architecture [4]. By using an asynchronous parameter server, it may be
+
+3h p://cake.da.inf.ethz.ch/clueweb-topicmodels/
+
+0
+
+20
+
+40
+
+60
+
+Time (hours)
+Figure 4: Perplexity of the 1,000-topic LDA model on ClueWeb12.
+
+possible to achieve signi cant speedups. (2) Our current implementation of the asynchronous parameter server uses a dense representation of the data, due to the garbage collection constraint imposed by the JVM runtime. By implementing sparse representations it is possible to scale even further as this will reduce both memory usage and network communication overhead.
+Acknowledgments. is research was supported by Ahold Delhaize, Am-
+sterdam Data Science, the Bloomberg Research Grant program, Criteo, the
+Dutch national program COMMIT, Elsevier, the European Community's
+Seventh Framework Programme (FP7/2007-2013) under grant agreement nr
+312827 (VOX-Pol), the Microso Research Ph.D. program, the Netherlands
+Institute for Sound and Vision, the Netherlands Organisation for Scienti c
+Research (NWO) under project nrs 612.001.116, HOR-11-10, CI-14-25, 652.-
+002.001, 612.001.551, 652.001.003, and Yandex. All content represents the
+opinion of the authors, which is not necessarily shared or endorsed by their
+respective employers and/or sponsors.
+REFERENCES
+[1] A. Asuncion, M. Welling, P. Smyth, and Y. W. Teh. On smoothing and inference for topic models. In UAI, pages 27­34. AUAI, 2009.
+[2] D. M. Blei, A. Y. Ng, and M. I. Jordan. Latent dirichlet allocation. JMLR, pages 993­1022, 2003.
+[3] J. Chen, K. Li, J. Zhu, and W. Chen. WarpLDA: A simple and e cient O(1) algorithm for Latent Dirichlet Allocation. arXiv preprint arXiv:1510.08628, 2015.
+[4] J. Dean, G. Corrado, R. Monga, K. Chen, M. Devin, M. Mao, A. Senior, P. Tucker, K. Yang, Q. V. Le, et al. Large scale distributed deep networks. In NIPS, pages 1223­1231, 2012.
+[5] M. Ho man, F. R. Bach, and D. M. Blei. Online learning for latent dirichlet allocation. In NIPS, pages 856­864, 2010.
+[6] T. Hofmann. Probabilistic latent semantic indexing. In SIGIR, pages 50­57. ACM, 1999.
+[7] Lemur Project. Clueweb12, 2016. [Online; h p://lemurproject.org/clueweb12/; accessed 22-March-2016].
+[8] M. Li, L. Zhou, Z. Yang, A. Li, F. Xia, D. G. Andersen, and A. Smola. Parameter server for distributed machine learning. In NIPS, page 2, 2013.
+[9] M. Li, D. G. Andersen, J. W. Park, A. J. Smola, A. Ahmed, V. Josifovski, J. Long, E. J. Shekita, and B.-Y. Su. Scaling distributed machine learning with the parameter server. In OSDI 14, pages 583­598, 2014.
+[10] P. Moritz, R. Nishihara, I. Stoica, and M. I. Jordan. SparkNet: Training deep networks in Spark. In ICLR, 2016.
+[11] A. Welc, S. Jagannathan, and A. Hosking. Safe futures for java. SIGPLAN, pages 439­453, 2005.
+[12] H.-F. Yu, C.-J. Hsieh, H. Yun, S. Vishwanathan, and I. S. Dhillon. A scalable asynchronous distributed algorithm for topic modeling. In WWW, pages 1340­ 1350. ACM, 2015.
+[13] J. Yuan, F. Gao, Q. Ho, W. Dai, J. Wei, X. Zheng, E. P. Xing, T.-Y. Liu, and W.-Y. Ma. LightLDA: Big topic models on modest computer clusters. In WWW, pages 1351­1361, 2015.
+[14] M. Zaharia, M. Chowdhury, T. Das, A. Dave, J. Ma, M. McCauley, M. J. Franklin, S. Shenker, and I. Stoica. Resilient distributed datasets: A fault-tolerant abstraction for in-memory cluster computing. In NSDI, pages 2­2. USENIX, 2012.
+
+1340
+
+

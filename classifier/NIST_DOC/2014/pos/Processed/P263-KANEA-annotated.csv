@@ -1,0 +1,1125 @@
+,sentence,label,data
+,,,
+0,Skewed Partial Bitvectors for List Intersection,null,null
+,,,
+1,Andrew Kane arkane@cs.uwaterloo.ca,null,null
+,,,
+2,Frank Wm. Tompa fwtompa@cs.uwaterloo.ca,null,null
+,,,
+3,David R. Cheriton School of Computer Science University of Waterloo,null,null
+,,,
+4,"Waterloo, Ontario, Canada",null,null
+,,,
+5,ABSTRACT,null,null
+,,,
+6,"This paper examines the space-time performance of in-memory conjunctive list intersection algorithms, as used in search engines, where integers represent document identifiers. We demonstrate that the combination of bitvectors, large skips, delta compressed lists and URL ordering produces superior results to using skips or bitvectors alone.",null,null
+,,,
+7,"We define semi-bitvectors, a new partial bitvector data structure that stores the front of the list using a bitvector and the remainder using skips and delta compression. To make it particularly eective, we propose that documents be ordered so as to skew the postings lists to have dense regions at the front. This can be accomplished by grouping documents by their size in a descending manner and then reordering within each group using URL ordering. In each list, the division point between bitvector and delta compression can occur at any group boundary. We explore the performance of semi-bitvectors using the GOV2 dataset for various numbers of groups, resulting in significant space-time improvements over existing approaches.",null,null
+,,,
+8,"Semi-bitvectors do not directly support ranking. Indeed, bitvectors are not believed to be useful for ranking based search systems, because frequencies and osets cannot be included in their structure. To refute this belief, we propose several approaches to improve the performance of rankingbased search systems using bitvectors, and leave their verification for future work. These proposals suggest that bitvectors, and more particularly semi-bitvectors, warrant closer examination by the research community.",null,null
+,,,
+9,Categories and Subject Descriptors,null,null
+,,,
+10,H.3.4 [Information Storage and Retrieval]: Systems and Software--Performance evaluation (e ciency and effectiveness); H.2.4 [Database Management]: Systems-- Query Processing,null,null
+,,,
+11,Permission to make digital or hard copies of all or part of this work for personal or,null,null
+,,,
+12,classroom use is granted without fee provided that copies are not made or distributed,null,null
+,,,
+13,for profit or commercial advantage and that copies bear this notice and the full citation,null,null
+,,,
+14,on the first page. Copyrights for components of this work owned by others than the,null,null
+,,,
+15,"author(s) must be honored. Abstracting with credit is permitted. To copy otherwise,",null,null
+,,,
+16,"or republish, to post on servers or to redistribute to lists, requires prior specific",null,null
+,,,
+17,"permission and/or a fee. Request permissions from permissions@acm.org. SIGIR'14,",null,null
+,,,
+18,"July 6­11, 2014, Gold Coast, Queensland, Australia.",null,null
+,,,
+19,Copyright is held by the owner/author(s). Publication rights licensed to ACM.,null,null
+,,,
+20,ACM 978-1-4503-2257-7/14/07 ...$15.00.,null,null
+,,,
+21,http://dx.doi.org/10.1145/2600428.2609609.,null,null
+,,,
+22,General Terms,null,null
+,,,
+23,Algorithms; Performance,null,null
+,,,
+24,Keywords,null,null
+,,,
+25,Information Retrieval; Algorithms; Database Index; Performance; E ciency; Optimization; Compression; Intersection,null,null
+,,,
+26,1. INTRODUCTION,null,null
+,,,
+27,"We examine the space-time performance for algorithms that perform in-memory intersection of ordered integer lists. These algorithms are used in search engines where the integers are document identifiers and in databases where the integers are row identifiers. We assume that the lists are stored in integer order, which allows for fast merging and for compression using deltas.",null,null
+,,,
+28,"Intersecting multiple lists can be implemented by intersecting the two smallest lists, then repeatedly intersecting the result with the next smallest list in order. This setversus-set (svs) or term-at-a-time (TAAT) approach is fast because of its sequential memory access, but it requires extra memory for intermediate results. Alternatively, a non-svs, document-at-a-time (DAAT) approach can be used, requiring less space for intermediate results, but having a slower random access pattern. We use the faster svs approach, but our work can also be applied to non-svs intersection.",null,null
+,,,
+29,"Our experiments use data and queries from the search engine domain, so the lists of integers are usually encoded using bitvectors or compressed delta encodings such as variable byte (vbyte), PForDelta (PFD), and simple16 (S16), often with list index structures (skips) that allow jumping over portions of the compressed lists. Using skips results in significant performance gains, and so does using bitvectors for large lists. We have found that combining bitvectors with large skips gives the best results, regardless of the encoding, so we use this combination in our performance tests.",null,null
+,,,
+30,"The integers in our lists are document identifiers assigned by the search engine. Typically, these values are assigned based on the order that the documents were indexed, referred to as the original order. Changing the order of the documents can produce smaller and faster systems. Many orderings have been examined in the literature, such as document size, content clustering, TSP, URL, and hybrid orderings. A detailed review of such reordering techniques is presented in Section 2.2. The URL ordering is easy to compute and produces comparable performance to the best approaches [23], so we use this as our basis of comparison.",null,null
+,,,
+31,263,null,null
+,,,
+32,The goal in this paper is to improve on the space-time performance of the combined bitvectors+skips algorithm executed on a URL ordered index. This is accomplished using partial bitvectors via the following contributions:,null,null
+,,,
+33,"· We introduce a new hybrid ordering approach that groups by the terms-in-document size, and then sorts by the URL ordering within each group, resulting in better document clustering and delta compression.",null,null
+,,,
+34,"· We introduce semi-bitvectors, which allows the front portion of a list to be a bitvector while the rest uses normal compression and skips, with cut points aligned to the group boundaries of our hybrid ordering.",null,null
+,,,
+35,"We apply these techniques to the TREC GOV2 dataset and queries, and the end result is a significant improvement in runtime together with a small improvement in space. When compared to algorithms using only skips, the improvement is very significant, on top of the benefits from using URL ordering.",Y,null
+,,,
+36,"The remainder of the paper describes related work in Section 2, experimental setup in Section 3, partial bitvectors in Section 4, ranking in Section 5, partitioning in Section 6, extensions in Section 7, and conclusions in Section 8.",null,null
+,,,
+37,2. RELATED WORK,null,null
+,,,
+38,"In this section, we present related work in list intersection and illustrate various algorithms' performance using space-time graphs, for which the experimental setup uses the GOV2 corpus and is described in Section 3. We also present related work exploring the eect of document reordering on the performance of search algorithms.",null,null
+,,,
+39,2.1 Intersection Approaches,null,null
+,,,
+40,"There are many algorithms available for intersecting uncompressed integer lists. For a broad performance comparison see Barbay et al. [4]. Many of these algorithms are fast, but their memory use is very large (e.g., storing each integer in 32 bits) and probes into the list can produce wasted or ine cient memory access.",null,null
+,,,
+41,"There are a large variety of compression algorithms available for sorted integer lists. They first convert the lists into dierences minus one (deltas or d-gaps) to get smaller values, removing the ability to randomly access elements in the list. Next, a variable length encoding is used to reduce the number of bits needed to store the values, often grouping multiple values together to get word or byte alignment.",null,null
+,,,
+42,"We examine the standard variable byte (vbyte) encoding and some of the top performers: PForDelta (PFD) [32] and simple16 (S16) [30]. The S16 encoding uses a variable block size, but we combine these small blocks into larger fixed sized blocks [30] for a clearer comparison with PFD. The vbyte encoding is byte aligned, storing seven bits of a delta with one bit indicating additional data. As with the simple9 [1] encoding it is based upon, the S16 encoding is word (4-byte) aligned, using 4 bits to allocate the remaining 28 bits to fit a few deltas. The PFD encoding combines multiples of 32 deltas into a block (padding lists with zeros to fill out the blocks) to become word aligned. The block of deltas are stored in the same number of bits, with any that cannot fit (up to 10%) stored separately as exceptions using a linked list to indicate their location and then storing the values at the end of the encoding. Lists smaller than 100 use normal",null,null
+,,,
+43,"vbyte encoding (to avoid the expense of padding lists with zeros to fit into blocks), thus producing a hybrid algorithm. We do not examine other variations of these encodings, such as the VSEncoding (VSE) algorithm [26] which has dynamically varying block sizes, storing deltas in each block using the same number of bits without exceptions. Recent work has improved decoding and delta restore speeds for many algorithms using vectorization [18], with some optimizations using more space. Another recent approach first acts on the values as monotone sequences, then incorporates some delta encoding more deeply into the compression algorithm [28]. While such approaches can be combined with our work, we do not explore this here.",null,null
+,,,
+44,"List indexes are included to jump over values and thus avoid decoding, or even accessing, portions of the lists. A simple list index algorithm groups by a fixed number of elements storing every Xth element in an array [20], where X is a constant, and we refer to it as skips. Variable length skips are possible, but the dierences are not important here. Another approach groups by a fixed size document identifier range into segments [20], allowing array lookups into the list index. This segment approach has similar performance to skips for the large jump points we are using and it conflicts with block based encodings, so it is not examined here. List index algorithms can be used with compressed lists by storing the deltas of the jump points, but the block based structure causes complications if the jump points are not byte or word aligned. To prevent non-aligned jump points, skips over block based encodings choose the block size to be equal to the skip size X [16]. Similarly, using compression algorithms that act on large blocks can obstruct the runtime performance of skips.",null,null
+,,,
+45,"For list intersection, the compression algorithms produce much smaller encodings, but they are slow. Uncompressed lists are larger, but random access makes them fast. Combining list indexes with the compressed algorithms adds little space, and this targeted access into the lists allows them to be faster than the uncompressed algorithms.",null,null
+,,,
+46,"When using a compact domain of integers, as we are, the lists can be stored as bitvectors, where the bit number is the integer value and the bit is set if the integer is in the list. For our dataset, such an encoding uses large amounts of space but can have very good runtime performance. To alleviate the space costs, lists with document frequency less than F can be stored using vbyte compression, resulting in a hybrid bitvector algorithm [11]. This hybrid algorithm, vbyte+bitvectors, is faster than non-bitvector algorithms, and some settings result in smaller configurations, since very large lists can be more compactly stored as bitvectors. We found similar improvements in runtime, with smaller improvements in space, when combining bitvectors with more compact compression algorithms such as PFD and S16.",null,null
+,,,
+47,"We have found that bitvectors combined with large skips perform better than either skips or bitvectors separately, regardless of the compression algorithm. Large skips of size 256 give a good space-time tradeo when combined with bitvectors, even though that size is not the fastest when skips are used by themselves. Since the best algorithms in terms of space and runtime use bitvectors for large lists, future work in this area should remove large lists from consideration when comparing compression algorithms.",null,null
+,,,
+48,We compare performance of various algorithms using a graph of space (bits per posting when encoding the entire,null,null
+,,,
+49,264,null,null
+,,,
+50,dataset of lists) versus time (milliseconds per query when running the entire workload sequentially). The space-time performance of various configurations of an algorithm are connected to form a performance curve. These configurations are from the X settings for the skips algorithm and the F settings for the bitvector algorithm. The bitvector+skips algorithm uses a fixed X value of 256 and various F settings.,null,null
+,,,
+51,"A comparison of skips, bitvectors and bitvectors+skips using PFD encoding under the original document ordering is shown in Figure 1 (top), where points further left and down use less space and less time, respectively. Clearly, the combination of PFD+bitvectors+skips is much faster than PFD+bitvectors or PFD+skips, especially when the configurations use small amounts of space.",null,null
+,,,
+52,"For a more detailed background of integer list compression and list intersection, we recommend the survey of search engine techniques written by Zobel and Moat [31]. The performance of many of these algorithms have previously been compared in other experimental settings [4, 11, 20, 30].",null,null
+,,,
+53,2.2 Reordering,null,null
+,,,
+54,"Intersecting lists of integers applies to search engines when the integers are document identifiers assigned by the system, giving a compact domain of values and small deltas that are compressible. This assignment of identifiers can be changed to produce space and/or runtime benefits, and we refer to this process as reordering the documents.",null,null
+,,,
+55,"Reordering can improve space usage by placing documents with similar terms close together in the ordering, thus reducing the deltas, which can then be stored using smaller amounts of space. This reduces the index space as well as the amount of data being accessed per query. We have found that a reduction in data access per query does not improve the runtime of in-memory intersection, because data transfer is not the bottleneck in such systems. Note, reordering can also improve compression in other areas, such as the term frequencies embedded in the lists [29].",null,null
+,,,
+56,"Reordering can improve runtime performance by producing data clustering within the lists [29], as well as query result clustering within the document identifier domain [17]. This gives larger gaps in the document domain during query processing, which causes list indexes (skips) to work better and the optimal skip size to increase. This also causes fewer cache line loads within bitvectors, making them more e cient. These runtime improvements are seen not just in list intersection performance, but with frequency, ranking, and even dynamic pruning, where knowledge of the ranking algorithm is used to avoid processing some parts of the lists [27]. Tuning the compression algorithms to an ordering can also give a better space-time tradeo [29].",null,null
+,,,
+57,"The runtime benefits of reordering come from using skips and bitvectors to avoid accessing portions of the lists, rather than from reading more compressed data. Clearly, space improvement and decoding time are not the only metrics that should be considered when comparing document orderings.",null,null
+,,,
+58,Below we present various document ordering techniques:,null,null
+,,,
+59,"Random: If the documents are ordered randomly (rand), there are no trends for the encoding schemes or the intersection algorithms to exploit, so this is a base of comparison for the other orderings.",null,null
+,,,
+60,"Original: The dataset comes in an original order (orig), which may be the order in which the data was crawled. This",null,null
+,,,
+61,time (ms/query),null,null
+,,,
+62,8,null,null
+,,,
+63,PFD+skips(orig),null,null
+,,,
+64,"F , 1/8 ",null,null
+,,,
+65,"X , 256 128",null,null
+,,,
+66, PFD+bitvectors(orig) PFD+bitvectors+skips(orig),null,null
+,,,
+67,6,null,null
+,,,
+68,32 64,null,null
+,,,
+69,"F , 1/4",null,null
+,,,
+70, 1/16,null,null
+,,,
+71,4,null,null
+,,,
+72,8-Jan,null,null
+,,,
+73, 1/24,null,null
+,,,
+74,16-Jan,null,null
+,,,
+75, 1/32,null,null
+,,,
+76,2,null,null
+,,,
+77,1/24 1/32,null,null
+,,,
+78, 1/48,null,null
+,,,
+79,Jan-48,null,null
+,,,
+80,0 4,null,null
+,,,
+81,8,null,null
+,,,
+82,6,null,null
+,,,
+83,6,null,null
+,,,
+84,8,null,null
+,,,
+85,10,null,null
+,,,
+86,12,null,null
+,,,
+87,PFD+bitvectors+skips(rand) PFD+bitvectors+skips(orig)  PFD+bitvectors+skips(td) PFD+bitvectors+skips(url),null,null
+,,,
+88,"F , 1/4",null,null
+,,,
+89,4,null,null
+,,,
+90,8-Jan,null,null
+,,,
+91,16-Jan,null,null
+,,,
+92,2,null,null
+,,,
+93,"F , 1/4 1/8",null,null
+,,,
+94,1/24 1/32,null,null
+,,,
+95,Jan-48,null,null
+,,,
+96,16-Jan,null,null
+,,,
+97,24-Jan,null,null
+,,,
+98,Jan-32,null,null
+,,,
+99,Jan-48,null,null
+,,,
+100,0,null,null
+,,,
+101,4,null,null
+,,,
+102,6,null,null
+,,,
+103,8,null,null
+,,,
+104,10,null,null
+,,,
+105,12,null,null
+,,,
+106,8,null,null
+,,,
+107,S16+bitvectors+skips(url),null,null
+,,,
+108,PFD+bitvectors+skips(url),null,null
+,,,
+109,6,null,null
+,,,
+110,time (ms/query),null,null
+,,,
+111,time (ms/query),null,null
+,,,
+112,4,null,null
+,,,
+113,"F , 1/2",null,null
+,,,
+114,4-Jan,null,null
+,,,
+115,"F , 1/4",null,null
+,,,
+116,2,null,null
+,,,
+117,8-Jan,null,null
+,,,
+118,8-Jan,null,null
+,,,
+119,16-Jan,null,null
+,,,
+120,16-Jan,null,null
+,,,
+121,24-Jan,null,null
+,,,
+122,Jan-32,null,null
+,,,
+123,Jan-48,null,null
+,,,
+124,0,null,null
+,,,
+125,4,null,null
+,,,
+126,6,null,null
+,,,
+127,8,null,null
+,,,
+128,10,null,null
+,,,
+129,12,null,null
+,,,
+130,space (bits/posting),null,null
+,,,
+131,Figure 1: Space vs. time graphs for intersection algorithms with skip size X and bitvector cuto frequency F .,null,null
+,,,
+132,"ordering could be anything, so it may not a good base. We have found that using the original order of the GOV2 dataset gives only small improvement over random ordering.",null,null
+,,,
+133,"Rank: Reordering to approximate ranking allows the engine to terminate early when su ciently good results are found. A global document order [19], such as PageRank or result occurrence count in a training set [15], can be used. Individual lists could be ordered independently, as done in impact ordering [2], increasing space usage and requiring accumulators to process queries. These techniques essentially prune portions of the lists from the calculation. Thus they sacrifice space in order to improve runtime performance, while the remaining types of ordering exploit information from the dataset to improve both space and runtime performance.",null,null
+,,,
+134,"Matrix: Reordering by manipulating the document vs. term matrix can produce improvements in space by grouping documents with high frequency terms [21], producing a block",null,null
+,,,
+135,265,null,null
+,,,
+136,Blandford 2002 Long 2003 Shieh 2003 Garcia 2004 Silvestri 2004 Blanco 2006 Silvestri 2007 Baykan 2008 Yan 2009 Bu¨ttcher 2010 Ding 2010 Silvestri 2010 Tonellotto 2011 Shi 2012 Arroyuelo 2013,null,null
+,,,
+137,"ref [7] [19] [22] [15] [24, 25] [6] [23] [5] [29] [9] [13] [26] [27] [21] [3]",null,null
+,,,
+138,type clustering global page ordering TSP query results clustering SVD·TSP·clustering URL; URL·clustering block-diagonal matrix URL·local tweeks doc terms; URL TSP·LSH; URL·doc size URL doc size; URL term frequency run-length optimize,null,null
+,,,
+139,data collection and size TREC4-5(1GB); WT2g(2GB) Web crawl 2002(1.2TB) PC(small); FBIS(470MB); LATimes(475MB) WT10g(10GB) GPC(2GB) FBIS(470MB); LATimes(475MB) WBR99(22GB) GPC-plus(3GB) GOV2(426GB) GOV2(426GB) Wiki08(50GB); Ireland(160GB); GOV2(426GB) WT10g(10GB); WBR99(22GB); GOV2(426GB) ClueWeb09-CatB(1.5TB) FBIS(470MB); LATimes(475MB); WT2g(2GB); Wiki12(17GB) GOV2(426GB),Y,null
+,,,
+140,space Y N Y N Y Y Y Y Y Y Y Y Y Y Y,null,null
+,,,
+141,runtime N Y N Y N N N N Y N Y Y Y N Y,null,null
+,,,
+142,Table 1: Details of reordering papers.,null,null
+,,,
+143,"diagonal matrix [5], or creating run-length encodable portions of the matrix [3]. Manipulating the matrix for large datasets can be expensive, and merging subindexes can be di cult, so these techniques have not been widely used.",null,null
+,,,
+144,"Document Size: The simple method of ordering documents by decreasing number of unique terms in the document (td) produces index compression [9] and runtime performance improvements [27], while requiring no additional information about the documents and very little processing at indexing time. Ordering by terms-in-document is approximately the same as ordering by the number of tokens in the document or by document size. The improvements obtained from terms-in-document ordering are not as large as occurs with other orderings, so it has been mostly ignored.",null,null
+,,,
+145,"Content Similarity: Ordering by content similarity uses some similarity metric that is applied in various ways to produce an order. Ordering using normal content clustering techniques [7] or a travelling salesman problem (TSP) [22] formulation can produce space improvements. However, even with various improvements [6, 13, 24, 25], these approaches are too slow to be used in practice. In addition, these techniques must start from scratch when subindexes are merged, although not for subindex compaction.",null,null
+,,,
+146,"Metadata: Ordering lexicographically by URL provides similar improvements in space usage as obtained from ordering by content similarity [23], and it improves runtime substantially when using skips [29]. URL ordering is essentially using the human-based organization of website authors, which often groups the documents by topic, to produce content similarity in the ordering. Using other metadata makes this technique broadly applicable, but the eectiveness can vary greatly based on the dataset and density distribution of the data within the chosen domain. This approach is simple to compute at indexing time and can support fast merging of subindexes.",null,null
+,,,
+147,"Hybrid: Ordering by terms-in-document is not as eective as ordering by URL, but these two can be combined to get a slightly better result. For example, one hybrid approach groups the documents by URL server name, then subdivides each into 5 document size ranges, and finally orders by URL within each subdivided group [13]. This approach is similar to what we present later in this paper, but the reasoning and final result are quite dierent.",null,null
+,,,
+148,"Ordering documents lexicographically by URL is fast to calculate, just as good as any of the other approaches [23], and especially eective for the GOV2 dataset. URL ordering achieves this performance by placing documents with similar terms close together. Such tight clustering reduces the delta sizes substantially, with approximately 69.8% of the deltas having the value one in URL ordering vs. approximately 20.4% for random ordering. This suggests that there is limited room for additional improvement from new ordering methods.",Y,null
+,,,
+149,"A summary of the papers on ordering documents is shown in Table 1, where the last two columns indicate if the paper is examining the space and/or runtime benefits from ordering the documents.",null,null
+,,,
+150,2.3 Improvements from Reordering,null,null
+,,,
+151,"The runtime performance of skips has been shown to improve by approximately 50% when the index is ordered by URL [29]. Our bitvectors+skips algorithm is, however, still superior to bitvectors or skips separately, regardless of the compression algorithm or document ordering. As a result, we use the bitvectors+skips algorithm for the remainder of this paper. The performance of the bitvectors+skips algorithm using the PFD encoding under the random, original, terms-in-document and URL orderings is shown in Figure 1 (middle). Furthermore, experiments using vbyte and S16 encodings produce similar runtime performance improvements. The terms-in-document ordering produces benefits over original and random orderings, but URL ordering is clearly much better than the others in terms of both space and time.",null,null
+,,,
+152,"The amount of compression from ordering by URL has been shown for various datasets, and most uses produce significant improvements in space. The rate of improvement varies considerably for dierent encodings, for example, vbyte compression improves space by 8.1%, PFD improves space by 24.7%, and S16 improves space by 43.1% for our GOV2 index. This dierence in improvement rate makes S16 much smaller than PFD under the URL ordering, as shown in Figure 1 (bottom). (The performance using the S16 and PFD encodings is presented, but the vbyte encoding is omitted because it is dominated by PFD.) The URL ordering and resultant compression does not, however, produce runtime improvements for list intersection until skips or bitvectors are added. In fact, these runtime improvements are not proportional to the space savings, suggesting that memory transfer time is not the bottleneck.",Y,null
+,,,
+153,266,null,null
+,,,
+154,"Clearly, the URL ordering is better than the others and the bitvectors+skips algorithm is fast. While the S16 encoding gives smaller results, the PFD encoding is faster and still requires small amounts of space. As a result, in the next few sections we use the faster PFD+bitvectors+skips(url) algorithm as our basis of comparison, and we show how to improve upon this base by skewing the distribution of postings and creating partial bitvectors over certain dense regions. Please note that the more compact S16 based algorithm can also be similarly improved.",null,null
+,,,
+155,3. EXPERIMENTAL SETUP,null,null
+,,,
+156,"We use the TREC GOV2 corpus, indexed by Wumpus1 without stemming to extract document postings. The corpus size is 426GB from 25.5 million documents, giving 9 billion document postings and 49 million terms.",Y,null
+,,,
+157,"Our workload is a random sample of 5000 queries chosen by Barbay et al. [4] from the 100,000 corpus queries, which we have found to produce very stable results. These queries are tokenized by Wumpus, giving an average of 4.1 terms per query. Query statistics are summarized in Table 2, including averages of the smallest list size, the sum of all list sizes, and the result list size over all queries with the indicated number of terms for the entire corpus. For our runtime calculations, we remove the single term queries.",null,null
+,,,
+158,terms 1 2 3 4 5 6 7 8 9,null,null
+,,,
+159,total,null,null
+,,,
+160,queries 92,null,null
+,,,
+161,741 1270 1227,null,null
+,,,
+162,803 428 206,null,null
+,,,
+163,98 135 5000,null,null
+,,,
+164,% 1.8 14.8 25.4 24.5 16.1 8.6 4.1 2.0 2.7 100.0,null,null
+,,,
+165,smallest 131023 122036 194761 199732 204093 192445 205029 206277 198117 186070,null,null
+,,,
+166,all 131023 1520110 6203147 13213388 20361435 29367581 36346235 46198187 63406170 14944683,null,null
+,,,
+167,result 131023,null,null
+,,,
+168,39903 31730 17879 13087 15004,null,null
+,,,
+169,8240 5726 3308 24699,null,null
+,,,
+170,Table 2: Query information.,null,null
+,,,
+171,"Our experiments simulate a full index: we load the postings lists for query batches, encode them, flush the CPU cache by scanning a large array, then execute the conjunctive intersection of terms to produce the results. Each query has its own copy of its encoded postings lists, so performance is independent of query order and shared terms. Intersection runtimes per step are recorded, and overall runtimes are the sums over all steps for all queries. Space and time values ignore the dictionary, positional information, and ranking.",null,null
+,,,
+172,"Our code was run on an AMD Phenom II X6 1090T 3.6Ghz Processor with 6GB of memory, 6mb L3, 512k L2 and 64k L1 caches running Ubuntu Linux 2.6.32-43-server with a single thread executing the queries. The gcc compiler was used with the -O3 optimizations to produce high performance code. The query results were visually verified to be plausible and automatically verified to be consistent for all algorithms.",null,null
+,,,
+173,"We used the C++ language and classes for readability, but the core algorithms use only non-virtual inline functions, allowing a large range of compiler optimizations. We encode directly into a byte array for each list, and then include",null,null
+,,,
+174,1http://www.wumpus-search.org/,null,null
+,,,
+175,3000,null,null
+,,,
+176,2500,null,null
+,,,
+177,Terms-in-document,null,null
+,,,
+178,2000,null,null
+,,,
+179,1500,null,null
+,,,
+180,1000 500,null,null
+,,,
+181,"x,""10.9%,y"",608",null,null
+,,,
+182,"x,""38.7%,y"",313",null,null
+,,,
+183,0,null,null
+,,,
+184,0,null,null
+,,,
+185,0.2,null,null
+,,,
+186,0.4,null,null
+,,,
+187,0.6,null,null
+,,,
+188,0.8,null,null
+,,,
+189,1,null,null
+,,,
+190,Fraction of Documents,null,null
+,,,
+191,"Figure 2: Terms-in-document distribution for the GOV2 dataset, cutos for three groups are marked.",Y,null
+,,,
+192,Postings Lists,null,null
+,,,
+193,Bitvector Compressed,null,null
+,,,
+194,Large,null,null
+,,,
+195,Medium,null,null
+,,,
+196,Small,null,null
+,,,
+197,Documents by Group,null,null
+,,,
+198,Figure 3: Schematic of a three-group semi-bitvector index.,null,null
+,,,
+199,decode time in our runtimes to produce more realistic and repeatable measurements. The code was tuned to minimize memory access and cache line loads.,null,null
+,,,
+200,4. PARTIAL BITVECTORS,null,null
+,,,
+201,"We develop our approach to representing postings lists in two steps. First, we introduce partial bitvectors over grouped lists in terms-in-document ordering. After that, we show that ordering by URL within groups outperforms other representations.",null,null
+,,,
+202,4.1 Grouped Terms-in-Document Ordering,null,null
+,,,
+203,"The URL and clustering based orderings place documents with similar terms close together, producing tight clustering within the postings lists. The terms-in-document ordering, however, does not place documents with similar terms together in the ordering. Instead, the ordering by decreasing number of terms-in-document packs more postings into lower document identifiers, meaning that the density of the postings lists tends to decrease throughout the lists. This front-packing results in many smaller deltas, which can be more easily compressed. The front-packing also means that values in the postings lists are denser for lower document identifiers, giving skewed clustering with more eective skips at the end of the lists. This skewing of postings to lower document identifiers can be clearly seen in the distribution of terms-in-document values, as shown in Figure 2. The dotted lines split the index into three groups containing equal numbers of postings, meaning that the largest 10.9% of documents contain 33.3% of the postings.",null,null
+,,,
+204,"In addition, the likelihood of a document occurring in the intersection of multiple lists increases as the number of lists",null,null
+,,,
+205,267,null,null
+,,,
+206,"containing the document identifier increases, which is exactly the number of terms in the document. This causes the result list to be even more skewed towards lower document identifiers than the input lists. The result lists are indeed skewed in our query workload: the largest 10.9% of the documents contain 58.2% of the intersection results. Such a skew of the result list is similar to what would be expected from ordering by the document's usage rate in a set of training queries, where the usage rate could be measured by the number of times a document occurs in the postings lists or the result lists of the queries [15]. Preliminary experiments indicate that the terms-in-document ordering has similar performance to such ordering by usage, but these results are not presented here.",null,null
+,,,
+207,"We can exploit the skewed nature of the terms-in-document ordering by using partial bitvectors. In particular, we use bitvectors for the denser front portion of a postings list, and then normal delta compression and skips for the rest of the list. We call this front partial bitvector structure a semibitvector, and the highest document identifier in the bitvector portion of a postings list is called the cut point. The semi-bitvector intersection algorithm must first order the lists ascending by their cut points, then execute in a pairwise set-versus-set manner. Each pairwise list intersection has three (possibly empty) parts that are executed in order: bitvector-to-bitvector, sequence-to-bitvector, and sequenceto-sequence. In general, the end result contains a partial bitvector that must be converted to values, followed by a sequence of values. The intersection of two semi-bitvectors is defined in Algorithm 1 using basic intersection subroutines acting on bitvectors and sequences of integers.",null,null
+,,,
+208,Algorithm 1 intersect semi-bitvector,null,null
+,,,
+209,1: function,null,null
+,,,
+210,"(M,N)",null,null
+,,,
+211,SemiBV,null,null
+,,,
+212,2: r {},null,null
+,,,
+213,3: s M.bitvSize,null,null
+,,,
+214,4: t N.bitvSize,null,null
+,,,
+215,"5: b bvand (M.bitv , N.bitv , s)",null,null
+,,,
+216,6: if N.isLastList then,null,null
+,,,
+217,7:00,null,null
+,,,
+218,"r r [ bvconvert(b, s)",null,null
+,,,
+219,. assert(s  t),null,null
+,,,
+220,"8: r r[bvcontains(M.seq.select(value < t), N.bitv , t)",null,null
+,,,
+221,"9: r r [ merge(M.seq.select(value t), N.seq)",null,null
+,,,
+222,10: if N.isLastList then,null,null
+,,,
+223,11:00,null,null
+,,,
+224,return r,null,null
+,,,
+225,"12: return new semi-bitvector (b, r, s)",null,null
+,,,
+226,"Our implementation of semi-bitvector intersection applies various optimizations: The bvand and bvconvert algorithms (lines 5 and 7) are executed in a single pass on the last intersection and the bitvector b is not created if the query contains only two lists. The restrictions on M.seq applied by the select calls (lines 8 and 9) are executed as a single pass on M . Also the two conditionals from the select call (value < t) and the loop through M.seq (line 8) are combined when possible (i.e., first find the end point t in an uncompressed sequence or the nearest skip point before t in a compressed sequence, then use that location as a single conditional check). The result set r can be reused between pairwise steps (i.e., as input from the last step and output of the current step), except on the final step where the bitvector-to-bitvector portion is added (line 7).",null,null
+,,,
+227,time (ms/query),null,null
+,,,
+228,4,null,null
+,,,
+229," F , 1/4",null,null
+,,,
+230,PFD+bitvectors+skips(url)  PFD+bitvectors+skips(td),null,null
+,,,
+231,PFD+semi-bitvectors(td-g1024-td),null,null
+,,,
+232,3,null,null
+,,,
+233, 1/8,null,null
+,,,
+234,"F , 1/4",null,null
+,,,
+235,"F , 1/4",null,null
+,,,
+236, 1/16,null,null
+,,,
+237,2,null,null
+,,,
+238,8-Jan,null,null
+,,,
+239,8-Jan,null,null
+,,,
+240, 1/24,null,null
+,,,
+241,1/16 1/24,null,null
+,,,
+242,16-Jan,null,null
+,,,
+243, 1/32 1/32,null,null
+,,,
+244, 1/48 1/48,null,null
+,,,
+245,1,null,null
+,,,
+246,24-Jan,null,null
+,,,
+247,Jan-32,null,null
+,,,
+248,Jan-48,null,null
+,,,
+249,0 4,null,null
+,,,
+250,6,null,null
+,,,
+251,8,null,null
+,,,
+252,10,null,null
+,,,
+253,12,null,null
+,,,
+254,space (bits/posting),null,null
+,,,
+255,"Figure 4: Space vs. time graph for semi-bitvectors using cuto frequency F and td-g1024-td ordering compared to the bitvectors+skips algorithm using cuto frequency F , skip size 256 and either URL or terms-in-document ordering.",null,null
+,,,
+256,"Our semi-bitvector structure allows more postings to be stored in bitvectors for the same amount of memory used. Since the performance of bitvectors is much faster than other approaches, better use of bitvectors can produce a significant improvement in runtime performance, allowing the overall system to be more e cient.",null,null
+,,,
+257,"We pick the semi-bitvector cut points so that the bitvector portion of each list will have at least frequency F . We make the cut point calculation faster by splitting the document domain into groups and only allowing semi-bitvectors to have cut points at group boundaries. A schematic of a semi-bitvector index using three groups (and thus four potential cut points) with lists ordered by their cut points is shown in Figure 3. The cut point for a list is the highest group boundary where the group itself is above the density threshold F , and the bitvector portion (from the start of the list to the end of the group) is also above F . This definition allows a large number of groups to be used without degrading the index with too few or too many bitvector regions.",null,null
+,,,
+258,"We choose group boundaries so that each group contains the same number of postings. (Other approaches could be used to determine the group boundaries, but this is not relevant here.) When we run this semi-bitvector structure with many groups using the terms-in-document ordering, we see significant performance improvement. The performance of semi-bitvectors for terms-in-document ordering using 1024 groups (td-g1024-td) is shown in Figure 4. The improvement means that PFD+semi-bitvectors(td-g1024-td) dominates PFD+bitvectors+skips(td), and it is faster than our previously best URL based approach for configurations using larger amounts of memory. However, it is still slower for small configurations, and no configuration is as small as what can be achieved with URL ordering.",null,null
+,,,
+259,4.2 Grouped URL Ordering,null,null
+,,,
+260,"The terms-in-document ordering gives skewed clustering towards the front of the lists, while URL ordering and the other approaches give tight clustering throughout the lists. We would like to combine these two orderings into a hybrid ordering to produce the benefits of both skewed clustering and tight clustering.",null,null
+,,,
+261,268,null,null
+,,,
+262,url Portion of Deltas,null,null
+,,,
+263,0.12,null,null
+,,,
+264,0.1,null,null
+,,,
+265,0.08,null,null
+,,,
+266,0.06,null,null
+,,,
+267,0.04,null,null
+,,,
+268,0.02,null,null
+,,,
+269,0,null,null
+,,,
+270,0,null,null
+,,,
+271,0.2,null,null
+,,,
+272,0.4,null,null
+,,,
+273,0.6,null,null
+,,,
+274,0.8,null,null
+,,,
+275,1,null,null
+,,,
+276,td Portion of Deltas,null,null
+,,,
+277,0.12,null,null
+,,,
+278,0.1,null,null
+,,,
+279,0.08,null,null
+,,,
+280,0.06,null,null
+,,,
+281,0.04,null,null
+,,,
+282,0.02,null,null
+,,,
+283,0,null,null
+,,,
+284,0,null,null
+,,,
+285,0.2,null,null
+,,,
+286,0.4,null,null
+,,,
+287,0.6,null,null
+,,,
+288,0.8,null,null
+,,,
+289,1,null,null
+,,,
+290,td-g3-url Portion of Deltas,null,null
+,,,
+291,0.12,null,null
+,,,
+292,0.1,null,null
+,,,
+293,0.08,null,null
+,,,
+294,0.06,null,null
+,,,
+295,0.04,null,null
+,,,
+296,0.02,null,null
+,,,
+297,0,null,null
+,,,
+298,0,null,null
+,,,
+299,0.2,null,null
+,,,
+300,0.4,null,null
+,,,
+301,0.6,null,null
+,,,
+302,0.8,null,null
+,,,
+303,1,null,null
+,,,
+304,Fraction of Documents,null,null
+,,,
+305,Figure 5: Plots of delta counts across the document domain for various document orderings.,null,null
+,,,
+306,"Terms-in-document ordering was previously combined with URL ordering by Ding et al. [13] in the form of url.server-tdurl, which splits into chunks by url.server, then groups into five parts by terms-in-document, then orders by URL. This hybrid ordering gives slight benefits in terms of space, but the eect on runtime performance was not tested. While the method of determining group separations (i.e., the boundaries for each terms-in-document group) was not specified, the url.server portion of the hybrid ordering will split the index into many small pieces. As a result, the skew from the subsequent td ordering is spread out across the entire document range. This means that the skew cannot be easily exploited through grouping as we did in Section 4.1.",null,null
+,,,
+307,"For our hybrid combination of terms-in-document and URL ordering, we first group the documents by their termsin-document value, then reorder within each group using the URL ordering. We will refer to it as td-g#-url, where # is the number of groups. (Since the GOV2 dataset covers only one section of the Web, we can relate this new approach to the previous hybrid approach as being in the form of url.server.su x-td-url.) Increasing the number of groups of documents will reduce the tight clustering from the URL ordering, but increase the skewed clustering of the data. This means that as the number of groups increases, the performance will trend towards the grouped terms-in-document performance and thus degrade `coherence.'",Y,null
+,,,
+308,"The td-g3-url ordering results in some skewing of deltas towards the front of the lists, as shown in Figure 5 (bottom). It also reduces the delta sizes as compared to URL ordering, with approximately 71.9% of the deltas having the value one for this ordering.",null,null
+,,,
+309,3.4,null,null
+,,,
+310,3.2,null,null
+,,,
+311,Entropy,null,null
+,,,
+312,3,null,null
+,,,
+313,2.8,null,null
+,,,
+314,2.6 0,null,null
+,,,
+315,20,null,null
+,,,
+316,40,null,null
+,,,
+317,60,null,null
+,,,
+318,80,null,null
+,,,
+319,100,null,null
+,,,
+320,Terms-in-document Groups,null,null
+,,,
+321,Figure 6: Entropy vs. number of terms-in-document groups.,null,null
+,,,
+322,We measure the compressibility of the data using zero,null,null
+,,,
+323,order Shannon entropy H on the deltas d (which assumes,null,null
+,,,
+324,deltas are independent and generated with the same proba-,null,null
+,,,
+325,"bility distribution), where pi is the probability of delta i in the data:",null,null
+,,,
+326,P,null,null
+,,,
+327,"H(d) ,",null,null
+,,,
+328,pilog2(pi),null,null
+,,,
+329,i2d,null,null
+,,,
+330,Lower values of entropy indicate that more compression is,null,null
+,,,
+331,possible. The td-g-url approach can improve entropy com-,null,null
+,,,
+332,"pared to the URL ordering, as shown in Figure 6, where four",null,null
+,,,
+333,"groups is the optimal setting. Surprisingly, even with one",null,null
+,,,
+334,"hundred groups, the entropy has not significantly degraded,",null,null
+,,,
+335,even though the entropy of the (pure) terms-in-document,null,null
+,,,
+336,"ordering is 5.07, which is much higher, and we expect that",null,null
+,,,
+337,splitting the index into many groups will degrade perfor-,null,null
+,,,
+338,mance towards terms-in-document ordering.,null,null
+,,,
+339,The actual space-time performance for dierent numbers,null,null
+,,,
+340,of groups and dierent F values is shown in Table 3. Using,null,null
+,,,
+341,four,null,null
+,,,
+342,groups,null,null
+,,,
+343,produces,null,null
+,,,
+344,the,null,null
+,,,
+345,smallest,null,null
+,,,
+346,configuration,null,null
+,,,
+347,with,null,null
+,,,
+348,F,null,null
+,,,
+349,",",null,null
+,,,
+350,1 8,null,null
+,,,
+351,",",null,null
+,,,
+352,"but for other F values, using eight groups is better than",null,null
+,,,
+353,"using four groups in both space and time. As a result, we",null,null
+,,,
+354,use td-g8-url as our optimal configuration.,null,null
+,,,
+355,td-g2-url td-g4-url td-g8-url td-g12-url td-g16-url,null,null
+,,,
+356,F,null,null
+,,,
+357,",",null,null
+,,,
+358,1 8,null,null
+,,,
+359,space time,null,null
+,,,
+360,5.32 1.77,null,null
+,,,
+361,5.16 1.65,null,null
+,,,
+362,5.23 1.56,null,null
+,,,
+363,5.28 1.54,null,null
+,,,
+364,5.34 1.55,null,null
+,,,
+365,F,null,null
+,,,
+366,",",null,null
+,,,
+367,1 16,null,null
+,,,
+368,space time,null,null
+,,,
+369,6.28 1.33,null,null
+,,,
+370,6.15 1.22,null,null
+,,,
+371,6.14 1.17,null,null
+,,,
+372,6.23 1.16,null,null
+,,,
+373,6.28 1.15,null,null
+,,,
+374,F,null,null
+,,,
+375,",",null,null
+,,,
+376,1 32,null,null
+,,,
+377,space time,null,null
+,,,
+378,8.11 1.08,null,null
+,,,
+379,7.92 0.98,null,null
+,,,
+380,7.79 0.96,null,null
+,,,
+381,7.94 0.96,null,null
+,,,
+382,7.98 0.96,null,null
+,,,
+383,Table 3: Space (bits/posting) and time (ms/q) performance of PFD+semi-bitvectors for various numbers of groups and cuto values F .,null,null
+,,,
+384,"When we compare our semi-bitvector approach using tdg8-url ordering to the bitvectors+skips algorithm using URL ordering, we see a significant improvement in performance. For the same amount of memory, the semi-bitvectors produce a speedup of at least 1.4x compared to the best URL ordering approach, and a small reduction in space usage is also possible, as shown in Figure 7. Interestingly, running the bitvectors+skips algorithm using the new td-g8-url ordering produces very little improvement, and running semibitvectors without grouping by terms-in-document also produces little improvement. Clearly, both the grouping and",null,null
+,,,
+385,269,null,null
+,,,
+386,time (ms/query),null,null
+,,,
+387,4 PFD+bitvectors+skips(url) PFD+semi-bitvectors(td-g8-url),null,null
+,,,
+388,3,null,null
+,,,
+389,"F , 1/4",null,null
+,,,
+390,8-Jan,null,null
+,,,
+391,2,null,null
+,,,
+392,"F , 1/4",null,null
+,,,
+393,16-Jan,null,null
+,,,
+394,8-Jan,null,null
+,,,
+395,1/24 1/32,null,null
+,,,
+396,Jan-48,null,null
+,,,
+397,1,null,null
+,,,
+398,1/16 1/24,null,null
+,,,
+399,Jan-32,null,null
+,,,
+400,Jan-48,null,null
+,,,
+401,0 1.8,null,null
+,,,
+402,td-g8-url vs. url,null,null
+,,,
+403,1.6,null,null
+,,,
+404,speedup,null,null
+,,,
+405,1.4,null,null
+,,,
+406,1.2,null,null
+,,,
+407,1,null,null
+,,,
+408,4,null,null
+,,,
+409,6,null,null
+,,,
+410,8,null,null
+,,,
+411,10,null,null
+,,,
+412,12,null,null
+,,,
+413,space (bits/posting),null,null
+,,,
+414,"Figure 7: Space vs. time graph and improvement graph for semi-bitvectors using cuto frequency F and td-g8-url ordering compared to the bitvectors+skips algorithm using cuto frequency F , URL ordering and skip size 256.",null,null
+,,,
+415,4,null,null
+,,,
+416,"X , 256",null,null
+,,,
+417,PFD+skips(url) PFD+semi-bitvectors(td-g8-url),null,null
+,,,
+418,128,null,null
+,,,
+419,32,null,null
+,,,
+420,3,null,null
+,,,
+421,64,null,null
+,,,
+422,time (ms/query),null,null
+,,,
+423,2,null,null
+,,,
+424,"F , 1/4",null,null
+,,,
+425,8-Jan,null,null
+,,,
+426,1,null,null
+,,,
+427,1/16 1/24,null,null
+,,,
+428,Jan-32,null,null
+,,,
+429,Jan-48,null,null
+,,,
+430,speedup,null,null
+,,,
+431,0 3.5,null,null
+,,,
+432,td-g8-url vs. url 3.0,null,null
+,,,
+433,2.5,null,null
+,,,
+434,2,null,null
+,,,
+435,1.5,null,null
+,,,
+436,1,null,null
+,,,
+437,4,null,null
+,,,
+438,6,null,null
+,,,
+439,8,null,null
+,,,
+440,10,null,null
+,,,
+441,12,null,null
+,,,
+442,space (bits/posting),null,null
+,,,
+443,Figure 8: Space vs. time graph and improvement graph for semi-bitvectors using cuto frequency F and td-g8-url ordering compared to the skips algorithm using URL ordering and skip size X.,null,null
+,,,
+444,semi-bitvectors are needed to produce the performance improvements of our approach.,null,null
+,,,
+445,"In addition, the space-time benefits of semi-bitvectors for the terms-in-document ordering (td-g1024-td vs. td) are similar to the benefits of semi-bitvectors for the URL ordering (td-g8-url vs. url). This suggests that our td-g-url approach is combining the benefits of tight clustering found in the URL ordering with the benefits of skewed clustering found in the terms-in-document ordering.",null,null
+,,,
+446,"Most of the publicly available search systems do not use bitvectors or combine bitvectors with skips. As a result, a more appropriate comparison is between our semi-bitvectors and simple skips, where we found a speedup of at least 2.4x, as shown in Figure 8. This comparison also shows that a significant space improvement is possible. These benefits are in addition to the performance gains from using URL ordering rather than some other ordering. Such ine cient orderings may be common in existing installations. Incredibly, our semi-bitvector approach has a speedup of at least 6.0x compared to skips using the original ordering, while using the same amount of space, although significant improvements to space are possible.",null,null
+,,,
+447,"Similar types of runtime improvements would occur with any compression algorithm, since the benefits come from using bitvectors in dense regions where they are much faster than any compression algorithm.",null,null
+,,,
+448,5. RANKING BASED SYSTEMS,null,null
+,,,
+449,"For comparison, we provide performance numbers from various papers using the GOV2 dataset (Table 4). Clearly, our approach using bitvectors can answer a conjunctive query much faster than the existing ranking based systems, while using much less space than a full index. The runtime performance dierences are much bigger than any hardware or",null,null
+,,,
+450,"query dierences could produce. Indeed, our results are at a disadvantage, because we have indexed much more data, including the HTTP header information (6.8 billion [13] vs. 9.0 billion document level postings).",null,null
+,,,
+451,We have demonstrated that executing conjunctive queries with semi-bitvectors can be done using small amounts of space to produce extremely fast runtimes compared to ranking based search systems. These characteristics suggest that ranking-based systems can benefit from judiciously incorporating semi-bitvector data structures. We introduce five possible approaches below:,null,null
+,,,
+452,"Pre-filter: Use semi-bitvectors to produce the conjunctive results, then process the ranking structures restricted to these results, as suggested in previous work [11]. This may require reordering of conjunctive results if the ranking structures use a dierent document ordering. The ranking structures could use non-query based information, such as PageRank, or normal ranking structures, thus duplicating some postings information. Having the conjunctive results can make the ranking process more e cient by exploiting skips in the first list, or limiting the number of accumulators. Using conjunctive results to pre-filter proximity or phrase queries is the natural implementation approach. Using this type of pre-filtering, however, prevents the use of non-AND based processing such as Weak-AND [8].",null,null
+,,,
+453,"Sub-document pre-filter: Use semi-bitvectors in a prefiltering step as a heuristic to limit the results to high quality or highly ranked documents by exploiting the correlation of query term proximity to query relevance [10]. This is accomplished by splitting the documents into (potentially overlapping) sub-document windows, then building the semibitvector structures over these windows. This reduces the number of results that must be ranked, while the results being ranked will be highly relevant because the query terms",null,null
+,,,
+454,270,null,null
+,,,
+455,Algorithm/System,null,null
+,,,
+456,time (ms/q) space (GB) data,null,null
+,,,
+457,structures,null,null
+,,,
+458,type,null,null
+,,,
+459,reorder ref,null,null
+,,,
+460,Lucene (vbyte),null,null
+,,,
+461,26,null,null
+,,,
+462,42.1,null,null
+,,,
+463,text,null,null
+,,,
+464,docID+osets AND+counts N [28],null,null
+,,,
+465,Quasi-succinct indices (QS*),null,null
+,,,
+466,11.9,null,null
+,,,
+467,36.9,null,null
+,,,
+468,text,null,null
+,,,
+469,docID+osets AND+counts N [28],null,null
+,,,
+470,Exhaustive AND,null,null
+,,,
+471,6.56,null,null
+,,,
+472,4.5,null,null
+,,,
+473,text,null,null
+,,,
+474,docID+freq. BM25,null,null
+,,,
+475,Y [14],null,null
+,,,
+476,Hierarchical Block-Max (HIER 10G),null,null
+,,,
+477,4.29,null,null
+,,,
+478,14.5,null,null
+,,,
+479,text,null,null
+,,,
+480,docID+freq. BM25,null,null
+,,,
+481,Y [12],null,null
+,,,
+482,PFD+semi-bitvectors(,null,null
+,,,
+483,1 32,null,null
+,,,
+484,",",null,null
+,,,
+485,td-g8-url),null,null
+,,,
+486,0.96,null,null
+,,,
+487,8.8,null,null
+,,,
+488,text+meta docID,null,null
+,,,
+489,AND,null,null
+,,,
+490,Y,null,null
+,,,
+491,-,null,null
+,,,
+492,Table 4: Published performance numbers from various papers using the GOV2 dataset.,Y,null
+,,,
+493,"appear close together. The conjunctive results will need to be mapped from window IDs to document IDs before executing the ranking step. The windows could be implemented as half-overlapping windows to guarantee proximity of query terms within half the window size. Clearly, this approach needs more examination to determine if significant filtering can be achieved without adversely aecting ranking eectiveness. If this approach can produce significant filtering, the ranking step could be implemented by directly storing the tokens of each window for quick ranking/proximity/phrase processing.",null,null
+,,,
+494,High density filters: High density terms have low value,null,null
+,,,
+495,"for ranking, with the extreme case being stopwords. How-",null,null
+,,,
+496,"ever, they can still act as a filter and be processed more",null,null
+,,,
+497,"e ciently using semi-bitvectors. In fact, high density re-",null,null
+,,,
+498,"gions of a postings lists may act similarly, but a constant",null,null
+,,,
+499,ranking value may be needed to smoothly integrate filtering,null,null
+,,,
+500,regions with ranking regions in a single postings list. Based,null,null
+,,,
+501,"on our results, even using semi-bitvectors for postings lists",null,null
+,,,
+502,with document frequency F performance benefits.,null,null
+,,,
+503,1 8,null,null
+,,,
+504,can,null,null
+,,,
+505,result,null,null
+,,,
+506,in,null,null
+,,,
+507,significant,null,null
+,,,
+508,"Query specific filter: The terms that could be implemented as filters may be query specific. To improve the processing e ciency of these filtering terms, duplicate structures can be introduced: a semi-bitvector structure for filtering and a separate structure suitable for ranking. In fact, additional information about the user, such as topics of interest, can be included in the ranking algorithm. This may reduce the eect of query terms in the ranking, allowing more query terms to be executed as filters using semi-bitvectors.",null,null
+,,,
+509,"Guided processing: Semi-bitvector structures can be used to produce conjunctive results that will provide statistics on the query, and these statistics can guide subsequent processing of the query. For example, the statistics can indicate whether ranking should be done using conjunctive processing or some form of non-conjunctive processing, such as a Weak-AND implementation. These statistics can also indicate how to adapt this processing to the specific query terms, perhaps by identifying the specific query term that causes the conjunctive processing to be overly restrictive. Processing the conjunctive results for a subset of the documents may be enough to produce eective statistics. Such adaptive query processing techniques deserve close examination.",null,null
+,,,
+510,6. PARTITIONING BY DOCUMENT SIZE,null,null
+,,,
+511,"Previously, we were able to capitalize on the postings list skew resulting from terms-in-document ordering by using partitioning [17]. Like semi-bitvectors, this partitioning mechanism, in conjunction with URL ordering, allows eective use of bitvectors and skips. It was argued that partitioning by document size would be valuable in a distributed environment. When we ran experiments using three partitions, URL ordering within each partition, and the bitvec-",null,null
+,,,
+512,"tor+skips algorithm, the overall space and runtime performance was similar to our semi-bitvectors with td-g8-url.",null,null
+,,,
+513,"To gain these benefits in a single machine environment, all of the partitions must run on the same machine. The multi-partition approach, however, has several limitations: the costs to manage multiple partitions, the overheads per query for each partition, and the wasted space in duplicated dictionary entries for the terms found in multiple partitions. Determining when the benefits of partitioning outweigh the limitations of running multiple partitions on a single machine may be highly specific to the situation.",null,null
+,,,
+514,7. EXTENSIONS,null,null
+,,,
+515,"Our hybrid td-g-url ordering has been described as grouping by terms-in-document, followed by ordering within each group by URL, but it is equivalent to sieving documents from the URL ordering based on their terms-in-document values. A more detailed combination of URL's tight clustering and terms-in-document's skewed clustering could provide a better combined ordering, and we leave such exploration for future work.",null,null
+,,,
+516,"Alternative hybrid orderings could be computed by combining groups using terms-in-document ordering with some other second ordering. This allows the exploitation of better general ordering techniques or orderings tuned to the workload and dataset. As such, our grouping by terms-indocument approach acts to boost the performance of another document ordering technique.",null,null
+,,,
+517,"In addition, the combination of grouping by terms-indocument with a second ordering could reduce the amount of time needed to calculate the second ordering, because the secondary ordering acts only on the documents within each group, rather than on the documents in the entire index. This could be a big advantage for ordering techniques that do not scale well, such as content similarity based algorithms.",null,null
+,,,
+518,"If a search system is unable to use document ordering techniques, perhaps because the system has a very high update rate, the documents could still be grouped (or partitioned) by their terms-in-document size to produce some benefits. Indeed, any partial ordering that can exploit some amount of tight clustering or skewed clustering may have large benefits for such systems.",null,null
+,,,
+519,8. CONCLUSIONS,null,null
+,,,
+520,"We have shown how groups of documents defined by the skewed terms-in-document ordering, when combined with URL ordering and partial bitvectors, can be used to make list intersection more e cient. This is accomplished by forming varying densities within grouped portions of the postings lists, reordering within the groups by URL ordering, and then storing them as semi-bitvectors, which encode dense front portions of the lists as bitvectors. Essentially, this al-",null,null
+,,,
+521,271,null,null
+,,,
+522,"lows us to store more postings in bitvectors for a given space budget, and these bitvectors are much faster than other approaches. This combination gives most of the benefits of tight clustering in URL ordering, while also gaining the benefits of skewed clustering for eective use of semi-bitvectors.",null,null
+,,,
+523,"This multi-ordered configuration (td-g-url) gives significant space-time improvements, when combined with semibitvectors. When compared to a fast and compact configuration that combines bitvectors, large skips and URL ordering, we get a speedup of at least 1.4x. When compared to using only skips with URL ordering, we get a speedup of at least 2.4x. While the overall improvement will depend on the size and type of the data, as well as the number of groups used, we expect significant benefits for most large datasets.",null,null
+,,,
+524,"To expand the applicability of semi-bitvectors, we have described various methods for using them to improve ranking based search systems. These proposals warrant further investigation.",null,null
+,,,
+525,9. ACKNOWLEDGEMENTS,null,null
+,,,
+526,"This research was supported by the University of Waterloo and by the Natural Sciences and Engineering Research Council of Canada. We thank the researchers at WestLab, Polytechnic Institute of NYU for providing their block based compression code [30].",null,null
+,,,
+527,10. REFERENCES,null,null
+,,,
+528,"[1] V. N. Anh and A. Moat. Inverted index compression using word-aligned binary codes. Information Retrieval, 8(1):151­166, 2005.",null,null
+,,,
+529,"[2] V. N. Anh and A. Moat. Simplified similarity scoring using term ranks. In SIGIR, pages 226­233, 2005.",null,null
+,,,
+530,"[3] D. Arroyuelo, S. Gonz´alez, M. Oyarzu´n, and V. Sepulveda. Document identifier reassignment and run-length-compressed inverted indexes for improved search performance. In SIGIR, pages 173­182, 2013.",null,null
+,,,
+531,"[4] J. Barbay, A. L´opez-Ortiz, T. Lu, and A. Salinger. An experimental investigation of set intersection algorithms for text searching. JEA, 14, 2009.",null,null
+,,,
+532,"[5] I. C. Baykan. Inverted index compression based on term and document identifier reassignment. PhD thesis, Bilkent University, 2008.",null,null
+,,,
+533,"[6] R. Blanco and A. Barreiro. TSP and cluster-based solutions to the reassignment of document identifiers. Information Retrieval, 9(4):499­517, 2006.",null,null
+,,,
+534,"[7] D. Blandford and G. Blelloch. Index compression through document reordering. In DCC, pages 342­351, 2002.",null,null
+,,,
+535,"[8] A. Z. Broder, D. Carmel, M. Herscovici, A. Soer, and J. Zien. E cient query evaluation using a two-level retrieval process. In CIKM, pages 426­434, 2003.",null,null
+,,,
+536,"[9] S. Bu¨ttcher, C. Clarke, and G. V. Cormack. Information retrieval: Implementing and evaluating search engines. The MIT Press, 2010.",null,null
+,,,
+537,"[10] S. Bu¨ttcher, C. L. Clarke, and B. Lushman. Term proximity scoring for ad-hoc retrieval on very large text collections. In SIGIR, pages 621­622, 2006.",null,null
+,,,
+538,"[11] J. S. Culpepper and A. Moat. E cient set intersection for inverted indexing. TOIS, 29(1), 2010.",null,null
+,,,
+539,"[12] C. Dimopoulos, S. Nepomnyachiy, and T. Suel. Optimizing top-k document retrieval strategies for block-max indexes. In WSDM, pages 113­122, 2013.",null,null
+,,,
+540,"[13] S. Ding, J. Attenberg, and T. Suel. Scalable techniques for document identifier assignment in inverted indexes. In WWW, pages 311­320, 2010.",null,null
+,,,
+541,"[14] S. Ding and T. Suel. Faster top-k document retrieval using block-max indexes. In SIGIR, pages 993­1002, 2011.",null,null
+,,,
+542,"[15] S. Garcia, H. E. Williams, and A. Cannane. Access-ordered indexes. In Proc. of the 27th Australasian Conf. on Computer Science, pages 7­14, 2004.",null,null
+,,,
+543,"[16] S. Jonassen and S. E. Bratsberg. E cient compressed inverted index skipping for disjunctive text-queries. In Advances in Information Retrieval, pages 530­542. 2011.",null,null
+,,,
+544,"[17] A. Kane and F. W. Tompa. Distribution by document size. In LSDS-IR, 2014.",null,null
+,,,
+545,"[18] D. Lemire and L. Boytsov. Decoding billions of integers per second through vectorization. SPE, 2013.",null,null
+,,,
+546,"[19] X. Long and T. Suel. Optimized query execution in large search engines with global page ordering. In VLDB, pages 129­140, 2003.",null,null
+,,,
+547,"[20] P. Sanders and F. Transier. Intersection in integer inverted indices. In ALENEX, 2007.",null,null
+,,,
+548,"[21] L. Shi and B. Wang. Yet another sorting-based solution to the reassignment of document identifiers. In Information Retrieval Technology, pages 238­249. 2012.",null,null
+,,,
+549,"[22] W.-Y. Shieh, T.-F. Chen, J. J.-J. Shann, and C.-P. Chung. Inverted file compression through document identifier reassignment. Information Processing & Management, 39(1):117­131, 2003.",null,null
+,,,
+550,"[23] F. Silvestri. Sorting out the document identifier assignment problem. Advances in Information Retrieval, pages 101­112, 2007.",null,null
+,,,
+551,"[24] F. Silvestri, S. Orlando, and R. Perego. Assigning identifiers to documents to enhance the clustering property of fulltext indexes. In SIGIR, pages 305­312, 2004.",null,null
+,,,
+552,"[25] F. Silvestri, R. Perego, and S. Orlando. Assigning document identifiers to enhance compressibility of Web search engines indexes. In SAC, pages 600­605, 2004.",null,null
+,,,
+553,"[26] F. Silvestri and R. Venturini. VSEncoding: e cient coding and fast decoding of integer lists via dynamic programming. In CIKM, pages 1219­1228, 2010.",null,null
+,,,
+554,"[27] N. Tonellotto, C. Macdonald, and I. Ounis. Eect of dierent docid orderings on dynamic pruning retrieval strategies. In SIGIR, pages 1179­1180, 2011.",null,null
+,,,
+555,"[28] S. Vigna. Quasi-succinct indices. In WSDM, pages 83­92, 2013.",null,null
+,,,
+556,"[29] H. Yan, S. Ding, and T. Suel. Inverted index compression and query processing with optimized document ordering. In WWW, pages 401­410, 2009.",null,null
+,,,
+557,"[30] J. Zhang, X. Long, and T. Suel. Performance of compressed inverted list caching in search engines. In WWW, pages 387­396, 2008.",null,null
+,,,
+558,"[31] J. Zobel and A. Moat. Inverted files for text search engines. ACM Computing Surveys, 38(2):6, 2006.",null,null
+,,,
+559,"[32] M. Zukowski, S. Heman, N. Nes, and P. Boncz. Super-scalar RAM-CPU cache compression. In ICDE, pages 59­59, 2006.",null,null
+,,,
+560,272,null,null
+,,,
+561,,null,null
