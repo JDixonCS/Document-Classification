@@ -1,2 +1,2 @@
 # Document-Classification
-Bibliography project for detecting machine learning classifiers
+Bibliography project for running machine learning classifiers on machine learning papers
