@@ -4621,7 +4621,7 @@ from itertools import chain
 
 subset10 = ['Train_Set' for t in range(50)]
 other_set10 = ['Test_Set' for t in range(50)]
-sampling10 = ['Undersampling' for t in range(50)]
+sampling10 = ['Oversampling' for t in range(50)]
 technique10 = ['ROS' for t in range(50)]
 classifier_names10 = ['Logistic Regression', 'Decision Tree', 'Naive Bayes', 'XGBoost', 'Random Forest']
 #train_sizes_num10 = [0.95]
