@@ -1,2 +1,2 @@
 # import the necessary packages
-from .dataloader import BasicLoader
+from .dataloader import ManuaLText
