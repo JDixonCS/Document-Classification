@@ -4,7 +4,7 @@ Bibliography project for running machine learning classifiers on machine learnin
 
 
 # Installation
-Requirement files are provided to install needed files for python usage. Use requirements-conda.txt and requirements-pip.txt.
+Requirement files are provided to install needed files for python usage. Use requirements-conda.txt and requirements-pip.txt.<br />
 Recommended libraries to install:
 
  - matplotlib
