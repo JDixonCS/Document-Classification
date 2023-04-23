@@ -31,7 +31,7 @@ echo $! >> save_pid.txt`
 The repository is licensed under the MIT License.
 
 # Contributors
-- Jose Dixon, Department of Computer Science, Morgan State University, Baltimore, Maryland (First Author)
-- Dr. Md Mahmudur Rahman, Department of Computer Science, Morgan State University, Baltimore, Maryland (Research Mentor)
-- Dr. Ian Soboroff, Retrieval Group, National Institute of Standards and Technology, Gaithersburg, Maryland (Project Mentor)
+- Jose Dixon; Department of Computer Science, Morgan State University; Baltimore, Maryland (First Author)
+- Dr. Md Mahmudur Rahman; Department of Computer Science, Morgan State University; Baltimore, Maryland (Research Mentor)
+- Dr. Ian Soboroff; Retrieval Group, National Institute of Standards and Technology; Gaithersburg, Maryland (Project Mentor)
 
