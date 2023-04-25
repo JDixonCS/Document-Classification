@@ -31,7 +31,7 @@ echo $! >> save_pid.txt`
 The repository is licensed under the MIT License.
 
 # Acknowledgements
-This work and project is supported by Morgan State University Division of Research and Development and the National Institute of Standards and Technology Professional Research Experience program.
+This work and project is supported by Morgan State University Division of Research and Development and the National Institute of Standards and Technology Professional Research Experience Program.
 - Dr. Md Mahmudur Rahman; Department of Computer Science, Morgan State University; Baltimore, Maryland (Research Mentor)
 - Dr. Ian Soboroff; Retrieval Group, National Institute of Standards and Technology; Gaithersburg, Maryland (Project Mentor)
 
