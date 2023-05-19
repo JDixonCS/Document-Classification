@@ -1,6 +1,6 @@
 ﻿# Document-Classification
 
-Bibliography project for running machine learning classifiers on machine learning papers.
+Bibliography project for using machine learning classifiers on machine learning papers.
 
 
 # Installation
@@ -30,5 +30,8 @@ echo $! >> save_pid.txt`
 # License
 The repository is licensed under the MIT License.
 
-
+# Acknowledgements
+This research project is supported by Morgan State University Division of Research and Economic Development and the National Institute of Standards and Technology Professional Research Experience Program.
+- Dr. Md Mahmudur Rahman; Department of Computer Science, Morgan State University; Baltimore, Maryland (Research Mentor)
+- Dr. Ian Soboroff; Retrieval Group, National Institute of Standards and Technology; Gaithersburg, Maryland (Project Mentor)
 
