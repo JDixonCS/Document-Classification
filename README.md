@@ -3,9 +3,10 @@
 Bibliography project for running machine learning classifiers on machine learning papers.
 
 # Installation
-Requirement files are provided to install needed files for python usage. It is recommended to create a conda environment. 
+Requirement files are provided to install needed files for Python usage. It is recommended to create a conda environment. 
+
 ## Instructions for Conda environment
-After Anaconda installation, open Anaconda prompt (anaconda3) from start menu to create a conda environment (mlwin): 
+After Anaconda installation, open the Anaconda prompt (anaconda3) from the start menu to create a conda environment (mlwin): 
 
     $ conda create --yes -n mlwin numpy scipy mkl-service m2w64-toolchain libpython matplotlib pandas scikit-learn tqdm jupyter h5py cython
 
@@ -23,7 +24,7 @@ After installing additional libraries, use the following commands to import addi
 ```
 
 ## Instructions for pip environment
-Use the following commands for pip environment. This is intended for Linux terminal.
+Use the following commands for the pip environment. This is intended for Linux terminals.
 ```
 ssh 127.0.0.1
 ssh testir-VirtualBox
@@ -31,7 +32,7 @@ ssh testir@testir-VirtualBox
 ssh testir@127.0.0.1
 ssh testir@testir-VirtualBox@127.0.0.1
 ssh testir-VirtualBox -p 2222
-hostname - gives you testir-VirtualBox 
+hostname
 cd /media/sf_Document-Classification/
 username@hostname:/media/sf_Document-Classification/
 cp -R /media/sf_Document-Classification ~ Documents/Document-Classification/
@@ -47,12 +48,12 @@ python3 Imbalanced_Raw-20.py
 ```
 
 # Usage
-Here is the commands that are necessary to run the models.
+Here are the commands that are necessary to run the models.
 These commands are recommended for the Windows command-line interpreter. 
  - `python Imbalanced_Raw-20.py -o Results/2010-Output-Imbalanced_Raw-20.py.txt -nd  NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-Imbalanced.csv -py Results/2010-Imbalanced-pos.csv -ny Results/2010-Imbalanced-neg.csv -i Results/2010-Imbalanced-Iterations.csv`
  - `python Sampling_Raw-1-NM.py -o Results/2010-Output-Sampling_Raw-1-NM.py.txt -nd  NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-NearMiss.csv -py Results/2010-NearMiss-pos.csv -ny Results/2010-NearMiss-neg.csv -i Results/2010-NearMiss-Iterations.csv`<br />
 
-These commands are recommended for the Linux Cluster command-line terminal.
+These commands are recommended for the Linux command-line terminal.
  - `nohup python Sampling_Raw-1-SMOTE.py -o Results/2010-Output-Sampling_Raw-1-SMOTE.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-SMOTE.csv -py Results/2010-SMOTE-pos.csv -ny Results/2010-SMOTE-neg.csv -i Results/2010-SMOTE-Iterations.csv > executesmb2010.log &
 echo $! >> save_pid.txt`
  -  `nohup python Sampling_Raw-1-TK.py -o Results/2010-Output-Sampling_Raw-1-TK.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-TomekLinks.csv -py Results/2010-TomekLinks-pos.csv -ny Results/2010-TomekLinks-neg.csv -i Results/2010-TomekLinks-Iterations.csv > executeimb20.log &
