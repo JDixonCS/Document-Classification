@@ -1,7 +1,6 @@
 ﻿# Document-Classification
 
 Bibliography project for running machine learning classifiers on machine learning papers.
-# Overview
 
 # Installation
 Requirement files are provided to install needed files for python usage. It is recommended to create a conda environment. 
