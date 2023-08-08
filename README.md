@@ -1,6 +1,6 @@
 # Document-Classification
 
-Bibliography project by doing text classification on a dataset of research papers and publications.
+Bibliography project by performing text classification on a dataset of research papers and publications.
 # Title
 Machine Learning for Detecting Trends and Topics from Research Papers and Proceedings
 # Overview
