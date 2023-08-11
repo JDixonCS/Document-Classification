@@ -3,11 +3,11 @@
 Bibliography project of performing text classification and statistical analysis on research papers and publications datasets.
 
 # Purpose
-This project makes use of supervised learning classification algorithms and two datasets of portable document format files, including open-access publications from PubMed Central Open Access Subset and the World Health Organization COVID-19 Downloadable Articles Database with NIST data from the SIGIR conferences. The machine learning models subsample the dataset at intervals of 5% to 100% and vary the training size (from five distinct training sizes) to provide a variety of unique scores. Depending on the classifier, sampling strategy, test split size, train split size, and subsampling size, the results will be presented as a comma-separated values (CSV) file. The file will include a wide range of scores based on accuracy, area under the curve (AUC), precision, and recall. Additionally, histograms, bar graphs, line graphs, and box plots demonstrate precision and recall performance scores. 
+This project makes use of supervised learning classification algorithms and two datasets of portable document format files, including open-access publications from PubMed Central Open Access Subset and the World Health Organization COVID-19 Downloadable Articles Database with NIST data from the SIGIR conferences. The machine learning models subsample the dataset at intervals of 5% to 100% and vary the training size (from five distinct training sizes) to provide a variety of unique scores. Depending on the classifier, sampling technique, test split size, train split size, and subsampling size, the results will be presented as a comma-separated values (CSV) file. The file will include a wide range of scores based on accuracy, area under the curve (AUC), precision, and recall. Additionally, histograms, bar graphs, line graphs, and box plots demonstrate precision and recall performance scores. 
 The main objectives of this research project are: 
 * To create a system that effectively preprocesses data for document classification, enabling the classifier to provide unique performance measures based on unstructured data for statistical analysis. 
-* Let statistical analysis determine the importance of the accuracy and recall scores from classifiers, sampling methods, labels, and performance metrics.
-* To demonstrate the performance differences, use five supervised machine learning classifiers using uneven sampling strategies.
+* Let statistical analysis determine the importance of the precision and recall scores from classifiers, sampling methods, labels, and performance metrics.
+* To demonstrate the performance differences, use five supervised machine learning classifiers using imbalanced sampling strategies.
 * To alternate the efficacy of imbalanced classification, use two distinct preprocessing methods that have an impact on the feature extraction procedure for each classifier.
 
 # Installation
