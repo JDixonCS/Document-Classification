@@ -7,7 +7,7 @@ This project makes use of supervised learning classification algorithms and two 
 The main objectives of this research project are: 
 * To create a system that effectively preprocesses data for document classification, enabling the classifier to provide unique performance measures based on unstructured data for statistical analysis. 
 * Let statistical analysis determine the importance of the precision and recall scores from classifiers, sampling methods, labels, and performance metrics.
-* To demonstrate the performance differences, use five supervised machine learning classifiers using imbalanced sampling strategies.
+* To demonstrate the performance differences, use five supervised machine learning classifiers from imbalanced sampling strategies.
 * To alternate the efficacy of imbalanced classification, use two distinct preprocessing methods that have an impact on the feature extraction procedure for each classifier.
 
 # Installation
