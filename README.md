@@ -3,7 +3,7 @@
 Bibliography project of performing text classification and statistical analysis on research papers and publications datasets.
 
 # Purpose
-This project makes use of supervised learning classification algorithms and two datasets of portable document format files, including open-access publications from PubMed Central Open Access Subset and the World Health Organization COVID-19 Downloadable Articles Database with NIST data from the SIGIR conferences. The machine learning models subsample the dataset at intervals of 5% to 100% and vary the training size (from five distinct training sizes) to provide a variety of unique scores. Depending on the classifier, sampling technique, test split size, train split size, and subsampling size, the results will be presented as a comma-separated values (CSV) file. The file will include a wide range of scores based on accuracy, area under the curve (AUC), precision, and recall. Additionally, histograms, bar graphs, line graphs, and box plots demonstrate precision and recall performance scores. 
+This project makes use of supervised learning classification algorithms and two datasets of portable document format files, including open-access publications from PubMed Central Open Access Subset and the World Health Organization COVID-19 Downloadable Articles Database with NIST data from the ACM  SIGIR conferences. The machine learning models subsample the dataset at intervals of 5% to 100% and vary the training size (from five distinct training sizes) to provide a variety of unique scores. Depending on the classifier, sampling technique, test split size, train split size, and subsampling size, the results will be presented as a comma-separated values (CSV) file. The file will include a wide range of scores based on accuracy, area under the curve (AUC), precision, and recall. Additionally, histograms, bar graphs, line graphs, and box plots demonstrate precision and recall performance scores. 
 The main objectives of this research project are: 
 * To create a system that effectively preprocesses data for document classification, enabling the classifier to provide unique performance measures based on unstructured data for statistical analysis. 
 * Let statistical analysis determine the importance of the precision and recall scores from classifiers, sampling methods, labels, and performance metrics.
@@ -62,8 +62,9 @@ kill PID [in save_pid.txt]
 Here are some example commands that are necessary to run the models.
 These commands are recommended for the Windows command-line interpreter. 
  - `python Imbalanced_Raw-20.py -o Results/2010-Output-Imbalanced_Raw-20.py.txt -nd  NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-Imbalanced.csv -py Results/2010-Imbalanced-pos.csv -ny Results/2010-Imbalanced-neg.csv -i Results/2010-Imbalanced-Iterations.csv`
+ - `python Imbalanced_Raw-20.py -o Results/Immune-Output-Imbalanced_Raw-20.py.txt -nd MEDFULL/
  - `python Sampling_Raw-1-NM.py -o Results/2010-Output-Sampling_Raw-1-NM.py.txt -nd  NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-NearMiss.csv -py Results/2010-NearMiss-pos.csv -ny Results/2010-NearMiss-neg.csv -i Results/2010-NearMiss-Iterations.csv`<br />
- - python Imbalanced_Raw-20.py -o Results/Immune-Output-Imbalanced_Raw-20.py
+ - `python Train_Set-1.py`
 
 These commands are recommended for the Linux Cluster command-line terminal with the use of pip.
  - `nohup python Sampling_Raw-1-SMOTE.py -o Results/2010-Output-Sampling_Raw-1-SMOTE.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-SMOTE.csv -py Results/2010-SMOTE-pos.csv -ny Results/2010-SMOTE-neg.csv -i Results/2010-SMOTE-Iterations.csv > executesmb2010.log &
