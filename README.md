@@ -55,6 +55,7 @@ python3 Imbalanced_Raw-20.py
 python3 nltkinstall.py
 nohup python Sampling_Raw-1-SMOTE.py -o Results/2010-Output-Sampling_Raw-1-SMOTE.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-SMOTE.csv -py Results/2010-SMOTE-pos.csv -ny Results/2010-SMOTE-neg.csv -i Results/2010-SMOTE-Iterations.csv > executesmb2010.log &
 echo $! >> save_pid.txt
+nohup python Train_Set-1.py > executetraset.log & echo $! >> save_pid.txt
 kill PID [in save_pid.txt]
 ```
 
@@ -70,6 +71,7 @@ These commands are recommended for the Linux Cluster command-line terminal with 
 echo $! >> save_pid.txt`
  -  `nohup python Sampling_Raw-1-TK.py -o Results/2010-Output-Sampling_Raw-1-TK.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-TomekLinks.csv -py Results/2010-TomekLinks-pos.csv -ny Results/2010-TomekLinks-neg.csv -i Results/2010-TomekLinks-Iterations.csv > executeimb20.log &
 echo $! >> save_pid.txt`
+- `nohup python Train_Set-1.py > executetraset.log & echo $! >> save_pid.txt`
 
 
 # License
