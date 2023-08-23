@@ -51,6 +51,7 @@ python3 -m venv venv
 source env/bin/activate
 python3 -m pip install <package>
 python3 -m pip install xgboost==1.7.1
+python3 -m pip install -r requirements.txt
 python3 Imbalanced_Raw-20.py
 python3 nltkinstall.py
 nohup python Sampling_Raw-1-SMOTE.py -o Results/2010-Output-Sampling_Raw-1-SMOTE.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-SMOTE.csv -py Results/2010-SMOTE-pos.csv -ny Results/2010-SMOTE-neg.csv -i Results/2010-SMOTE-Iterations.csv > executesmb2010.log &
