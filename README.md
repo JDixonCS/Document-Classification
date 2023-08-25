@@ -69,7 +69,7 @@ These commands are recommended for the Windows command-line interpreter.
  - `python Sampling_Raw-1-NM.py -o Results/Immune-Output-Imbalanced_Raw-20.py.txt -nd MEDFULL/Immune-neg.txt -pd MEDFULL/Immune-pos.txt -g Immune -yc Results/Immune-NearMiss.csv -py Results/Immune-NearMiss-pos.csv -ny Results/Immune-NearMiss-neg.csv -i Results/Immune-NearMiss-Iterations.csv`
  - `python Train_Set-1.py`
 
-These commands are recommended for the Linux Cluster or Lunix terminal with the use of pip and SSH authentication.
+These commands are recommended for the Linux cluster or Lunix terminal with the use of pip and SSH authentication.
  - `nohup python Sampling_Raw-1-SMOTE.py -o Results/2010-Output-Sampling_Raw-1-SMOTE.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-SMOTE.csv -py Results/2010-SMOTE-pos.csv -ny Results/2010-SMOTE-neg.csv -i Results/2010-SMOTE-Iterations.csv > executesmo2010.log &
 echo $! >> save_pid.txt`
  -  `nohup python Sampling_Raw-1-TK.py -o Results/2010-Output-Sampling_Raw-1-TK.py.txt -nd NIST_FULL/2010-neg.txt -pd NIST_FULL/2010-pos.txt -g 2010 -yc Results/2010-TomekLinks.csv -py Results/2010-TomekLinks-pos.csv -ny Results/2010-TomekLinks-neg.csv -i Results/2010-TomekLinks-Iterations.csv > executetk20.log &
